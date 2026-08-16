@@ -9,7 +9,7 @@
   --surface-interactive: oklch(0.938 0.024 205);
   --foreground-primary: oklch(0.255 0.03 221);
   --foreground-secondary: oklch(0.43 0.03 218);
-  --foreground-subtle: oklch(0.55 0.024 218);
+  --foreground-subtle: oklch(0.53 0.024 218);
   --foreground-inverse: oklch(0.99 0.003 205);
   --border-default: oklch(0.88 0.018 211);
   --border-strong: oklch(0.72 0.026 213);
