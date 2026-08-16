@@ -1,6 +1,6 @@
 # AUD Subjective Monitoring Platform
 
-This repository is the implementation workspace for the V1 AUD subjective monitoring product. It currently contains foundation infrastructure only and does not implement clinical workflows.
+This repository is the implementation workspace for the V1 AUD subjective monitoring product. It contains the Phase 1 runtime and accessible product-design foundation only; no clinical workflows are implemented.
 
 ## Prerequisites
 
@@ -42,6 +42,8 @@ pnpm dev
 
 The web development server proxies relative `/api` requests to the backend. Browser code should use relative paths such as `/api/v1/...`.
 
+The root web route is a non-live design-system reference. It demonstrates the authoritative light theme, responsive patient/clinician/admin visual character, reusable states, accessible fields, and confirmation behavior without implementing role-specific screens or workflows.
+
 The liveness endpoint checks only the running process. Readiness checks the implemented configuration, Prisma initialization, and PostgreSQL connectivity; queues, workers, authentication, and safety routing do not exist yet and are not reported.
 
 ## Database commands
@@ -66,6 +68,23 @@ DATABASE_URL=postgresql://aud_subjective:aud_subjective_dev@localhost:5432/aud_s
 
 SQLite and in-memory database substitutes are not used.
 
+Install the one browser used by the Phase 1 end-to-end path once:
+
+```sh
+pnpm exec playwright install chromium
+```
+
+The test boundaries are explicit:
+
+```sh
+pnpm test:web       # focused web component tests
+pnpm test:backend   # real-PostgreSQL backend integration tests
+pnpm test:e2e       # build, then test the production Fastify + SPA process
+pnpm test           # aggregate Phase 1 test command
+```
+
+The Playwright path uses Chromium to smoke-test the same-origin production application at narrow and desktop widths and runs a focused automated axe accessibility scan. Automated results complement rather than replace manual accessibility review.
+
 ## Production shape
 
 `pnpm build` compiles the contracts package, backend, and Vite application. The multi-stage `Dockerfile` produces one Node.js 24 image in which a single Fastify process serves `/health/*`, `/api/v1/*`, static Vite assets, and SPA navigation fallback. A runtime `DATABASE_URL` is required.
@@ -76,6 +95,8 @@ Build the image with:
 docker build -t aud-subjective-platform .
 ```
 
+GitHub Actions performs the Phase 1 formatting, lint, typecheck, web component, real-PostgreSQL integration, production build, Chromium smoke/accessibility, and Docker image checks against PostgreSQL 17.
+
 ## Root commands
 
 ```sh
@@ -84,6 +105,9 @@ pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm test:web
+pnpm test:backend
+pnpm test:e2e
 pnpm build
 pnpm db:generate
 pnpm db:migrate:dev

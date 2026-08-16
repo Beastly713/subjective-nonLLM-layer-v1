@@ -1,0 +1,83 @@
+name: Phase 1 CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://aud_subjective:aud_subjective_ci@127.0.0.1:5432/aud_subjective_test
+      TEST_DATABASE_URL: postgresql://aud_subjective:aud_subjective_ci@127.0.0.1:5432/aud_subjective_test
+      LOG_LEVEL: silent
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: aud_subjective_test
+          POSTGRES_USER: aud_subjective
+          POSTGRES_PASSWORD: aud_subjective_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U aud_subjective -d aud_subjective_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.24.0
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Deploy committed migrations
+        run: pnpm db:migrate:deploy
+
+      - name: Run web component tests
+        run: pnpm test:web
+
+      - name: Run backend PostgreSQL integration tests
+        run: pnpm test:backend
+
+      - name: Build production application
+        run: pnpm build
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run production smoke and accessibility test
+        run: pnpm test:e2e:run
+
+      - name: Build production image
+        run: docker build --tag aud-subjective-platform:ci .

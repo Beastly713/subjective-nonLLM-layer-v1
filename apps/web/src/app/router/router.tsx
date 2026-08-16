@@ -4,20 +4,8 @@ import {
   useRouteError,
 } from 'react-router';
 
-function FoundationScreen() {
-  return (
-    <main className="foundation-shell">
-      <section className="foundation-panel" aria-labelledby="foundation-title">
-        <p className="foundation-eyebrow">V1 foundation</p>
-        <h1 id="foundation-title">Application shell is running</h1>
-        <p>
-          The web, backend, and shared-contract workspace boundaries are ready
-          for the next implementation stage.
-        </p>
-      </section>
-    </main>
-  );
-}
+import { ErrorState } from '@/components/patterns/system-state';
+import { FoundationPage } from '@/features/foundation/foundation-page';
 
 function RouteErrorBoundary() {
   const error = useRouteError();
@@ -26,12 +14,13 @@ function RouteErrorBoundary() {
     : 'The application could not render this route.';
 
   return (
-    <main className="foundation-shell">
-      <section className="foundation-panel" role="alert">
-        <p className="foundation-eyebrow">Route error</p>
-        <h1>Something went wrong</h1>
-        <p>{message}</p>
-      </section>
+    <main className="grid min-h-screen place-items-center px-[var(--page-gutter)] py-12">
+      <div className="w-full max-w-lg">
+        <ErrorState />
+        <p className="mt-4 text-center text-sm text-muted-foreground">
+          {message}
+        </p>
+      </div>
     </main>
   );
 }
@@ -39,7 +28,7 @@ function RouteErrorBoundary() {
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <FoundationScreen />,
+    element: <FoundationPage />,
     errorElement: <RouteErrorBoundary />,
   },
 ]);

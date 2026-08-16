@@ -42,4 +42,13 @@ export default tseslint.config(
       },
     },
   },
+  {
+    files: ['tests/e2e/**/*.{ts,tsx}'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.node,
+      },
+    },
+  },
 );
