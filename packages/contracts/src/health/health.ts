@@ -12,6 +12,8 @@ export const ReadinessResponseSchema = z.object({
     configuration: z.literal('ready'),
     prisma: z.literal('ready'),
     postgres: ReadinessCheckStatusSchema,
+    authentication: ReadinessCheckStatusSchema,
+    authEmailDelivery: z.enum(['available', 'unavailable']),
   }),
 });
 

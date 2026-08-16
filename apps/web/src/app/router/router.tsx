@@ -6,6 +6,12 @@ import {
 
 import { ErrorState } from '@/components/patterns/system-state';
 import { FoundationPage } from '@/features/foundation/foundation-page';
+import { LoginPage } from '@/features/auth/login-page';
+import { RecoverAccountPage } from '@/features/auth/recover-account-page';
+import { ResetPasswordPage } from '@/features/auth/reset-password-page';
+import { RootSessionPage } from '@/features/auth/root-session-page';
+import { SessionExpiredPage } from '@/features/auth/session-expired-page';
+import { TwoFactorPage } from '@/features/auth/two-factor-page';
 
 function RouteErrorBoundary() {
   const error = useRouteError();
@@ -28,7 +34,41 @@ function RouteErrorBoundary() {
 export const router = createBrowserRouter([
   {
     path: '/',
-    element: <FoundationPage />,
+    element: <RootSessionPage />,
     errorElement: <RouteErrorBoundary />,
   },
+  {
+    path: '/login',
+    element: <LoginPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: '/two-factor',
+    element: <TwoFactorPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: '/recover-account',
+    element: <RecoverAccountPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: '/reset-password',
+    element: <ResetPasswordPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: '/session-expired',
+    element: <SessionExpiredPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  ...(import.meta.env.DEV
+    ? [
+        {
+          path: '/dev/foundation',
+          element: <FoundationPage />,
+          errorElement: <RouteErrorBoundary />,
+        },
+      ]
+    : []),
 ]);

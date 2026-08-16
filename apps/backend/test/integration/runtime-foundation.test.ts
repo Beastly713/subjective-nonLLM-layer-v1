@@ -23,6 +23,9 @@ const config = parseConfig({
   NODE_ENV: 'test',
   DATABASE_URL: testDatabaseUrl,
   LOG_LEVEL: 'silent',
+  APP_MODE: 'prototype',
+  BETTER_AUTH_SECRET: 'test-only-better-auth-secret-at-least-32-characters',
+  APP_BASE_URL: 'http://127.0.0.1:3000',
 });
 const prisma = createPrismaClient(testDatabaseUrl);
 const app = buildApp({ config, prisma });

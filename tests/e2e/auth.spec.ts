@@ -1,23 +1,15 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
-test('serves the accessible foundation through the production application', async ({
+test('serves accessible authentication through the production application', async ({
   page,
 }) => {
   await page.goto('/');
 
-  await expect(
-    page.getByRole('heading', { name: 'A calm, precise foundation for care' }),
-  ).toBeVisible();
-  await expect(page.getByText('Non-live demonstration')).toBeVisible();
-
-  await page.getByRole('button', { name: 'Open confirmation example' }).click();
-  const dialog = page.getByRole('dialog', {
-    name: 'Confirm the reference action?',
-  });
-  await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: 'Confirm example' }).click();
-  await expect(dialog).toBeHidden();
+  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  await expect(page.getByLabel('Email address')).toBeVisible();
+  await expect(page.getByLabel('Password')).toBeVisible();
+  await expect(page.getByText('Account recovery is unavailable')).toBeVisible();
 
   const healthResponse = await page.request.get('/health/live');
   expect(healthResponse.ok()).toBe(true);

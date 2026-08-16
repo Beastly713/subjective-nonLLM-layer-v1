@@ -17,6 +17,9 @@ jobs:
       DATABASE_URL: postgresql://aud_subjective:aud_subjective_ci@127.0.0.1:5432/aud_subjective_test
       TEST_DATABASE_URL: postgresql://aud_subjective:aud_subjective_ci@127.0.0.1:5432/aud_subjective_test
       LOG_LEVEL: silent
+      APP_MODE: prototype
+      BETTER_AUTH_SECRET: ci-only-auth-secret-at-least-32-characters-long
+      APP_BASE_URL: http://127.0.0.1:3000
 
     services:
       postgres:

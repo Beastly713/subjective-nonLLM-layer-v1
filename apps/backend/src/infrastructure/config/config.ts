@@ -21,13 +21,48 @@ const AppConfigSchema = z
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
+    APP_MODE: z.enum(['prototype', 'real_patient']).default('prototype'),
+    BETTER_AUTH_SECRET: z.string().min(32),
+    APP_BASE_URL: z.url().refine((value) => {
+      const url = new URL(value);
+      return (
+        ['http:', 'https:'].includes(url.protocol) &&
+        !url.hostname.includes('*') &&
+        url.pathname === '/' &&
+        !url.username &&
+        !url.password &&
+        !url.search &&
+        !url.hash
+      );
+    }, 'must be an absolute HTTP(S) application origin without wildcards'),
+    RESEND_API_KEY: z.string().min(1).optional(),
+    EMAIL_FROM: z.email().optional(),
   })
+  .refine(
+    ({ RESEND_API_KEY, EMAIL_FROM }) =>
+      Boolean(RESEND_API_KEY) === Boolean(EMAIL_FROM),
+    { message: 'RESEND_API_KEY and EMAIL_FROM must be configured together' },
+  )
   .transform((environment) => ({
     nodeEnv: environment.NODE_ENV,
     host: environment.HOST,
     port: environment.PORT,
     databaseUrl: environment.DATABASE_URL,
     logLevel: environment.LOG_LEVEL,
+    appMode: environment.APP_MODE,
+    betterAuthSecret: environment.BETTER_AUTH_SECRET,
+    appBaseUrl: environment.APP_BASE_URL,
+    resendApiKey: environment.RESEND_API_KEY,
+    emailFrom: environment.EMAIL_FROM,
+    authEmailDeliveryAvailable: Boolean(
+      environment.RESEND_API_KEY && environment.EMAIL_FROM,
+    ),
+    trustedOrigins: [
+      new URL(environment.APP_BASE_URL).origin,
+      ...(environment.NODE_ENV === 'development'
+        ? ['http://localhost:5173']
+        : []),
+    ],
   }));
 
 const TestDatabaseConfigSchema = z.object({

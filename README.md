@@ -1,6 +1,6 @@
 # AUD Subjective Monitoring Platform
 
-This repository is the implementation workspace for the V1 AUD subjective monitoring product. It contains the Phase 1 runtime and accessible product-design foundation only; no clinical workflows are implemented.
+This repository is the implementation workspace for the V1 AUD subjective monitoring product. It contains the runtime, accessible product-design foundation, and Phase 2 identity/session foundation. Application roles and clinical workflows are not implemented.
 
 ## Prerequisites
 
@@ -19,6 +19,9 @@ Create the local environment file and start PostgreSQL 17:
 cp .env.example .env
 docker compose up -d postgres
 ```
+
+Generate a secret with `openssl rand -base64 32` and paste it into
+`BETTER_AUTH_SECRET` in `.env` before starting the application.
 
 Apply the committed migrations and generate the Prisma client:
 
@@ -42,9 +45,9 @@ pnpm dev
 
 The web development server proxies relative `/api` requests to the backend. Browser code should use relative paths such as `/api/v1/...`.
 
-The root web route is a non-live design-system reference. It demonstrates the authoritative light theme, responsive patient/clinician/admin visual character, reusable states, accessible fields, and confirmation behavior without implementing role-specific screens or workflows.
+The root route resolves the authoritative server session. Anonymous visitors are sent to `/login`; authenticated accounts see a neutral setup/access-pending state. In development, the Phase 1 design-system reference remains available at `/dev/foundation`.
 
-The liveness endpoint checks only the running process. Readiness checks the implemented configuration, Prisma initialization, and PostgreSQL connectivity; queues, workers, authentication, and safety routing do not exist yet and are not reported.
+Authentication uses Better Auth database-backed, HTTP-only cookie sessions. Public signup is disabled. Configure `RESEND_API_KEY` and `EMAIL_FROM` together to enable verification and password recovery; prototype mode reports email as unavailable when they are absent, while `real_patient` mode reports the application not ready. Readiness covers configuration, Prisma, PostgreSQL, auth core, and auth email delivery only.
 
 ## Database commands
 
@@ -95,7 +98,7 @@ Build the image with:
 docker build -t aud-subjective-platform .
 ```
 
-GitHub Actions performs the Phase 1 formatting, lint, typecheck, web component, real-PostgreSQL integration, production build, Chromium smoke/accessibility, and Docker image checks against PostgreSQL 17.
+GitHub Actions performs formatting, lint, typecheck, web component, real-PostgreSQL integration, production build, Chromium smoke/accessibility, and Docker image checks against PostgreSQL 17.
 
 ## Root commands
 

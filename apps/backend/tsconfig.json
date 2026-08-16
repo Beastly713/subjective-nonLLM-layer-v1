@@ -1,8 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2023"],
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": ["node"],
+    "skipLibCheck": true,
     "noEmit": true
   },
   "include": ["src", "test", "prisma.config.ts", "prisma/seed.ts"]
