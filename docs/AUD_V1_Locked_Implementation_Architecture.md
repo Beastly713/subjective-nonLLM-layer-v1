@@ -6,6 +6,8 @@
 
 **Purpose:** Define the concrete implementation architecture for the V1 web product while preserving the existing clinical/domain specification and the previously locked product/UX architecture.
 
+**Current implementation status:** Phase 1 foundation is complete. Identity, authentication, authorization, clinical/domain workflows, background jobs, email, and real-patient activation remain future implementation work. See `AUD_V1_Phase_1_Foundation_Implementation_Guide.md` for the validated foundation record.
+
 This document is subordinate to:
 
 1. `AUD_Subjective_Monitoring_Master_Specification_V1.md`
@@ -3619,13 +3621,12 @@ Early in implementation, create a small set of polished representative component
 
 - typography;
 - spacing;
-- navigation;
 - cards;
 - forms;
-- tables;
 - status language;
-- charts;
 - empty/error states.
+
+The Phase 1 foundation reference establishes these shared visual and interaction primitives plus representative patient, clinician, and admin density. Navigation, tables, and charts arrive with the first real feature and authoritative data that require them; do not fabricate them merely to enlarge the reference surface.
 
 Subsequent Codex tasks must reuse these patterns.
 
@@ -3637,7 +3638,7 @@ This prevents AI-generated visual drift.
 
 Do not maintain a second fake application backend.
 
-Use:
+Static, explicitly non-live design-reference content is permitted before domain schemas exist. Once functional feature UI begins, use:
 
 ```text
 real backend
@@ -4366,13 +4367,13 @@ Do not use `latest`.
 
 # 168. Dependency pinning
 
-Commit:
+Commit the lockfile:
 
 ```text
 pnpm-lock.yaml
 ```
 
-Use major/minor versions deliberately.
+Pin direct dependencies to exact patch versions when they are introduced. Choose major and minor versions deliberately, and let the committed lockfile make transitive resolution reproducible.
 
 Do not automatically follow prerelease versions for core dependencies.
 
@@ -4497,7 +4498,7 @@ Fastify integration is supported. Preserve its origin/CSRF protections. Its supp
 
 ## Dependency pinning
 
-Exact patch versions are pinned at repository bootstrap through `package.json` and `pnpm-lock.yaml`.
+Exact patch versions are pinned through `package.json` and `pnpm-lock.yaml` when each dependency is first introduced by its owning implementation scope.
 
 Framework/library versions are not opportunistically changed during unrelated feature work.
 
@@ -4658,4 +4659,3 @@ This document is the **locked V1 implementation architecture**.
 A new service, datastore, queue, state-management system, repository split, or framework is introduced only when a concrete later requirement proves the current architecture cannot satisfy it cleanly.
 
 Architectural simplicity is never used as an excuse to omit correctness mechanisms the V1 genuinely requires, including patient serialization, idempotency, immutable history, safety precedence, authorization, audit, and operational readiness.
-

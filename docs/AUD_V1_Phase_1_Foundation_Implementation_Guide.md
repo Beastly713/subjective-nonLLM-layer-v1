@@ -2,17 +2,23 @@
 
 ## Document status
 
+**Status:** **COMPLETE**
+
 **Phase:** 1 of 7
 
 **Phase name:** Foundation
 
-**Target commits:** 3 balanced commits
+**Delivery:** 3 planned foundation commits plus 3 bounded validation-closure commits
 
-**Implementation mode:** Commit packet method
+**Implementation method used:** Commit packet method
 
-**Repository state when this guide was written:** Documentation-only repository containing the three governing V1 specifications
+**Validated implementation baseline:** `7a09757b89f1ed25fbc349bc269c217904d94c6e`
 
-This document defines the implementation boundary and commit plan for Phase 1 only. It is an execution guide, not a new product, clinical, UX, or architecture specification.
+**Validation evidence:** [Phase 1 CI run 3](https://github.com/Beastly713/subjective-nonLLM-layer-v1/actions/runs/31975071028), completed successfully on 2026-08-16 UTC
+
+**Repository state when this guide was written:** Documentation-only repository containing the three governing V1 specifications. This is retained as historical planning context; the repository now contains the completed Phase 1 foundation.
+
+This document defined the implementation boundary and commit plan for Phase 1 only and now records its accepted result. It is an execution guide and completion record, not a new product, clinical, UX, or architecture specification.
 
 Authority remains:
 
@@ -23,6 +29,16 @@ Authority remains:
 5. later packet-specific instructions and implementation, provided they do not conflict with the sources above
 
 If this guide appears to conflict with a governing document, the higher-authority document wins. Do not silently reinterpret a locked decision; record the conflict and correct the packet or this guide.
+
+## Completion record
+
+Phase 1 is implemented and accepted at the validated baseline above. The repository now contains the planned workspace, PostgreSQL/Prisma runtime, shared contracts, safe Fastify request pipeline, same-origin production packaging, accessible design-system reference, focused tests, and CI baseline described by this guide.
+
+The three planned delivery commits were followed by three narrowly scoped closure commits discovered through end-of-phase validation. Those closures removed TypeScript 6 and Fastify deprecations, preserved strict unknown-error handling, removed inert state actions, added Vite's client type shim, and corrected two automated WCAG AA contrast findings. They did not widen Phase 1 scope.
+
+The successful CI run verified frozen dependency installation, formatting, linting, strict typechecking, committed migration deployment against PostgreSQL 17, web component tests, backend integration tests against real PostgreSQL, the production build, Chromium smoke and axe accessibility checks, and the Docker image build.
+
+Phase 1 remains foundation-only. Authentication, authorization, clinical/domain workflows, background jobs, email, and real-patient activation remain deliberately unimplemented.
 
 ---
 
@@ -147,7 +163,7 @@ Implementation must preserve these decisions from the governing documents:
 | Accessibility | WCAG 2.2 AA is built into component acceptance |
 | Product quality | Professional reference quality from the first web foundation |
 
-Exact dependency patch versions are resolved from stable compatible releases when Commit 1 is executed, then pinned in `package.json` and `pnpm-lock.yaml`. Do not repeatedly reconsider the locked technology choices during this phase. If a locked version combination cannot install or build, capture concrete evidence and make the smallest compatible correction rather than substituting an architecture.
+Exact dependency patch versions were resolved from stable compatible releases in the commit that first required each dependency, then pinned in `package.json` and `pnpm-lock.yaml`. Do not repeatedly reconsider the locked technology choices during later phases. If a locked version combination cannot install or build, capture concrete evidence and make the smallest compatible correction rather than substituting an architecture.
 
 ## 3.1 Specification traceability
 
@@ -169,15 +185,18 @@ These references define constraints, not permission to implement the later featu
 
 ---
 
-# 4. Commit plan at a glance
+# 4. Commit plan and completion record
 
-| Commit | Identity | Coherent result |
-|---|---|---|
-| 1 | `chore: bootstrap the V1 workspace and application skeleton` | A strict, runnable pnpm monorepo with web/backend/contracts boundaries and root developer commands |
-| 2 | `feat: establish the PostgreSQL and API runtime foundation` | Prisma/PostgreSQL, initial migration, shared health/error contracts, safe Fastify runtime, and production-shaped packaging |
-| 3 | `feat: establish the accessible product design system and CI baseline` | A polished responsive reference surface, reusable state patterns, focused UI tests, and complete Phase 1 CI validation |
+| Commit | SHA | Identity | Result |
+|---|---|---|---|
+| 1 | `ccdd59f` | `chore: bootstrap the V1 workspace and application skeleton` | Complete — strict pnpm monorepo with web/backend/contracts boundaries and root developer commands |
+| 2 | `bb0b0ea` | `feat: establish the PostgreSQL and API runtime foundation` | Complete — Prisma/PostgreSQL, initial migration, shared health/error contracts, safe Fastify runtime, and production-shaped packaging |
+| 3 | `4259e7d` | `feat: establish the accessible product design system and CI baseline` | Complete — polished responsive reference surface, reusable state patterns, focused UI tests, Playwright, and Phase 1 CI baseline |
+| Closure 1 | `18ca4e3` | `fix: close Phase 1 validation issues` | Complete — TypeScript 6 strictness and inert state-action corrections |
+| Closure 2 | `8241c6b` | `fix: resolve remaining Phase 1 validation blockers` | Complete — Vite client typing, Fastify logging API, and formatting correction |
+| Closure 3 | `7a09757` | `fix: axe detecting two WCAG AA contrast violations` | Complete — final automated contrast corrections; full Phase 1 CI passed |
 
-The commit count is a target and these boundaries are the default. Split only if repository evidence shows a commit has become genuinely unreviewable. Merge only if a locked tool or dependency makes two boundaries inseparable. Any change to the three-commit structure must be justified in the packet before implementation.
+The original three-commit delivery plan was preserved. The additional commits were bounded validation closures made after the primary Commit 3 history had already been pushed; they are part of the accepted Phase 1 record rather than new feature scope.
 
 ---
 
@@ -566,7 +585,7 @@ Avoid creating chart wrappers in Phase 1 unless the reference surface has a real
 
 # 8. Phase-wide acceptance criteria
 
-Phase 1 is complete only when all of the following are true:
+**Completion verdict: COMPLETE.** All criteria below were satisfied by the validated implementation baseline and successful Phase 1 CI run recorded in the document status.
 
 1. All three commit scopes have been implemented and individually reviewed through the packet method.
 2. The workspace is one repository with one web app, one backend app, and one contracts package.
@@ -587,11 +606,13 @@ Phase 1 is complete only when all of the following are true:
 
 Phase 1 is **not** accepted merely because packages install or placeholder apps render. It must prove the architecture, database/runtime path, contract boundary, visual baseline, and repeatable validation workflow together.
 
+That proof is now recorded by the successful end-to-end CI path. Later phases must preserve these criteria but should not reopen Phase 1 unless a regression is found.
+
 ---
 
 # 9. Commit packet operating method
 
-The three definitions above are phase-level packet templates. Before each implementation attempt, create a current packet from the relevant template using the process below.
+The three definitions above are retained as the historical Phase 1 packet templates. Phase 1 implementation is complete, so this operating method is no longer an active instruction to create additional Phase 1 work. It remains useful as provenance for how the accepted foundation was produced.
 
 ## 9.1 Before issuing a packet
 
