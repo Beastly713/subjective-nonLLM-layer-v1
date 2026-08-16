@@ -1,0 +1,22 @@
+{
+  "name": "@aud-subjective/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0 <25"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit --pretty false",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  }
+}
