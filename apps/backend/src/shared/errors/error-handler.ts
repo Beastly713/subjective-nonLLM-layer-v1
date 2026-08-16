@@ -60,9 +60,7 @@ export function registerErrorHandlers(
 
   app.setErrorHandler((error, request, reply) => {
     const isValidationError =
-      typeof error === 'object' &&
-      error !== null &&
-      'validation' in error;
+      typeof error === 'object' && error !== null && 'validation' in error;
 
     if (isValidationError) {
       return sendApiError(

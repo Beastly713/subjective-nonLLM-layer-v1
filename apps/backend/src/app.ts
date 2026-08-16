@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import fastifyStatic from '@fastify/static';
 import { RequestIdSchema } from '@aud-subjective/contracts';
-import Fastify from 'fastify';
+import Fastify, { LogController } from 'fastify';
 
 import type { PrismaClient } from './generated/prisma/client.js';
 import type { AppConfig } from './infrastructure/config/config.js';
@@ -28,7 +28,9 @@ export function buildApp({ config, prisma, webRoot }: BuildAppOptions) {
   const app = Fastify({
     logger: createLoggerOptions(config.logLevel),
     genReqId: generateRequestId,
-    requestIdLogLabel: 'request_id',
+    logController: new LogController({
+      requestIdLogLabel: 'request_id',
+    }),
   });
 
   app.addHook('onRequest', (request, reply, done) => {
