@@ -1,0 +1,72 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model IdempotencyRecord {
+  id                 String   @id @default(uuid()) @db.Uuid
+  actorId            String   @map("actor_id") @db.Uuid
+  action             String   @db.VarChar(128)
+  idempotencyKey     String   @map("idempotency_key") @db.VarChar(255)
+  requestPayloadHash String   @map("request_payload_hash") @db.VarChar(128)
+  responseStatus     Int?     @map("response_status")
+  responseSnapshot   Json?    @map("response_snapshot")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt          DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@unique([actorId, action, idempotencyKey], map: "idempotency_records_actor_action_key_key")
+  @@index([expiresAt], map: "idempotency_records_expires_at_idx")
+  @@map("idempotency_records")
+}
+
+model PatientProcessingLock {
+  patientId String   @id @map("patient_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("patient_processing_locks")
+}
+
+model AuditEvent {
+  eventId                 String   @id @default(uuid()) @map("event_id") @db.Uuid
+  actorId                 String?  @map("actor_id") @db.Uuid
+  actorRole               String?  @map("actor_role") @db.VarChar(64)
+  actorContext            Json?    @map("actor_context")
+  action                  String   @db.VarChar(128)
+  entityType              String   @map("entity_type") @db.VarChar(128)
+  entityId                String?  @map("entity_id") @db.VarChar(255)
+  patientId               String?  @map("patient_id") @db.Uuid
+  occurredAt              DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  reason                  String?  @db.Text
+  ruleSetVersion          String?  @map("rule_set_version") @db.VarChar(128)
+  instrumentVersion       String?  @map("instrument_version") @db.VarChar(64)
+  configurationVersion    String?  @map("configuration_version") @db.VarChar(128)
+  sourceRevisionReference String?  @map("source_revision_reference") @db.VarChar(255)
+  metadata                Json?
+  requestId               String?  @map("request_id") @db.VarChar(128)
+
+  @@index([patientId, occurredAt], map: "audit_events_patient_id_occurred_at_idx")
+  @@index([entityType, entityId, occurredAt], map: "audit_events_entity_occurred_at_idx")
+  @@index([actorId, occurredAt], map: "audit_events_actor_id_occurred_at_idx")
+  @@map("audit_events")
+}
+
+model OperationalIncident {
+  id                  String    @id @default(uuid()) @db.Uuid
+  incidentType        String    @map("incident_type") @db.VarChar(128)
+  code                String    @db.VarChar(128)
+  status              String    @db.VarChar(64)
+  summary             String    @db.Text
+  metadata            Json?
+  requestId           String?   @map("request_id") @db.VarChar(128)
+  provenanceReference String?   @map("provenance_reference") @db.VarChar(255)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  resolvedAt          DateTime? @map("resolved_at") @db.Timestamptz(6)
+
+  @@index([status, createdAt], map: "operational_incidents_status_created_at_idx")
+  @@map("operational_incidents")
+}
