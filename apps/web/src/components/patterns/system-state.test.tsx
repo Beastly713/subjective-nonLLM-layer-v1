@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 
 import { StateBadge } from '@/components/patterns/state-badge';
 import {
+  EmptyState,
+  ErrorState,
   RestrictedState,
   SafetyControlledState,
 } from '@/components/patterns/system-state';
@@ -24,5 +26,16 @@ describe('state presentation', () => {
     expect(
       screen.getByText(/Safety-controlled state — reference treatment/),
     ).toBeVisible();
+  });
+
+  it('does not create actions when none are provided', () => {
+    render(
+      <>
+        <EmptyState />
+        <ErrorState />
+      </>,
+    );
+
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 });

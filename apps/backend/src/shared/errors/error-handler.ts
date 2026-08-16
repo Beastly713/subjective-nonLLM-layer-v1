@@ -59,7 +59,12 @@ export function registerErrorHandlers(
   });
 
   app.setErrorHandler((error, request, reply) => {
-    if (error.validation) {
+    const isValidationError =
+      typeof error === 'object' &&
+      error !== null &&
+      'validation' in error;
+
+    if (isValidationError) {
       return sendApiError(
         reply,
         400,
@@ -72,7 +77,7 @@ export function registerErrorHandlers(
     request.log.error(
       {
         errorCode: 'INTERNAL_SERVER_ERROR',
-        errorName: error.name,
+        errorName: error instanceof Error ? error.name : 'UnknownError',
       },
       'Request failed',
     );

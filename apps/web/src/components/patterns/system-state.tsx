@@ -1,7 +1,6 @@
 import { AlertCircle, Archive, LockKeyhole, ShieldCheck } from 'lucide-react';
 import type { ReactNode } from 'react';
 
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
@@ -11,7 +10,11 @@ type StateFrameProps = {
   description: string;
   tone?: 'neutral' | 'danger' | 'restricted';
   role?: 'status' | 'alert';
-  actionLabel?: string;
+  action?: ReactNode;
+};
+
+type StateActionProps = {
+  action?: ReactNode;
 };
 
 function StateFrame({
@@ -20,7 +23,7 @@ function StateFrame({
   description,
   tone = 'neutral',
   role = 'status',
-  actionLabel,
+  action,
 }: StateFrameProps) {
   return (
     <div
@@ -41,11 +44,7 @@ function StateFrame({
           {description}
         </p>
       </div>
-      {actionLabel ? (
-        <Button size="compact" variant="outline">
-          {actionLabel}
-        </Button>
-      ) : null}
+      {action ? <div>{action}</div> : null}
     </div>
   );
 }
@@ -67,10 +66,10 @@ export function LoadingState() {
   );
 }
 
-export function EmptyState() {
+export function EmptyState({ action }: StateActionProps = {}) {
   return (
     <StateFrame
-      actionLabel="Optional action"
+      action={action}
       description="The space is ready for content when an authoritative source provides it."
       icon={<Archive aria-hidden="true" className="size-5" />}
       title="Nothing to show yet"
@@ -78,10 +77,10 @@ export function EmptyState() {
   );
 }
 
-export function ErrorState() {
+export function ErrorState({ action }: StateActionProps = {}) {
   return (
     <StateFrame
-      actionLabel="Try again"
+      action={action}
       description="The content could not be loaded. No internal details are shown here."
       icon={<AlertCircle aria-hidden="true" className="size-5" />}
       role="alert"
