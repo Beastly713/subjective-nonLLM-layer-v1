@@ -1,5 +1,3 @@
-import { CurrentSessionResponseSchema } from '@aud-subjective/contracts';
-
 import type { PrismaClient } from '../../generated/prisma/client.js';
 
 export const ABSOLUTE_SESSION_LIFETIME_MS = 7 * 24 * 60 * 60 * 1_000;
@@ -27,10 +25,10 @@ export async function applySessionPolicy(
   hadSessionCookie = false,
 ) {
   if (!resolved) {
-    return CurrentSessionResponseSchema.parse({
-      authenticated: false,
+    return {
+      authenticated: false as const,
       reason: hadSessionCookie ? 'expired_or_revoked' : 'missing',
-    });
+    };
   }
 
   const absoluteExpiresAt = new Date(
@@ -39,14 +37,14 @@ export async function applySessionPolicy(
 
   if (now >= absoluteExpiresAt || now >= new Date(resolved.session.expiresAt)) {
     await prisma.session.deleteMany({ where: { id: resolved.session.id } });
-    return CurrentSessionResponseSchema.parse({
-      authenticated: false,
-      reason: 'expired_or_revoked',
-    });
+    return {
+      authenticated: false as const,
+      reason: 'expired_or_revoked' as const,
+    };
   }
 
-  return CurrentSessionResponseSchema.parse({
-    authenticated: true,
+  return {
+    authenticated: true as const,
     session: {
       user: {
         id: resolved.user.id,
@@ -62,5 +60,5 @@ export async function applySessionPolicy(
         now.getTime() - resolved.session.createdAt.getTime() <=
         FRESH_SESSION_WINDOW_MS,
     },
-  });
+  };
 }

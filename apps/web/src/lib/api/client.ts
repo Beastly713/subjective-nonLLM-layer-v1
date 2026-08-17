@@ -17,6 +17,7 @@ export class ApiClientError extends Error {
 type ApiRequestOptions<T> = {
   schema: ZodType<T>;
   signal?: AbortSignal;
+  headers?: Record<string, string>;
 };
 
 function isTransient(error: unknown) {
@@ -28,7 +29,7 @@ function isTransient(error: unknown) {
 
 export async function apiGet<T>(
   path: `/api/v1/${string}`,
-  { schema, signal }: ApiRequestOptions<T>,
+  { schema, signal, headers }: ApiRequestOptions<T>,
 ): Promise<T> {
   let lastError: unknown;
 
@@ -37,7 +38,7 @@ export async function apiGet<T>(
       const response = await fetch(path, {
         method: 'GET',
         credentials: 'same-origin',
-        headers: { accept: 'application/json' },
+        headers: { accept: 'application/json', ...headers },
         ...(signal ? { signal } : {}),
       });
       const body: unknown = await response.json();
@@ -64,12 +65,16 @@ export async function apiMutate<T>(
   path: `/api/v1/${string}`,
   method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   body: unknown,
-  { schema, signal }: ApiRequestOptions<T>,
+  { schema, signal, headers }: ApiRequestOptions<T>,
 ): Promise<T> {
   const response = await fetch(path, {
     method,
     credentials: 'same-origin',
-    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    headers: {
+      accept: 'application/json',
+      'content-type': 'application/json',
+      ...headers,
+    },
     body: JSON.stringify(body),
     ...(signal ? { signal } : {}),
   });

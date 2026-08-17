@@ -1,4 +1,7 @@
-import { AuthCapabilitiesResponseSchema } from '@aud-subjective/contracts';
+import {
+  AuthCapabilitiesResponseSchema,
+  CurrentSessionResponseSchema,
+} from '@aud-subjective/contracts';
 import { fromNodeHeaders } from 'better-auth/node';
 import type { FastifyInstance } from 'fastify';
 
@@ -7,6 +10,7 @@ import type { AppAuth } from '../infrastructure/auth/auth.js';
 import { applySessionPolicy } from '../infrastructure/auth/session-policy.js';
 import type { AppConfig } from '../infrastructure/config/config.js';
 import type { AuthEmailSender } from '../infrastructure/email/auth-email-sender.js';
+import { resolveApplicationAccess } from '../shared/authz/access.js';
 
 export function registerApplicationAuthRoutes(
   app: FastifyInstance,
@@ -29,11 +33,23 @@ export function registerApplicationAuthRoutes(
       headers: fromNodeHeaders(request.headers),
     });
 
-    return applySessionPolicy(
+    const session = await applySessionPolicy(
       prisma,
       resolved,
       new Date(),
       request.headers.cookie?.includes('session_token=') ?? false,
     );
+    if (!session.authenticated || !resolved) {
+      return CurrentSessionResponseSchema.parse(session);
+    }
+    const access = await resolveApplicationAccess(
+      prisma,
+      resolved.user,
+      config,
+    );
+    return CurrentSessionResponseSchema.parse({
+      authenticated: true,
+      session: { ...session.session, access },
+    });
   });
 }

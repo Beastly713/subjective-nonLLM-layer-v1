@@ -43,6 +43,7 @@ export function createAuth(
     emailAndPassword: {
       enabled: true,
       disableSignUp: !options.allowSignUpForFixtureCreation,
+      autoSignIn: !options.allowSignUpForFixtureCreation,
       requireEmailVerification: true,
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: ({ user, url }) => {

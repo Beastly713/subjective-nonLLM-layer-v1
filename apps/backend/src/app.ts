@@ -12,6 +12,8 @@ import { registerAuthHandler } from './infrastructure/auth/auth-handler.js';
 import { createAuthEmailSender } from './infrastructure/email/create-auth-email-sender.js';
 import type { AuthEmailSender } from './infrastructure/email/auth-email-sender.js';
 import { createLoggerOptions } from './infrastructure/logging/logger-options.js';
+import { registerIdentityRoutes } from './modules/identity/routes.js';
+import { registerProfileRoutes } from './modules/profiles/routes.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerApplicationAuthRoutes } from './routes/auth.js';
 import { registerErrorHandlers } from './shared/errors/error-handler.js';
@@ -84,11 +86,22 @@ export function buildApp({
         );
       },
     });
+  const provisioningAuth = createAuth(prisma, config, emailSender, {
+    allowSignUpForFixtureCreation: true,
+    onEmailDeliveryFailure: (emailType) => {
+      app.log.warn(
+        { errorCode: 'AUTH_EMAIL_DELIVERY_FAILED', emailType },
+        'Authentication email delivery failed',
+      );
+    },
+  });
 
   registerAuthHandler(app, auth, config, emailSender);
 
   registerHealthRoutes(app, prisma, config);
   registerApplicationAuthRoutes(app, prisma, auth, config, emailSender);
+  registerIdentityRoutes(app, prisma, auth, provisioningAuth, config);
+  registerProfileRoutes(app, prisma, auth, config);
 
   if (webRoot) {
     void app.register(fastifyStatic, {

@@ -6,6 +6,9 @@ import {
 
 import { ErrorState } from '@/components/patterns/system-state';
 import { FoundationPage } from '@/features/foundation/foundation-page';
+import { AdminUsersPage } from '@/features/admin/users/admin-users-page';
+import { ClinicianPatientsPage } from '@/features/clinician/patients/clinician-patients-page';
+import { PatientProfilePage } from '@/features/patient/profile/patient-profile-page';
 import { LoginPage } from '@/features/auth/login-page';
 import { RecoverAccountPage } from '@/features/auth/recover-account-page';
 import { ResetPasswordPage } from '@/features/auth/reset-password-page';
@@ -60,6 +63,21 @@ export const router = createBrowserRouter([
   {
     path: '/session-expired',
     element: <SessionExpiredPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: '/patient/profile',
+    element: <PatientProfilePage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: '/clinician/patients',
+    element: <ClinicianPatientsPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: '/admin/users',
+    element: <AdminUsersPage />,
     errorElement: <RouteErrorBoundary />,
   },
   ...(import.meta.env.DEV

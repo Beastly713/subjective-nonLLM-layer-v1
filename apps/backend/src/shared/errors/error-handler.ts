@@ -1,6 +1,8 @@
 import { ApiErrorResponseSchema } from '@aud-subjective/contracts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
+import { DomainError } from './domain-error.js';
+
 function sendApiError(
   reply: FastifyReply,
   statusCode: number,
@@ -59,6 +61,16 @@ export function registerErrorHandlers(
   });
 
   app.setErrorHandler((error, request, reply) => {
+    if (error instanceof DomainError) {
+      return sendApiError(
+        reply,
+        error.statusCode,
+        request.id,
+        error.code,
+        error.message,
+      );
+    }
+
     const isValidationError =
       typeof error === 'object' && error !== null && 'validation' in error;
 

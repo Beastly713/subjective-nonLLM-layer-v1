@@ -1,4 +1,5 @@
 import { LoaderCircle } from 'lucide-react';
+import { useState } from 'react';
 
 import { buttonVariants } from '@/components/ui/button';
 import {
@@ -20,7 +21,7 @@ type ConfirmActionDialogProps = {
   intent?: 'normal' | 'destructive';
   pending?: boolean;
   disabled?: boolean;
-  onConfirm?: () => void;
+  onConfirm?: () => void | Promise<void>;
 };
 
 export function ConfirmActionDialog({
@@ -34,8 +35,31 @@ export function ConfirmActionDialog({
   disabled = false,
   onConfirm,
 }: ConfirmActionDialogProps) {
+  const [open, setOpen] = useState(false);
+  const [internalPending, setInternalPending] = useState(false);
+  const [error, setError] = useState<string>();
+  const isPending = pending || internalPending;
+
+  const confirm = async () => {
+    setInternalPending(true);
+    setError(undefined);
+    try {
+      await onConfirm?.();
+      setOpen(false);
+    } catch {
+      setError(
+        'The action could not be completed. Review the current state and try again.',
+      );
+    } finally {
+      setInternalPending(false);
+    }
+  };
+
   return (
-    <Dialog>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => !isPending && setOpen(nextOpen)}
+    >
       <DialogTrigger
         className={buttonVariants({
           variant: intent === 'destructive' ? 'destructive' : 'primary',
@@ -56,21 +80,22 @@ export function ConfirmActionDialog({
         <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
           <DialogClose
             className={buttonVariants({ variant: 'outline' })}
-            disabled={pending}
+            disabled={isPending}
           >
             {cancelLabel}
           </DialogClose>
-          <DialogClose
+          <button
             className={cn(
               buttonVariants({
                 variant: intent === 'destructive' ? 'destructive' : 'primary',
               }),
               'min-w-28',
             )}
-            disabled={pending}
-            onClick={onConfirm}
+            disabled={isPending}
+            onClick={() => void confirm()}
+            type="button"
           >
-            {pending ? (
+            {isPending ? (
               <>
                 <LoaderCircle
                   aria-hidden="true"
@@ -81,8 +106,13 @@ export function ConfirmActionDialog({
             ) : (
               confirmLabel
             )}
-          </DialogClose>
+          </button>
         </div>
+        {error ? (
+          <p className="m-0 text-sm font-medium text-danger" role="alert">
+            {error}
+          </p>
+        ) : null}
       </DialogContent>
     </Dialog>
   );

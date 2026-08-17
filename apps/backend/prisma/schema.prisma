@@ -17,6 +17,7 @@ model IdempotencyRecord {
   responseSnapshot   Json?    @map("response_snapshot")
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   expiresAt          DateTime @map("expires_at") @db.Timestamptz(6)
+  actor              User     @relation(fields: [actorId], references: [id], onDelete: Restrict)
 
   @@unique([actorId, action, idempotencyKey], map: "idempotency_records_actor_action_key_key")
   @@index([expiresAt], map: "idempotency_records_expires_at_idx")
@@ -24,8 +25,9 @@ model IdempotencyRecord {
 }
 
 model PatientProcessingLock {
-  patientId String   @id @map("patient_id") @db.Uuid
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  patientId String         @id @map("patient_id") @db.Uuid
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  profile   PatientProfile @relation(fields: [patientId], references: [patientId], onDelete: Restrict)
 
   @@map("patient_processing_locks")
 }
@@ -72,17 +74,23 @@ model OperationalIncident {
 }
 
 model User {
-  id               String      @id @default(dbgenerated("pg_catalog.gen_random_uuid()")) @db.Uuid
-  name             String
-  email            String      @unique
-  emailVerified    Boolean     @default(false)
-  image            String?
-  createdAt        DateTime    @default(now()) @db.Timestamptz(6)
-  updatedAt        DateTime    @updatedAt @db.Timestamptz(6)
-  twoFactorEnabled Boolean?    @default(false)
-  sessions         Session[]
-  accounts         Account[]
-  twoFactors       TwoFactor[]
+  id                   String                       @id @default(dbgenerated("pg_catalog.gen_random_uuid()")) @db.Uuid
+  name                 String
+  email                String                       @unique
+  emailVerified        Boolean                      @default(false)
+  image                String?
+  createdAt            DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime                     @updatedAt @db.Timestamptz(6)
+  twoFactorEnabled     Boolean?                     @default(false)
+  sessions             Session[]
+  accounts             Account[]
+  twoFactors           TwoFactor[]
+  applicationAccount   ApplicationAccount?
+  roleAssignments      UserRoleAssignment[]
+  patientProfile       PatientProfile?
+  clinicianAssignments ClinicianPatientAssignment[] @relation("ClinicianAssignments")
+  patientAssignments   ClinicianPatientAssignment[] @relation("PatientAssignments")
+  idempotencyRecords   IdempotencyRecord[]
 
   @@map("user")
 }
@@ -113,10 +121,10 @@ model Account {
   idToken               String?
   accessTokenExpiresAt  DateTime? @db.Timestamptz(6)
   refreshTokenExpiresAt DateTime? @db.Timestamptz(6)
-  scope                  String?
-  password               String?
-  createdAt              DateTime @default(now()) @db.Timestamptz(6)
-  updatedAt              DateTime @updatedAt @db.Timestamptz(6)
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt             DateTime  @updatedAt @db.Timestamptz(6)
 
   @@index([userId])
   @@map("account")
@@ -147,4 +155,121 @@ model TwoFactor {
   @@index([secret])
   @@index([userId])
   @@map("twoFactor")
+}
+
+enum ApplicationAccountState {
+  PENDING
+  ACTIVE
+  DISABLED
+}
+
+enum ApplicationWorkspace {
+  PATIENT
+  CLINICIAN
+  ADMIN
+}
+
+enum ApplicationRole {
+  PATIENT
+  CLINICIAN
+  ADMIN
+  OPERATIONS
+}
+
+enum MutualHelpPreference {
+  NONE
+  AA_12_STEP
+  ALTERNATIVE
+  UNSURE
+  PREFER_NOT_TO_SAY
+}
+
+enum SpiritualContentPreference {
+  ALLOW
+  DO_NOT_ALLOW
+  UNSURE
+}
+
+model ApplicationAccount {
+  userId                                  String                  @id @map("user_id") @db.Uuid
+  state                                   ApplicationAccountState @default(PENDING)
+  version                                 Int                     @default(1)
+  createdAt                               DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdByUserId                         String                  @map("created_by_user_id") @db.Uuid
+  disabledAt                              DateTime?               @map("disabled_at") @db.Timestamptz(6)
+  disabledByUserId                        String?                 @map("disabled_by_user_id") @db.Uuid
+  disableReason                           String?                 @map("disable_reason") @db.Text
+  privilegedIdentityVerifiedAt            DateTime?               @map("privileged_identity_verified_at") @db.Timestamptz(6)
+  privilegedIdentityVerifiedByUserId      String?                 @map("privileged_identity_verified_by_user_id") @db.Uuid
+  privilegedIdentityVerificationReference String?                 @map("privileged_identity_verification_reference") @db.VarChar(255)
+  user                                    User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@map("application_accounts")
+}
+
+model UserRoleAssignment {
+  id              String               @id @default(uuid()) @db.Uuid
+  userId          String               @map("user_id") @db.Uuid
+  workspace       ApplicationWorkspace
+  role            ApplicationRole
+  version         Int                  @default(1)
+  grantedAt       DateTime             @default(now()) @map("granted_at") @db.Timestamptz(6)
+  grantedByUserId String               @map("granted_by_user_id") @db.Uuid
+  grantReason     String               @map("grant_reason") @db.Text
+  revokedAt       DateTime?            @map("revoked_at") @db.Timestamptz(6)
+  revokedByUserId String?              @map("revoked_by_user_id") @db.Uuid
+  revokeReason    String?              @map("revoke_reason") @db.Text
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, revokedAt], map: "user_role_assignments_user_active_idx")
+  @@map("user_role_assignments")
+}
+
+model PatientProfile {
+  patientId          String                     @id @map("patient_id") @db.Uuid
+  monitoringTimezone String                     @map("monitoring_timezone") @db.VarChar(255)
+  version            Int                        @default(1)
+  createdAt          DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdByUserId    String                     @map("created_by_user_id") @db.Uuid
+  updatedAt          DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedByUserId    String                     @map("updated_by_user_id") @db.Uuid
+  patient            User                       @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  preferences        ProfilePreferenceVersion[]
+  processingLock     PatientProcessingLock?
+
+  @@map("patient_profiles")
+}
+
+model ProfilePreferenceVersion {
+  id                         String                      @id @default(uuid()) @db.Uuid
+  patientId                  String                      @map("patient_id") @db.Uuid
+  version                    Int
+  mutualHelpPreference       MutualHelpPreference?       @map("mutual_help_preference")
+  spiritualContentPreference SpiritualContentPreference? @map("spiritual_content_preference")
+  createdAt                  DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdByUserId            String                      @map("created_by_user_id") @db.Uuid
+  profile                    PatientProfile              @relation(fields: [patientId], references: [patientId], onDelete: Restrict)
+
+  @@unique([patientId, version], map: "profile_preference_versions_patient_version_key")
+  @@index([patientId, version(sort: Desc)], map: "profile_preference_versions_latest_idx")
+  @@map("profile_preference_versions")
+}
+
+model ClinicianPatientAssignment {
+  id               String    @id @default(uuid()) @db.Uuid
+  clinicianUserId  String    @map("clinician_user_id") @db.Uuid
+  patientId        String    @map("patient_id") @db.Uuid
+  version          Int       @default(1)
+  assignedAt       DateTime  @default(now()) @map("assigned_at") @db.Timestamptz(6)
+  assignedByUserId String    @map("assigned_by_user_id") @db.Uuid
+  assignmentReason String    @map("assignment_reason") @db.Text
+  endedAt          DateTime? @map("ended_at") @db.Timestamptz(6)
+  endedByUserId    String?   @map("ended_by_user_id") @db.Uuid
+  endReason        String?   @map("end_reason") @db.Text
+  clinician        User      @relation("ClinicianAssignments", fields: [clinicianUserId], references: [id], onDelete: Restrict)
+  patient          User      @relation("PatientAssignments", fields: [patientId], references: [id], onDelete: Restrict)
+
+  @@index([clinicianUserId, endedAt], map: "clinician_patient_assignments_clinician_active_idx")
+  @@index([patientId, endedAt], map: "clinician_patient_assignments_patient_active_idx")
+  @@map("clinician_patient_assignments")
 }

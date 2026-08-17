@@ -1,4 +1,4 @@
-import { Navigate } from 'react-router';
+import { Link, Navigate } from 'react-router';
 
 import { ErrorState, LoadingState } from '@/components/patterns/system-state';
 import { Button } from '@/components/ui/button';
@@ -45,6 +45,11 @@ export function RootSessionPage() {
     window.location.assign('/login');
   };
 
+  const { access } = session.data.session;
+  if (access.allowedDestinations.length === 1) {
+    return <Navigate to={access.allowedDestinations[0]!.path} replace />;
+  }
+
   return (
     <main className="mx-auto min-h-screen max-w-2xl px-[var(--page-gutter)] py-16">
       <Card>
@@ -53,18 +58,38 @@ export function RootSessionPage() {
             Authenticated account
           </p>
           <h1 className="mb-0 mt-2 text-2xl font-semibold">
-            Account setup and access pending
+            {access.allowedDestinations.length > 1
+              ? 'Choose a workspace'
+              : access.accountState === 'DISABLED'
+                ? 'Account disabled'
+                : access.accountState === 'PENDING'
+                  ? 'Account activation pending'
+                  : 'Access is restricted'}
           </h1>
         </CardHeader>
         <CardContent>
           <p className="mt-0 text-muted-foreground">
-            Your identity has been verified as {session.data.session.user.email}
-            . Application access will appear after an administrator completes
-            setup.
+            Signed in as {session.data.session.user.email}.
           </p>
-          <p className="text-sm text-muted-foreground">
-            No role or workspace has been inferred for this account.
-          </p>
+          {access.allowedDestinations.length > 1 ? (
+            <div className="mb-6 grid gap-3 sm:grid-cols-2">
+              {access.allowedDestinations.map((destination) => (
+                <Link
+                  className="rounded-lg border bg-surface-interactive p-4 font-semibold text-primary"
+                  key={destination.path}
+                  to={destination.path}
+                >
+                  {destination.label}
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Reason:{' '}
+              {access.restrictionReason?.replaceAll('_', ' ').toLowerCase() ??
+                'No active workspace is available.'}
+            </p>
+          )}
           <Button variant="outline" onClick={() => void signOut()}>
             Sign out
           </Button>

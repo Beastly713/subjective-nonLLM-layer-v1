@@ -21,6 +21,58 @@ export const AuthenticatedSessionSchema = z.object({
   expiresAt: z.iso.datetime(),
   absoluteExpiresAt: z.iso.datetime(),
   fresh: z.boolean(),
+  access: z.object({
+    accountState: z.enum(['UNPROVISIONED', 'PENDING', 'ACTIVE', 'DISABLED']),
+    accountVersion: z.number().int().positive().nullable(),
+    roles: z.array(
+      z.object({
+        assignmentId: z.uuid(),
+        workspace: z.enum(['PATIENT', 'CLINICIAN', 'ADMIN']),
+        role: z.enum(['PATIENT', 'CLINICIAN', 'ADMIN', 'OPERATIONS']),
+      }),
+    ),
+    permissions: z.array(
+      z.enum([
+        'USER_ACCESS_READ',
+        'USER_PROVISION',
+        'USER_STATE_MANAGE',
+        'ROLE_MANAGE',
+        'PATIENT_ASSIGNMENT_MANAGE',
+        'PRIVILEGED_IDENTITY_VERIFY',
+        'PATIENT_PROFILE_READ',
+        'PATIENT_PROFILE_UPDATE',
+      ]),
+    ),
+    scopeKinds: z.array(
+      z.enum(['OWN_PATIENT', 'ASSIGNED_PATIENTS', 'ADMIN_OPERATIONAL']),
+    ),
+    privilegedIdentity: z.object({
+      required: z.boolean(),
+      status: z.enum(['NOT_REQUIRED', 'PENDING', 'VERIFIED']),
+    }),
+    mfaEnabled: z.boolean(),
+    allowedDestinations: z.array(
+      z.object({
+        workspace: z.enum(['PATIENT', 'CLINICIAN', 'ADMIN']),
+        path: z.enum([
+          '/patient/profile',
+          '/clinician/patients',
+          '/admin/users',
+        ]),
+        label: z.string(),
+      }),
+    ),
+    restrictionReason: z
+      .enum([
+        'ACCOUNT_UNPROVISIONED',
+        'ACCOUNT_PENDING',
+        'ACCOUNT_DISABLED',
+        'NO_ACTIVE_ROLE',
+        'IDENTITY_VERIFICATION_REQUIRED',
+        'MFA_REQUIRED',
+      ])
+      .optional(),
+  }),
 });
 
 export const CurrentSessionResponseSchema = z.discriminatedUnion(

@@ -41,6 +41,48 @@ function jsonResponse(body: unknown) {
   });
 }
 
+function authenticatedSession(
+  allowedDestinations: Array<{
+    workspace: 'PATIENT' | 'CLINICIAN' | 'ADMIN';
+    path: '/patient/profile' | '/clinician/patients' | '/admin/users';
+    label: string;
+  }>,
+  restrictionReason?: 'ACCOUNT_PENDING' | 'ACCOUNT_DISABLED',
+) {
+  return {
+    authenticated: true,
+    session: {
+      user: {
+        id: '00000000-0000-4000-8000-000000000001',
+        email: 'actor@example.test',
+        emailVerified: true,
+        name: 'Test Actor',
+        twoFactorEnabled: false,
+      },
+      createdAt: '2026-08-17T00:00:00.000Z',
+      expiresAt: '2026-08-18T00:00:00.000Z',
+      absoluteExpiresAt: '2026-08-24T00:00:00.000Z',
+      fresh: true,
+      access: {
+        accountState:
+          restrictionReason === 'ACCOUNT_DISABLED'
+            ? 'DISABLED'
+            : restrictionReason === 'ACCOUNT_PENDING'
+              ? 'PENDING'
+              : 'ACTIVE',
+        accountVersion: 1,
+        roles: [],
+        permissions: [],
+        scopeKinds: [],
+        privilegedIdentity: { required: false, status: 'NOT_REQUIRED' },
+        mfaEnabled: false,
+        allowedDestinations,
+        ...(restrictionReason ? { restrictionReason } : {}),
+      },
+    },
+  };
+}
+
 beforeEach(() => {
   vi.restoreAllMocks();
   signInEmail.mockReset();
@@ -128,4 +170,72 @@ describe('authentication pages', () => {
       ).toBeVisible(),
     );
   });
+
+  it('uses the backend-provided destination instead of deriving routing from roles', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse(
+        authenticatedSession([
+          {
+            workspace: 'CLINICIAN',
+            path: '/clinician/patients',
+            label: 'Patients',
+          },
+        ]),
+      ),
+    );
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={['/']}>
+          <Routes>
+            <Route path="/" element={<RootSessionPage />} />
+            <Route
+              path="/clinician/patients"
+              element={<h1>Clinician destination</h1>}
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    expect(
+      await screen.findByRole('heading', { name: 'Clinician destination' }),
+    ).toBeVisible();
+  });
+
+  it('shows a chooser when the backend provides multiple workspaces', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      jsonResponse(
+        authenticatedSession([
+          { workspace: 'PATIENT', path: '/patient/profile', label: 'Profile' },
+          { workspace: 'ADMIN', path: '/admin/users', label: 'Users & Access' },
+        ]),
+      ),
+    );
+    render(<RootSessionPage />, { wrapper: Providers });
+    expect(
+      await screen.findByRole('heading', { name: 'Choose a workspace' }),
+    ).toBeVisible();
+    expect(screen.getByRole('link', { name: 'Profile' })).toHaveAttribute(
+      'href',
+      '/patient/profile',
+    );
+    expect(
+      screen.getByRole('link', { name: 'Users & Access' }),
+    ).toHaveAttribute('href', '/admin/users');
+  });
+
+  it.each([
+    ['ACCOUNT_PENDING', 'Account activation pending'],
+    ['ACCOUNT_DISABLED', 'Account disabled'],
+  ] as const)(
+    'renders the backend restriction state %s',
+    async (reason, heading) => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        jsonResponse(authenticatedSession([], reason)),
+      );
+      render(<RootSessionPage />, { wrapper: Providers });
+      expect(
+        await screen.findByRole('heading', { name: heading }),
+      ).toBeVisible();
+    },
+  );
 });

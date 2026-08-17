@@ -1,6 +1,6 @@
 # AUD Subjective Monitoring Platform
 
-This repository is the implementation workspace for the V1 AUD subjective monitoring product. It contains the runtime, accessible product-design foundation, and Phase 2 identity/session foundation. Application roles and clinical workflows are not implemented.
+This repository is the implementation workspace for the V1 AUD subjective monitoring product. It contains the runtime, accessible product-design foundation, and Phase 2 identity, session, application-access, and patient-profile foundation. Scheduling and clinical workflows are not implemented.
 
 ## Prerequisites
 
@@ -45,7 +45,7 @@ pnpm dev
 
 The web development server proxies relative `/api` requests to the backend. Browser code should use relative paths such as `/api/v1/...`.
 
-The root route resolves the authoritative server session. Anonymous visitors are sent to `/login`; authenticated accounts see a neutral setup/access-pending state. In development, the Phase 1 design-system reference remains available at `/dev/foundation`.
+The root route resolves the authoritative server session and backend-provided workspace destinations. Anonymous visitors are sent to `/login`; restricted accounts see their application access state. In development, the Phase 1 design-system reference remains available at `/dev/foundation`.
 
 Authentication uses Better Auth database-backed, HTTP-only cookie sessions. Public signup is disabled. Configure `RESEND_API_KEY` and `EMAIL_FROM` together to enable verification and password recovery; prototype mode reports email as unavailable when they are absent, while `real_patient` mode reports the application not ready. Readiness covers configuration, Prisma, PostgreSQL, auth core, and auth email delivery only.
 
@@ -58,7 +58,14 @@ pnpm db:migrate:deploy
 pnpm db:seed
 ```
 
-Migrations are applied as a release or pre-deploy action, not independently by every application instance at startup. The foundation seed command intentionally creates no records.
+Migrations are applied as a release or pre-deploy action, not independently by every application instance at startup.
+
+`pnpm db:seed` creates repeatable prototype-only identities and refuses to run
+in `real_patient` mode:
+
+- `patient.demo@example.test` / `DemoPatient!2026`
+- `clinician.demo@example.test` / `DemoClinician!2026`
+- `admin.demo@example.test` / `DemoAdmin!2026`
 
 ## Tests
 

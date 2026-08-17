@@ -51,4 +51,35 @@ describe('ConfirmActionDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Confirm example' }));
     expect(onConfirm).toHaveBeenCalledOnce();
   });
+
+  it('stays open while pending and reports a failed async action', async () => {
+    const user = userEvent.setup();
+    let rejectAction: ((error: Error) => void) | undefined;
+    const action = new Promise<void>((_resolve, reject) => {
+      rejectAction = reject;
+    });
+    render(
+      <ConfirmActionDialog
+        confirmLabel="Disable account"
+        description="This is a consequential action."
+        onConfirm={() => action}
+        title="Disable this account?"
+        triggerLabel="Disable"
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Disable' }));
+    await user.click(screen.getByRole('button', { name: 'Disable account' }));
+    expect(screen.getByRole('button', { name: 'Pending' })).toBeDisabled();
+    expect(screen.getByRole('dialog')).toBeVisible();
+
+    rejectAction?.(new Error('fixture failure'));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The action could not be completed.',
+    );
+    expect(screen.getByRole('dialog')).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Disable account' }),
+    ).toBeEnabled();
+  });
 });
