@@ -8,7 +8,9 @@ import { ErrorState } from '@/components/patterns/system-state';
 import { FoundationPage } from '@/features/foundation/foundation-page';
 import { AdminUsersPage } from '@/features/admin/users/admin-users-page';
 import { RegionalRoutingPage } from '@/features/admin/routing/regional-routing-page';
+import { AdminSafetyPage } from '@/features/admin/safety/admin-safety-page';
 import { ClinicianPatientsPage } from '@/features/clinician/patients/clinician-patients-page';
+import { ClinicianSafetyPage } from '@/features/clinician/safety/clinician-safety-page';
 import { PatientProfilePage } from '@/features/patient/profile/patient-profile-page';
 import { PatientOnboardingPage } from '@/features/patient/onboarding/patient-onboarding-page';
 import { LoginPage } from '@/features/auth/login-page';
@@ -79,6 +81,11 @@ export const router = createBrowserRouter([
     errorElement: <RouteErrorBoundary />,
   },
   {
+    path: '/clinician/safety',
+    element: <ClinicianSafetyPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
     path: '/admin/users',
     element: <AdminUsersPage />,
     errorElement: <RouteErrorBoundary />,
@@ -86,6 +93,11 @@ export const router = createBrowserRouter([
   {
     path: '/admin/configuration/regional-routing',
     element: <RegionalRoutingPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: '/admin/safety',
+    element: <AdminSafetyPage />,
     errorElement: <RouteErrorBoundary />,
   },
   ...(import.meta.env.DEV

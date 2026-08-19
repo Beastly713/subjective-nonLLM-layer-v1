@@ -2,6 +2,11 @@ import { RoutingResolverResultSchema } from '@aud-subjective/contracts';
 
 import type { PrismaClient } from '../../generated/prisma/client.js';
 
+type RoutingPrisma = Pick<
+  PrismaClient,
+  'regionalRoutingProfileVersion'
+>;
+
 export const REQUIRED_ROUTING_TARGETS = [
   'EMERGENCY_SERVICE',
   'CRISIS_SERVICE',
@@ -20,7 +25,7 @@ export function normalizeRegion(country: string, region?: string | null) {
 }
 
 export async function resolveRegionalRoute(
-  prisma: PrismaClient,
+  prisma: RoutingPrisma,
   country: string,
   region: string | null | undefined,
   effectiveAt: Date,

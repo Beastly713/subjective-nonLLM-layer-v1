@@ -4,8 +4,8 @@ import { evaluateSafety } from '../../src/modules/safety/domain/evaluate-safety.
 
 const input = (overrides: Record<string, unknown> = {}) => SafetyInputSchema.parse({
   currentSeizure: false, severeConfusionOrDisorientation: false, hallucinations: false, hallucinationDisorientation: false, difficultyRemainingConscious: false, breathingDifficulty: false, repeatedVomitingWithSevereIllness: false, currentSuicideAttempt: false, currentSelfHarmMedicalEmergency: false, immediateSuicidePlanAndIntent: false,
-  previousWithdrawalSeizure: 'NO', previousWithdrawalDelirium: 'NO', priorWithdrawals: '0', prolongedHeavyRegularUse: 'NO', reductionStartedAt: null, reductionPercent: null, cessation: false, currentWithdrawalSymptoms: [], sedativeDependence: 'NO',
-  cssrs: { item1: 'NO', item2: 'NO', item3: 'NO', item4: 'NO', item5: 'NO', suicidalBehaviorPrevious3Months: 'NO' }, pregnancy: 'NO', currentAlcoholUse: false, currentOpioidOrSedativeUse: false, seriousMedicalCondition: false, otherSubstanceUse: false, stableMedicalCondition: false, clinicianDirectedReview: false, ...overrides,
+  previousWithdrawalSeizure: 'NO', previousWithdrawalDelirium: 'NO', priorWithdrawals: '0', similarHeavyRegularUseAtLeast3Months: 'NO', ageOver65: 'NO', reductionStartedAt: null, reductionPercent: null, cessation: false, currentWithdrawalSymptoms: [], sedativeDependence: 'NO',
+  cssrs: { item1: 'NO', item2: 'NO', item3: 'NO', item4: 'NO', item5: 'NO', suicidalBehaviorPrevious3Months: 'NO' }, pregnancy: 'NO', currentAlcoholUse: false, otherSubstanceCategories: ['NONE'], dailyOrNearDailySedativeOrOpioidUse: 'NO', priorSedativeOrOpioidWithdrawalSymptoms: 'NO', seriousMedicalContexts: [], stableMedicalCondition: false, clinicianDirectedReview: false, ...overrides,
 });
 const context = { now: new Date('2026-08-19T12:00:00Z'), timezone: 'UTC', plannedDirection: 'UNSURE' as const };
 
@@ -27,5 +27,11 @@ describe('deterministic safety evaluator', () => {
     const result = evaluateSafety(input(), context);
     expect(result.severity).toBe('S_NONE');
     expect(result.monitoringPromptPolicy).toBe('CONTINUE');
+    expect(result.allowedSubjectiveInterventions).toEqual([]);
+  });
+  it('does not treat patient-reported prolonged heavy use as the canonical baseline rule', () => {
+    const result = evaluateSafety(input({ similarHeavyRegularUseAtLeast3Months: 'YES' }), { ...context, plannedDirection: 'ABSTINENCE' });
+    expect(result.reasonCodes).not.toContain('PROLONGED_HEAVY_REGULAR_USE_WITH_PLANNED_MAJOR_REDUCTION');
+    expect(result.severity).toBe('S_NONE');
   });
 });

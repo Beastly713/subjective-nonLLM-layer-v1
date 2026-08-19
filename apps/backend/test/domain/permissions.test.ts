@@ -13,12 +13,21 @@ describe('code-owned permission table', () => {
         'PATIENT_PROFILE_READ',
         'PATIENT_PROFILE_UPDATE',
         'PATIENT_SCHEDULE_READ',
+        'PATIENT_ONBOARDING_READ',
+        'PATIENT_ONBOARDING_UPDATE',
+        'PATIENT_SAFETY_READ',
       ],
       scope: 'OWN_PATIENT',
     });
     expect(ROLE_ACCESS.CLINICIAN).toEqual({
       workspace: 'CLINICIAN',
-      permissions: ['PATIENT_PROFILE_READ', 'PATIENT_SCHEDULE_READ'],
+      permissions: [
+        'PATIENT_PROFILE_READ',
+        'PATIENT_SCHEDULE_READ',
+        'SAFETY_CASE_READ',
+        'SAFETY_CASE_ACKNOWLEDGE',
+        'SAFETY_CASE_DISPOSITION',
+      ],
       scope: 'ASSIGNED_PATIENTS',
     });
     expect(ROLE_ACCESS.ADMIN.permissions).not.toContain('PATIENT_PROFILE_READ');
@@ -28,6 +37,7 @@ describe('code-owned permission table', () => {
         'ROUTING_CONFIG_EDIT',
         'ROUTING_TEST_RECORD',
         'ROUTING_CONFIG_ACTIVATE',
+        'SAFETY_CASE_READ',
       ]),
     );
     expect(ROLE_ACCESS.OPERATIONS.workspace).toBe('ADMIN');

@@ -36,6 +36,8 @@ export function registerHealthRoutes(
             authorization: 'not_ready',
           regionalRoutingSchema: 'not_ready',
           onboardingSafetySchema: 'not_ready',
+            safetyRoutingContext: config.safetyRoutingCountryCode ? 'configured' : 'unconfigured',
+            safetyInstrumentConfiguration: 'unavailable',
             regionalRoutingConfiguration: 'unknown',
             realPatientOperation: 'not_ready',
             authEmailDelivery: config.authEmailDeliveryAvailable
@@ -107,6 +109,8 @@ export function registerHealthRoutes(
         authorization,
         regionalRoutingSchema,
         onboardingSafetySchema,
+        safetyRoutingContext: config.safetyRoutingCountryCode ? 'configured' : 'unconfigured',
+        safetyInstrumentConfiguration: 'unavailable',
         regionalRoutingConfiguration,
         realPatientOperation: 'not_ready',
         authEmailDelivery: config.authEmailDeliveryAvailable

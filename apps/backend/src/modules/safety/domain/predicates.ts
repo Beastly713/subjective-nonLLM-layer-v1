@@ -1,4 +1,5 @@
 import type { SafetyInput } from '@aud-subjective/contracts';
+import { DateTime } from 'luxon';
 import type { SafetyContext } from './evaluate-safety.js';
 
 export function recentReduction(
@@ -6,16 +7,12 @@ export function recentReduction(
   context: SafetyContext,
 ): boolean {
   if (!input.reductionStartedAt) return false;
-  const date = new Date(input.reductionStartedAt);
-  const fmt = (d: Date) =>
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone: context.timezone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(d);
-  const days =
-    (Date.parse(fmt(context.now)) - Date.parse(fmt(date))) / 86_400_000;
+  const now = DateTime.fromJSDate(context.now, { zone: context.timezone }).startOf('day');
+  const started = DateTime.fromISO(input.reductionStartedAt, { setZone: true })
+    .setZone(context.timezone)
+    .startOf('day');
+  if (!started.isValid || started > now) return false;
+  const days = Math.floor(now.diff(started, 'days').days);
   return days >= 0 && days <= 7 && (input.cessation || (input.reductionPercent ?? 0) >= 50);
 }
 

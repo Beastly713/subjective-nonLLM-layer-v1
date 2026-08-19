@@ -37,6 +37,18 @@ const AppConfigSchema = z
     }, 'must be an absolute HTTP(S) application origin without wildcards'),
     RESEND_API_KEY: z.string().min(1).optional(),
     EMAIL_FROM: z.email().optional(),
+    SAFETY_ROUTING_COUNTRY_CODE: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z]{2}$/)
+      .optional(),
+    SAFETY_ROUTING_REGION_CODE: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9_-]+$/)
+      .min(1)
+      .max(64)
+      .optional(),
   })
   .refine(
     ({ RESEND_API_KEY, EMAIL_FROM }) =>
@@ -54,6 +66,8 @@ const AppConfigSchema = z
     appBaseUrl: environment.APP_BASE_URL,
     resendApiKey: environment.RESEND_API_KEY,
     emailFrom: environment.EMAIL_FROM,
+    safetyRoutingCountryCode: environment.SAFETY_ROUTING_COUNTRY_CODE?.toUpperCase(),
+    safetyRoutingRegionCode: environment.SAFETY_ROUTING_REGION_CODE?.toUpperCase(),
     authEmailDeliveryAvailable: Boolean(
       environment.RESEND_API_KEY && environment.EMAIL_FROM,
     ),

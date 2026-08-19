@@ -4,6 +4,15 @@ export const RecoveryDirectionSchema = z.enum([
   'REDUCTION',
   'UNSURE',
 ]);
+export const OnboardingStepSchema = z.enum([
+  'ACCOUNT',
+  'AUDIT_C',
+  'DRINKING_CONTEXT',
+  'RECOVERY_DIRECTION',
+  'PREFERENCES',
+  'SAFETY',
+  'RESULT',
+]);
 export const LastDrinkStateSchema = z.enum([
   'KNOWN',
   'APPROXIMATE',
@@ -30,8 +39,16 @@ export const OnboardingDraftSchema = z.object({
   recoveryDirection: response(RecoveryDirectionSchema),
   mutualHelpPreference: response(z.enum(['NONE', 'AA_12_STEP', 'ALTERNATIVE', 'UNSURE', 'PREFER_NOT_TO_SAY'])),
   spiritualContentPreference: response(z.enum(['ALLOW', 'DO_NOT_ALLOW', 'UNSURE'])),
+  safetyDraft: z
+    .object({
+      schemaVersion: z.literal('safety_draft_v1'),
+      updatedAt: z.iso.datetime().optional(),
+      responses: z.unknown(),
+    })
+    .optional(),
 });
 export type OnboardingDraft = z.infer<typeof OnboardingDraftSchema>;
+export type OnboardingStep = z.infer<typeof OnboardingStepSchema>;
 export const auditCScore = (a: OnboardingDraft['auditC']) => {
   if (a.frequency.state !== 'ANSWERED' || a.quantity.state !== 'ANSWERED' || a.heavy.state !== 'ANSWERED') return null;
   return a.frequency.value + a.quantity.value + a.heavy.value;
