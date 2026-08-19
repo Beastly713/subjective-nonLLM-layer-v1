@@ -59,6 +59,11 @@ describe('prototype identity seed', () => {
       }),
     ).toBe(1);
     expect(
+      await prisma.monitoringScheduleVersion.count({
+        where: { patientId: patient.id },
+      }),
+    ).toBe(0);
+    expect(
       await prisma.clinicianPatientAssignment.count({
         where: {
           clinicianUserId: clinician.id,

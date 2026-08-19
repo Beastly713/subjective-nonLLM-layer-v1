@@ -20,7 +20,7 @@
     "pretest:web": "pnpm contracts:build",
     "test:web": "pnpm --filter @aud-subjective/web run test",
     "pretest:backend": "pnpm contracts:build && pnpm db:generate",
-    "test:backend": "vitest run apps/backend/test/integration",
+    "test:backend": "vitest run apps/backend/test/domain apps/backend/test/integration",
     "test:e2e": "pnpm build && pnpm test:e2e:run",
     "test:e2e:run": "playwright test",
     "prebuild": "pnpm contracts:build && pnpm db:generate",

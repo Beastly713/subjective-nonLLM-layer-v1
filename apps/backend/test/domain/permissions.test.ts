@@ -9,15 +9,27 @@ describe('code-owned permission table', () => {
   it('keeps workspace, role, permission, and scope distinct', () => {
     expect(ROLE_ACCESS.PATIENT).toEqual({
       workspace: 'PATIENT',
-      permissions: ['PATIENT_PROFILE_READ', 'PATIENT_PROFILE_UPDATE'],
+      permissions: [
+        'PATIENT_PROFILE_READ',
+        'PATIENT_PROFILE_UPDATE',
+        'PATIENT_SCHEDULE_READ',
+      ],
       scope: 'OWN_PATIENT',
     });
     expect(ROLE_ACCESS.CLINICIAN).toEqual({
       workspace: 'CLINICIAN',
-      permissions: ['PATIENT_PROFILE_READ'],
+      permissions: ['PATIENT_PROFILE_READ', 'PATIENT_SCHEDULE_READ'],
       scope: 'ASSIGNED_PATIENTS',
     });
     expect(ROLE_ACCESS.ADMIN.permissions).not.toContain('PATIENT_PROFILE_READ');
+    expect(ROLE_ACCESS.ADMIN.permissions).toEqual(
+      expect.arrayContaining([
+        'ROUTING_CONFIG_READ',
+        'ROUTING_CONFIG_EDIT',
+        'ROUTING_TEST_RECORD',
+        'ROUTING_CONFIG_ACTIVATE',
+      ]),
+    );
     expect(ROLE_ACCESS.OPERATIONS.workspace).toBe('ADMIN');
     expect(ROLE_ACCESS.OPERATIONS.permissions).toEqual(['USER_ACCESS_READ']);
   });

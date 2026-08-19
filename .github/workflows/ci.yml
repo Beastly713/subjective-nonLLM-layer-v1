@@ -1,4 +1,4 @@
-name: Phase 1 CI
+name: Phase 2 Platform Validation
 
 on:
   pull_request:
@@ -70,7 +70,7 @@ jobs:
       - name: Run web component tests
         run: pnpm test:web
 
-      - name: Run backend PostgreSQL integration tests
+      - name: Run backend domain and PostgreSQL integration tests
         run: pnpm test:backend
 
       - name: Build production application

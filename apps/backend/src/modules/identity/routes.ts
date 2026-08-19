@@ -10,6 +10,7 @@ import {
   RevokeRoleRequestSchema,
   VerifyIdentityRequestSchema,
 } from '@aud-subjective/contracts';
+import { createHmac } from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 
@@ -60,6 +61,15 @@ function auditData(
     requestId: request.id,
     ...(reason ? { reason } : {}),
   };
+}
+
+async function serializeIdentityMutation(
+  tx: Prisma.TransactionClient,
+  identity: string,
+) {
+  await tx.$queryRaw`
+    SELECT pg_advisory_xact_lock(hashtextextended(${`identity:${identity}`}, 0))::text
+  `;
 }
 
 async function loadAdminUser(prisma: PrismaClient, userId: string) {
@@ -160,6 +170,9 @@ export function registerIdentityRoutes(
     const canonicalRequest = {
       name: body.name,
       email: body.email.toLowerCase(),
+      passwordFingerprint: createHmac('sha256', config.betterAuthSecret)
+        .update(body.initialPassword)
+        .digest('hex'),
       workspace: body.workspace,
       role: body.role,
       monitoringTimezone: monitoringTimezone ?? null,
@@ -174,6 +187,10 @@ export function registerIdentityRoutes(
         key,
         canonicalRequest,
         async (tx) => {
+          await serializeIdentityMutation(
+            tx,
+            `provision-email:${body.email.toLowerCase()}`,
+          );
           if (await tx.user.findUnique({ where: { email: body.email } }))
             throw new DomainError(
               409,
@@ -420,6 +437,10 @@ export function registerIdentityRoutes(
       key,
       canonical,
       async (tx) => {
+        await serializeIdentityMutation(
+          tx,
+          `role:${userId}:${body.workspace}:${body.role}`,
+        );
         if (!(await tx.applicationAccount.findUnique({ where: { userId } })))
           throw new DomainError(
             404,
@@ -573,6 +594,10 @@ export function registerIdentityRoutes(
       key,
       body,
       async (tx) => {
+        await serializeIdentityMutation(
+          tx,
+          `assignment:${body.clinicianUserId}:${body.patientId}`,
+        );
         const [clinicianRole, patientProfile, duplicate] = await Promise.all([
           tx.userRoleAssignment.findFirst({
             where: {
@@ -664,21 +689,12 @@ export function registerIdentityRoutes(
         key,
         canonical,
         async (tx) => {
-          const existing = await tx.clinicianPatientAssignment.findUnique({
-            where: { id: assignmentId },
-          });
-          if (
-            !existing ||
-            existing.endedAt ||
-            existing.version !== body.expectedVersion
-          )
-            throw new DomainError(
-              409,
-              'VERSION_CONFLICT',
-              'The assignment changed before this action.',
-            );
-          const assignment = await tx.clinicianPatientAssignment.update({
-            where: { id: assignmentId },
+          const updated = await tx.clinicianPatientAssignment.updateMany({
+            where: {
+              id: assignmentId,
+              version: body.expectedVersion,
+              endedAt: null,
+            },
             data: {
               endedAt: new Date(),
               endedByUserId: actor.userId,
@@ -686,6 +702,16 @@ export function registerIdentityRoutes(
               version: { increment: 1 },
             },
           });
+          if (updated.count !== 1)
+            throw new DomainError(
+              409,
+              'VERSION_CONFLICT',
+              'The assignment changed before this action.',
+            );
+          const assignment =
+            await tx.clinicianPatientAssignment.findUniqueOrThrow({
+              where: { id: assignmentId },
+            });
           const result = ActionResultSchema.parse({
             id: assignment.id,
             version: assignment.version,

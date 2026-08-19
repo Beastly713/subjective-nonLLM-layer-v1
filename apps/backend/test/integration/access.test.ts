@@ -47,12 +47,14 @@ const emails = {
   concurrentProvisioned: `access-concurrent-created-${marker}@example.test`,
   concurrentConflictA: `access-concurrent-a-${marker}@example.test`,
   concurrentConflictB: `access-concurrent-b-${marker}@example.test`,
+  differentKeyProvisioned: `access-different-key-${marker}@example.test`,
 };
 const ids: Record<keyof typeof emails, string> = {} as Record<
   keyof typeof emails,
   string
 >;
 let adminCookie = '';
+let clinicianScopeCookie = '';
 
 async function createIdentity(key: keyof typeof emails, name: string) {
   const result = await fixtureAuth.api.signUpEmail({
@@ -234,6 +236,36 @@ afterAll(async () => {
 });
 
 describe('application authorization and patient scope', () => {
+  it('hides disabled assigned patients behind the same clinician detail 404', async () => {
+    const assignment = await prisma.clinicianPatientAssignment.create({
+      data: {
+        clinicianUserId: ids.clinician,
+        patientId: ids.disabled,
+        assignedByUserId: ids.admin,
+        assignmentReason: 'Disabled detail scope regression',
+      },
+    });
+    clinicianScopeCookie = await signIn('clinician');
+    const disabled = await app.inject({
+      method: 'GET',
+      url: `/api/v1/clinician/patients/${ids.disabled}`,
+      headers: { cookie: clinicianScopeCookie },
+    });
+    const nonexistent = await app.inject({
+      method: 'GET',
+      url: `/api/v1/clinician/patients/${randomUUID()}`,
+      headers: { cookie: clinicianScopeCookie },
+    });
+    expect(disabled.statusCode).toBe(404);
+    expect(disabled.json().error).toMatchObject({
+      code: nonexistent.json().error.code,
+      message: nonexistent.json().error.message,
+    });
+    await prisma.clinicianPatientAssignment.delete({
+      where: { id: assignment.id },
+    });
+  });
+
   it('gives an authenticated but unprovisioned identity zero application access', async () => {
     const cookie = await signIn('unprovisioned');
     const session = await app.inject({
@@ -568,6 +600,14 @@ describe('application authorization and patient scope', () => {
     });
     expect(replay.statusCode).toBe(201);
     expect(replay.body).toBe(first.body);
+    const changedPassword = await app.inject({
+      method: 'POST',
+      url: '/api/v1/admin/users',
+      headers: { cookie, 'idempotency-key': key },
+      payload: { ...payload, initialPassword: 'ChangedPassword!2026' },
+    });
+    expect(changedPassword.statusCode).toBe(409);
+    expect(changedPassword.json().error.code).toBe('IDEMPOTENCY_KEY_REUSE');
     const conflict = await app.inject({
       method: 'POST',
       url: '/api/v1/admin/users',
@@ -672,9 +712,124 @@ describe('application authorization and patient scope', () => {
     ).toBe(1);
   });
 
+  it('normalizes different-key uniqueness races and atomically ends assignments', async () => {
+    const provisionPayload = {
+      name: 'Different Key Provisioning Fixture',
+      email: emails.differentKeyProvisioned,
+      initialPassword: 'DifferentKey!2026',
+      workspace: 'CLINICIAN',
+      role: 'CLINICIAN',
+      reason: 'Different-key race fixture',
+    };
+    const provisionResponses = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: '/api/v1/admin/users',
+        headers: { cookie: adminCookie, 'idempotency-key': randomUUID() },
+        payload: provisionPayload,
+      }),
+      app.inject({
+        method: 'POST',
+        url: '/api/v1/admin/users',
+        headers: { cookie: adminCookie, 'idempotency-key': randomUUID() },
+        payload: provisionPayload,
+      }),
+    ]);
+    expect(
+      provisionResponses.map(({ statusCode }) => statusCode).sort(),
+    ).toEqual([201, 409]);
+    expect(
+      provisionResponses.find(({ statusCode }) => statusCode === 409)?.json()
+        .error.code,
+    ).toBe('ACCOUNT_ALREADY_PROVISIONED');
+
+    const targetId = ids.concurrentProvisioned;
+    const rolePayload = {
+      workspace: 'ADMIN',
+      role: 'OPERATIONS',
+      reason: 'Different-key role race',
+    };
+    const roleResponses = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: `/api/v1/admin/users/${targetId}/roles`,
+        headers: { cookie: adminCookie, 'idempotency-key': randomUUID() },
+        payload: rolePayload,
+      }),
+      app.inject({
+        method: 'POST',
+        url: `/api/v1/admin/users/${targetId}/roles`,
+        headers: { cookie: adminCookie, 'idempotency-key': randomUUID() },
+        payload: rolePayload,
+      }),
+    ]);
+    expect(roleResponses.map(({ statusCode }) => statusCode).sort()).toEqual([
+      201, 409,
+    ]);
+    expect(
+      roleResponses.find(({ statusCode }) => statusCode === 409)?.json().error
+        .code,
+    ).toBe('VERSION_CONFLICT');
+
+    const assignmentPayload = {
+      clinicianUserId: targetId,
+      patientId: ids.patient,
+      reason: 'Different-key assignment race',
+    };
+    const assignmentResponses = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: '/api/v1/admin/patient-assignments',
+        headers: { cookie: adminCookie, 'idempotency-key': randomUUID() },
+        payload: assignmentPayload,
+      }),
+      app.inject({
+        method: 'POST',
+        url: '/api/v1/admin/patient-assignments',
+        headers: { cookie: adminCookie, 'idempotency-key': randomUUID() },
+        payload: assignmentPayload,
+      }),
+    ]);
+    expect(
+      assignmentResponses.map(({ statusCode }) => statusCode).sort(),
+    ).toEqual([201, 409]);
+    expect(
+      assignmentResponses.find(({ statusCode }) => statusCode === 409)?.json()
+        .error.code,
+    ).toBe('VERSION_CONFLICT');
+    const assignment = assignmentResponses
+      .find(({ statusCode }) => statusCode === 201)!
+      .json();
+    const endPayload = {
+      expectedVersion: assignment.version,
+      reason: 'Atomic end race',
+    };
+    const endResponses = await Promise.all([
+      app.inject({
+        method: 'POST',
+        url: `/api/v1/admin/patient-assignments/${assignment.id}/end`,
+        headers: { cookie: adminCookie, 'idempotency-key': randomUUID() },
+        payload: endPayload,
+      }),
+      app.inject({
+        method: 'POST',
+        url: `/api/v1/admin/patient-assignments/${assignment.id}/end`,
+        headers: { cookie: adminCookie, 'idempotency-key': randomUUID() },
+        payload: endPayload,
+      }),
+    ]);
+    expect(endResponses.map(({ statusCode }) => statusCode).sort()).toEqual([
+      200, 409,
+    ]);
+    expect(
+      endResponses.find(({ statusCode }) => statusCode === 409)?.json().error
+        .code,
+    ).toBe('VERSION_CONFLICT');
+  });
+
   it('audits role and assignment changes and revokes affected sessions', async () => {
     const patientCookie = await signIn('patient');
-    const clinicianCookie = await signIn('clinician');
+    const clinicianCookie = clinicianScopeCookie;
     const role = await prisma.userRoleAssignment.findFirstOrThrow({
       where: { userId: ids.patient, role: 'PATIENT', revokedAt: null },
     });

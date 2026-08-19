@@ -19,6 +19,29 @@ const forbiddenNavigation = [
 ];
 
 describe('workspace shells', () => {
+  it('shows routing only when the backend projects its read permission', () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <AdminShell permissions={[]}>
+          <span>Content</span>
+        </AdminShell>
+      </MemoryRouter>,
+    );
+    expect(
+      screen.queryByRole('link', { name: 'Regional Routing' }),
+    ).not.toBeInTheDocument();
+    rerender(
+      <MemoryRouter>
+        <AdminShell permissions={['ROUTING_CONFIG_READ']}>
+          <span>Content</span>
+        </AdminShell>
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole('link', { name: 'Regional Routing' }),
+    ).toBeVisible();
+  });
+
   it.each([
     [PatientShell, 'Patient space', 'Profile'],
     [ClinicianShell, 'Clinician workspace', 'Patients'],

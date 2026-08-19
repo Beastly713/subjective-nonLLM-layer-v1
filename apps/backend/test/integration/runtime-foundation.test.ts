@@ -67,9 +67,40 @@ describe('runtime foundation', () => {
       status: 'live',
     });
     expect(readyResponse.statusCode).toBe(200);
-    expect(ReadinessResponseSchema.parse(readyResponse.json()).status).toBe(
-      'ready',
+    const readiness = ReadinessResponseSchema.parse(readyResponse.json());
+    expect(readiness.status).toBe('ready');
+    expect(readiness.checks).toMatchObject({
+      authorization: 'ready',
+      regionalRoutingSchema: 'ready',
+      realPatientOperation: 'not_ready',
+    });
+    expect(['active_present', 'none_active']).toContain(
+      readiness.checks.regionalRoutingConfiguration,
     );
+  });
+
+  it('is explicitly not ready for real-patient operation', async () => {
+    const realPatientApp = buildApp({
+      config: parseConfig({
+        ...process.env,
+        NODE_ENV: 'test',
+        DATABASE_URL: testDatabaseUrl,
+        LOG_LEVEL: 'silent',
+        APP_MODE: 'real_patient',
+        BETTER_AUTH_SECRET:
+          'test-only-better-auth-secret-at-least-32-characters',
+        APP_BASE_URL: 'http://127.0.0.1:3000',
+      }),
+      prisma,
+    });
+    await realPatientApp.ready();
+    const response = await realPatientApp.inject({
+      method: 'GET',
+      url: '/health/ready',
+    });
+    expect(response.statusCode).toBe(503);
+    expect(response.json().checks.realPatientOperation).toBe('not_ready');
+    await realPatientApp.close();
   });
 
   it('propagates an acceptable request ID', async () => {

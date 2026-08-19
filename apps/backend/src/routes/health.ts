@@ -33,6 +33,10 @@ export function registerHealthRoutes(
             prisma: 'ready',
             postgres: 'not_ready',
             authentication: 'not_ready',
+            authorization: 'not_ready',
+            regionalRoutingSchema: 'not_ready',
+            regionalRoutingConfiguration: 'unknown',
+            realPatientOperation: 'not_ready',
             authEmailDelivery: config.authEmailDeliveryAvailable
               ? 'available'
               : 'unavailable',
@@ -56,13 +60,51 @@ export function registerHealthRoutes(
       config.appMode === 'real_patient' && !config.authEmailDeliveryAvailable;
     const authentication =
       authSchemaReady && !emailRequiredButUnavailable ? 'ready' : 'not_ready';
+    let authorization: 'ready' | 'not_ready' = 'ready';
+    try {
+      await prisma.applicationAccount.findFirst({ select: { userId: true } });
+    } catch {
+      authorization = 'not_ready';
+      request.log.warn(
+        { errorCode: 'AUTHORIZATION_SCHEMA_UNAVAILABLE' },
+        'Authorization readiness check failed',
+      );
+    }
+    let regionalRoutingSchema: 'ready' | 'not_ready' = 'ready';
+    let regionalRoutingConfiguration:
+      'active_present' | 'none_active' | 'unknown' = 'none_active';
+    try {
+      const active = await prisma.regionalRoutingProfileVersion.findFirst({
+        where: { lifecycle: 'ACTIVE' },
+        select: { id: true },
+      });
+      regionalRoutingConfiguration = active ? 'active_present' : 'none_active';
+    } catch {
+      regionalRoutingSchema = 'not_ready';
+      regionalRoutingConfiguration = 'unknown';
+      request.log.warn(
+        { errorCode: 'REGIONAL_ROUTING_SCHEMA_UNAVAILABLE' },
+        'Regional routing readiness check failed',
+      );
+    }
+    const platformFoundationReady =
+      authentication === 'ready' &&
+      authorization === 'ready' &&
+      regionalRoutingSchema === 'ready';
     const response = ReadinessResponseSchema.parse({
-      status: authentication,
+      status:
+        config.appMode === 'real_patient' || !platformFoundationReady
+          ? 'not_ready'
+          : 'ready',
       checks: {
         configuration: 'ready',
         prisma: 'ready',
         postgres: 'ready',
         authentication,
+        authorization,
+        regionalRoutingSchema,
+        regionalRoutingConfiguration,
+        realPatientOperation: 'not_ready',
         authEmailDelivery: config.authEmailDeliveryAvailable
           ? 'available'
           : 'unavailable',

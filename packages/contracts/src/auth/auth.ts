@@ -41,6 +41,11 @@ export const AuthenticatedSessionSchema = z.object({
         'PRIVILEGED_IDENTITY_VERIFY',
         'PATIENT_PROFILE_READ',
         'PATIENT_PROFILE_UPDATE',
+        'PATIENT_SCHEDULE_READ',
+        'ROUTING_CONFIG_READ',
+        'ROUTING_CONFIG_EDIT',
+        'ROUTING_TEST_RECORD',
+        'ROUTING_CONFIG_ACTIVATE',
       ]),
     ),
     scopeKinds: z.array(

@@ -226,18 +226,80 @@ model UserRoleAssignment {
 }
 
 model PatientProfile {
-  patientId          String                     @id @map("patient_id") @db.Uuid
-  monitoringTimezone String                     @map("monitoring_timezone") @db.VarChar(255)
-  version            Int                        @default(1)
-  createdAt          DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
-  createdByUserId    String                     @map("created_by_user_id") @db.Uuid
-  updatedAt          DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
-  updatedByUserId    String                     @map("updated_by_user_id") @db.Uuid
-  patient            User                       @relation(fields: [patientId], references: [id], onDelete: Restrict)
+  patientId          String                      @id @map("patient_id") @db.Uuid
+  monitoringTimezone String                      @map("monitoring_timezone") @db.VarChar(255)
+  version            Int                         @default(1)
+  createdAt          DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdByUserId    String                      @map("created_by_user_id") @db.Uuid
+  updatedAt          DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedByUserId    String                      @map("updated_by_user_id") @db.Uuid
+  patient            User                        @relation(fields: [patientId], references: [id], onDelete: Restrict)
   preferences        ProfilePreferenceVersion[]
   processingLock     PatientProcessingLock?
+  scheduleVersions   MonitoringScheduleVersion[]
+  scheduledPeriods   ScheduledPeriod[]
 
   @@map("patient_profiles")
+}
+
+model MonitoringScheduleVersion {
+  id                 String            @id @default(uuid()) @db.Uuid
+  patientId          String            @map("patient_id") @db.Uuid
+  version            Int
+  monitoringTimezone String            @map("monitoring_timezone") @db.VarChar(255)
+  effectiveBoundary  DateTime          @map("effective_boundary") @db.Timestamptz(6)
+  lifecycle          ScheduleLifecycle @default(ACTIVE)
+  supersededAt       DateTime?         @map("superseded_at") @db.Timestamptz(6)
+  createdAt          DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdByUserId    String            @map("created_by_user_id") @db.Uuid
+  provenance         String?           @db.Text
+  profile            PatientProfile    @relation(fields: [patientId], references: [patientId], onDelete: Restrict)
+  periods            ScheduledPeriod[]
+
+  @@unique([patientId, version], map: "monitoring_schedule_versions_patient_version_key")
+  @@index([patientId, effectiveBoundary, version], map: "monitoring_schedule_versions_effective_idx")
+  @@map("monitoring_schedule_versions")
+}
+
+enum ScheduleLifecycle {
+  ACTIVE
+  PENDING
+  SUPERSEDED
+}
+
+model ScheduledPeriod {
+  id                 String                    @id @default(uuid()) @map("period_id") @db.Uuid
+  patientId          String                    @map("patient_id") @db.Uuid
+  scheduleVersionId  String                    @map("schedule_version_id") @db.Uuid
+  monitoringTimezone String                    @map("monitoring_timezone") @db.VarChar(255)
+  periodStartAt      DateTime                  @map("period_start_at") @db.Timestamptz(6)
+  periodEndAt        DateTime                  @map("period_end_at") @db.Timestamptz(6)
+  openAt             DateTime                  @map("open_at") @db.Timestamptz(6)
+  originalDueAt      DateTime                  @map("original_due_at") @db.Timestamptz(6)
+  effectiveDueAt     DateTime                  @map("effective_due_at") @db.Timestamptz(6)
+  version            Int                       @default(1)
+  createdAt          DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  profile            PatientProfile            @relation(fields: [patientId], references: [patientId], onDelete: Restrict)
+  scheduleVersion    MonitoringScheduleVersion @relation(fields: [scheduleVersionId], references: [id], onDelete: Restrict)
+  rescheduleAudits   PeriodRescheduleAudit[]
+
+  @@unique([patientId, periodStartAt], map: "scheduled_periods_patient_start_key")
+  @@index([patientId, periodEndAt], map: "scheduled_periods_patient_end_idx")
+  @@map("scheduled_periods")
+}
+
+model PeriodRescheduleAudit {
+  id                   String          @id @default(uuid()) @db.Uuid
+  periodId             String          @map("period_id") @db.Uuid
+  previousEffectiveDue DateTime        @map("previous_effective_due") @db.Timestamptz(6)
+  newEffectiveDue      DateTime        @map("new_effective_due") @db.Timestamptz(6)
+  actorUserId          String          @map("actor_user_id") @db.Uuid
+  reason               String          @db.Text
+  occurredAt           DateTime        @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  period               ScheduledPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict)
+
+  @@index([periodId, occurredAt], map: "period_reschedule_audits_period_idx")
+  @@map("period_reschedule_audits")
 }
 
 model ProfilePreferenceVersion {
@@ -272,4 +334,82 @@ model ClinicianPatientAssignment {
   @@index([clinicianUserId, endedAt], map: "clinician_patient_assignments_clinician_active_idx")
   @@index([patientId, endedAt], map: "clinician_patient_assignments_patient_active_idx")
   @@map("clinician_patient_assignments")
+}
+
+enum RoutingLifecycle {
+  DRAFT
+  ACTIVE
+  SUPERSEDED
+}
+
+enum RoutingTargetKind {
+  EMERGENCY_SERVICE
+  CRISIS_SERVICE
+  URGENT_MEDICAL_SERVICE
+  ON_CALL_CLINICIAN_QUEUE
+}
+
+enum RoutingTargetRepresentation {
+  TELEPHONE
+  DEEP_LINK
+  INTERNAL_QUEUE
+  EXTERNAL_SERVICE
+}
+
+enum RoutingTestResult {
+  PASS
+  FAIL
+}
+
+model RegionalRoutingProfileVersion {
+  id                    String                        @id @default(uuid()) @db.Uuid
+  countryCode           String                        @map("country_code") @db.VarChar(2)
+  regionCode            String?                       @map("region_code") @db.VarChar(64)
+  regionKey             String                        @map("region_key") @db.VarChar(128)
+  logicalVersion        Int                           @map("logical_version")
+  rowVersion            Int                           @default(1) @map("row_version")
+  configurationRevision Int                           @default(1) @map("configuration_revision")
+  lifecycle             RoutingLifecycle              @default(DRAFT)
+  effectiveAt           DateTime?                     @map("effective_at") @db.Timestamptz(6)
+  supersededAt          DateTime?                     @map("superseded_at") @db.Timestamptz(6)
+  createdAt             DateTime                      @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdByUserId       String                        @map("created_by_user_id") @db.Uuid
+  provenance            String?                       @db.Text
+  targets               RegionalRoutingTarget[]
+  testEvidence          RegionalRoutingTestEvidence[]
+
+  @@unique([regionKey, logicalVersion], map: "regional_routing_profiles_region_version_key")
+  @@index([regionKey, lifecycle, effectiveAt], map: "regional_routing_profiles_lookup_idx")
+  @@map("regional_routing_profile_versions")
+}
+
+model RegionalRoutingTarget {
+  id             String                        @id @default(uuid()) @db.Uuid
+  profileId      String                        @map("profile_id") @db.Uuid
+  kind           RoutingTargetKind
+  representation RoutingTargetRepresentation
+  targetValue    String                        @map("target_value") @db.Text
+  label          String                        @db.VarChar(255)
+  profile        RegionalRoutingProfileVersion @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  testEvidence   RegionalRoutingTestEvidence[]
+
+  @@unique([profileId, kind], map: "regional_routing_targets_profile_kind_key")
+  @@map("regional_routing_targets")
+}
+
+model RegionalRoutingTestEvidence {
+  id                    String                        @id @default(uuid()) @db.Uuid
+  profileId             String                        @map("profile_id") @db.Uuid
+  targetId              String                        @map("target_id") @db.Uuid
+  targetKind            RoutingTargetKind             @map("target_kind")
+  configurationRevision Int                           @map("configuration_revision")
+  result                RoutingTestResult
+  provenance            String                        @db.Text
+  testedAt              DateTime                      @map("tested_at") @db.Timestamptz(6)
+  testedByUserId        String                        @map("tested_by_user_id") @db.Uuid
+  profile               RegionalRoutingProfileVersion @relation(fields: [profileId], references: [id], onDelete: Restrict)
+  target                RegionalRoutingTarget         @relation(fields: [targetId], references: [id], onDelete: Restrict)
+
+  @@index([profileId, configurationRevision, targetKind, testedAt], map: "regional_routing_evidence_current_idx")
+  @@map("regional_routing_test_evidence")
 }

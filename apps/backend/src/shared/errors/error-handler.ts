@@ -1,4 +1,5 @@
 import { ApiErrorResponseSchema } from '@aud-subjective/contracts';
+import { ZodError } from 'zod';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import { DomainError } from './domain-error.js';
@@ -72,7 +73,8 @@ export function registerErrorHandlers(
     }
 
     const isValidationError =
-      typeof error === 'object' && error !== null && 'validation' in error;
+      error instanceof ZodError ||
+      (typeof error === 'object' && error !== null && 'validation' in error);
 
     if (isValidationError) {
       return sendApiError(

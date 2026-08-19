@@ -7,6 +7,11 @@ export const PERMISSIONS = [
   'PRIVILEGED_IDENTITY_VERIFY',
   'PATIENT_PROFILE_READ',
   'PATIENT_PROFILE_UPDATE',
+  'PATIENT_SCHEDULE_READ',
+  'ROUTING_CONFIG_READ',
+  'ROUTING_CONFIG_EDIT',
+  'ROUTING_TEST_RECORD',
+  'ROUTING_CONFIG_ACTIVATE',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -26,12 +31,16 @@ export const ROLE_ACCESS: Record<
 > = {
   PATIENT: {
     workspace: 'PATIENT',
-    permissions: ['PATIENT_PROFILE_READ', 'PATIENT_PROFILE_UPDATE'],
+    permissions: [
+      'PATIENT_PROFILE_READ',
+      'PATIENT_PROFILE_UPDATE',
+      'PATIENT_SCHEDULE_READ',
+    ],
     scope: 'OWN_PATIENT',
   },
   CLINICIAN: {
     workspace: 'CLINICIAN',
-    permissions: ['PATIENT_PROFILE_READ'],
+    permissions: ['PATIENT_PROFILE_READ', 'PATIENT_SCHEDULE_READ'],
     scope: 'ASSIGNED_PATIENTS',
   },
   ADMIN: {
@@ -43,6 +52,10 @@ export const ROLE_ACCESS: Record<
       'ROLE_MANAGE',
       'PATIENT_ASSIGNMENT_MANAGE',
       'PRIVILEGED_IDENTITY_VERIFY',
+      'ROUTING_CONFIG_READ',
+      'ROUTING_CONFIG_EDIT',
+      'ROUTING_TEST_RECORD',
+      'ROUTING_CONFIG_ACTIVATE',
     ],
     scope: 'ADMIN_OPERATIONAL',
   },

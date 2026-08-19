@@ -7,9 +7,11 @@ import { useCurrentSession } from '@/features/auth/use-auth-data';
 
 export function WorkspaceBoundary({
   destination,
+  workspace,
   children,
 }: {
-  destination: string;
+  destination?: string;
+  workspace?: 'PATIENT' | 'CLINICIAN' | 'ADMIN';
   children: ReactNode;
 }) {
   const session = useCurrentSession();
@@ -30,11 +32,12 @@ export function WorkspaceBoundary({
       </main>
     );
   if (!session.data?.authenticated) return <Navigate to="/login" replace />;
-  if (
-    !session.data.session.access.allowedDestinations.some(
-      ({ path }) => path === destination,
-    )
-  )
-    return <Navigate to="/" replace />;
+  const entitled = session.data.session.access.allowedDestinations.some(
+    (allowed) =>
+      workspace
+        ? allowed.workspace === workspace
+        : allowed.path === destination,
+  );
+  if (!entitled) return <Navigate to="/" replace />;
   return children;
 }

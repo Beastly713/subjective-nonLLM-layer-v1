@@ -610,7 +610,8 @@ Complete the Phase 2 core platform by implementing the authoritative time/schedu
    - original due at 24 hours after open;
    - no early final submission;
    - enrollment mid-period starts at the next Monday;
-   - DST-safe local-calendar behavior.
+   - DST-safe local-calendar behavior;
+   - when a monitoring timezone changes, materialized periods remain historical facts. The next period is the first Monday 00:00 in the new timezone that is not earlier than the end of the latest materialized period. Offset changes can therefore produce a one-time transition gap; Phase 2 deliberately does not create overlapping, shortened, stretched, or non-Monday bridge periods.
 4. Persist `monitoring_schedule_versions`, `scheduled_periods`, and `period_reschedule_audits` with canonical UUID identity, UTC instants, stored IANA timezone, schedule version, original/effective due times, and required provenance.
 5. Enforce one logical scheduled period per patient/schedule interval and immutable period identity/boundaries after creation. Do not rely on frontend date generation.
 6. Implement service boundaries for:

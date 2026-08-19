@@ -11,9 +11,11 @@ import { z } from 'zod';
 import type { Prisma, PrismaClient } from '../../generated/prisma/client.js';
 import type { AppAuth } from '../../infrastructure/auth/auth.js';
 import type { AppConfig } from '../../infrastructure/config/config.js';
+import type { Clock } from '../../shared/clock/clock.js';
 import { requirePermission } from '../../shared/authz/authorize.js';
 import { normalizeMonitoringTimezone } from '../../shared/authz/timezone.js';
 import { DomainError } from '../../shared/errors/domain-error.js';
+import { requestScheduleTimezoneChange } from '../scheduling/service.js';
 import { patientProfileInclude, projectPatientProfile } from './projections.js';
 
 const PatientParamsSchema = z.object({ patientId: z.uuid() });
@@ -28,6 +30,7 @@ export function registerProfileRoutes(
   prisma: PrismaClient,
   auth: AppAuth,
   config: AppConfig,
+  clock: Clock,
 ) {
   app.get('/api/v1/patient/profile', async (request) => {
     const actor = await requirePermission(
@@ -76,6 +79,11 @@ export function registerProfileRoutes(
       body.monitoringTimezone,
     );
     await prisma.$transaction(async (tx) => {
+      await requestScheduleTimezoneChange(tx, clock, {
+        patientId: actor.userId,
+        timezone: monitoringTimezone,
+        actorUserId: actor.userId,
+      });
       const updated = await tx.patientProfile.updateMany({
         where: { patientId: actor.userId, version: body.expectedVersion },
         data: {
@@ -265,7 +273,10 @@ export function registerProfileRoutes(
         clinicianUserId: actor.userId,
         patientId,
         endedAt: null,
-        patient: { patientProfile: { isNot: null } },
+        patient: {
+          patientProfile: { isNot: null },
+          applicationAccount: { is: { state: 'ACTIVE' } },
+        },
       },
       include: {
         patient: {

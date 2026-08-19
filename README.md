@@ -1,6 +1,8 @@
 # AUD Subjective Monitoring Platform
 
-This repository is the implementation workspace for the V1 AUD subjective monitoring product. It contains the runtime, accessible product-design foundation, and Phase 2 identity, session, application-access, and patient-profile foundation. Scheduling and clinical workflows are not implemented.
+This repository is the implementation workspace for the V1 AUD subjective monitoring product. It contains the runtime, accessible product-design foundation, Phase 2 identity and authorization platform, patient profiles, authoritative weekly-schedule foundation, and versioned regional-routing configuration.
+
+Phase 2 does not activate patient monitoring or authorize real-patient operation. Safety workflows, workers and delivery, governed content, backup/retention controls, and clinical monitoring behavior remain later-phase work.
 
 ## Prerequisites
 
@@ -47,7 +49,11 @@ The web development server proxies relative `/api` requests to the backend. Brow
 
 The root route resolves the authoritative server session and backend-provided workspace destinations. Anonymous visitors are sent to `/login`; restricted accounts see their application access state. In development, the Phase 1 design-system reference remains available at `/dev/foundation`.
 
-Authentication uses Better Auth database-backed, HTTP-only cookie sessions. Public signup is disabled. Configure `RESEND_API_KEY` and `EMAIL_FROM` together to enable verification and password recovery; prototype mode reports email as unavailable when they are absent, while `real_patient` mode reports the application not ready. Readiness covers configuration, Prisma, PostgreSQL, auth core, and auth email delivery only.
+Authentication uses Better Auth database-backed, HTTP-only cookie sessions. Public signup is disabled. Application-owned account state, roles, permissions, direct assignments, and privileged-identity provenance control backend access. Configure `RESEND_API_KEY` and `EMAIL_FROM` together to enable verification and password recovery.
+
+Weekly boundaries are calculated only by the backend from the stored IANA monitoring timezone and persisted as immutable Monday-to-Monday periods. No monitoring-activation API exists in Phase 2. Regional routing is relational, versioned, and requires current per-target deployment-test evidence before a draft can activate; the platform never supplies a universal emergency fallback.
+
+Readiness separately reports PostgreSQL, authentication schema, authorization schema, email capability, routing schema/configuration, and real-patient operational status. Prototype mode can be healthy without an active real-world route. `real_patient` remains explicitly not ready because the full locked operational controls are not present.
 
 ## Database commands
 
@@ -69,7 +75,7 @@ in `real_patient` mode:
 
 ## Tests
 
-Backend integration tests require a migrated, isolated real PostgreSQL database identified by `TEST_DATABASE_URL`. With the local Compose service running, create the example database and deploy migrations to it before the Phase 1 validation run:
+Backend integration tests require a migrated, isolated real PostgreSQL database identified by `TEST_DATABASE_URL`. With the local Compose service running, create the example database and deploy migrations to it before the platform validation run:
 
 ```sh
 docker compose exec postgres createdb -U aud_subjective aud_subjective_test
@@ -78,7 +84,7 @@ DATABASE_URL=postgresql://aud_subjective:aud_subjective_dev@localhost:5432/aud_s
 
 SQLite and in-memory database substitutes are not used.
 
-Install the one browser used by the Phase 1 end-to-end path once:
+Install the browser used by the production-shaped end-to-end path once:
 
 ```sh
 pnpm exec playwright install chromium
@@ -90,7 +96,7 @@ The test boundaries are explicit:
 pnpm test:web       # focused web component tests
 pnpm test:backend   # real-PostgreSQL backend integration tests
 pnpm test:e2e       # build, then test the production Fastify + SPA process
-pnpm test           # aggregate Phase 1 test command
+pnpm test           # aggregate platform validation command
 ```
 
 The Playwright path uses Chromium to smoke-test the same-origin production application at narrow and desktop widths and runs a focused automated axe accessibility scan. Automated results complement rather than replace manual accessibility review.

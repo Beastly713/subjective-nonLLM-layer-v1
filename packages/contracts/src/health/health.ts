@@ -13,6 +13,14 @@ export const ReadinessResponseSchema = z.object({
     prisma: z.literal('ready'),
     postgres: ReadinessCheckStatusSchema,
     authentication: ReadinessCheckStatusSchema,
+    authorization: ReadinessCheckStatusSchema,
+    regionalRoutingSchema: ReadinessCheckStatusSchema,
+    regionalRoutingConfiguration: z.enum([
+      'active_present',
+      'none_active',
+      'unknown',
+    ]),
+    realPatientOperation: z.literal('not_ready'),
     authEmailDelivery: z.enum(['available', 'unavailable']),
   }),
 });

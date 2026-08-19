@@ -1,5 +1,7 @@
 import {
   PatientProfileResponseSchema,
+  ScheduleReadResponseSchema,
+  type ScheduleReadResponse,
   type PatientProfileResponse,
 } from '@aud-subjective/contracts';
 import { useQuery } from '@tanstack/react-query';
@@ -20,6 +22,14 @@ export function PatientProfilePage() {
     queryFn: ({ signal }) =>
       apiGet<PatientProfileResponse>('/api/v1/patient/profile', {
         schema: PatientProfileResponseSchema,
+        signal,
+      }),
+  });
+  const schedule = useQuery({
+    queryKey: ['patient', 'schedule'],
+    queryFn: ({ signal }) =>
+      apiGet<ScheduleReadResponse>('/api/v1/patient/schedule', {
+        schema: ScheduleReadResponseSchema,
         signal,
       }),
   });
@@ -50,6 +60,7 @@ export function PatientProfilePage() {
         { schema: PatientProfileResponseSchema },
       );
       await profile.refetch();
+      await schedule.refetch();
     } finally {
       setPending(false);
     }
@@ -110,6 +121,18 @@ export function PatientProfilePage() {
                 <p className="m-0 text-xs text-muted-foreground">Onboarding</p>
                 <p className="m-0 font-medium">Incomplete</p>
               </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <h2 className="m-0 text-lg font-semibold">Weekly Schedule</h2>
+            </CardHeader>
+            <CardContent>
+              <WeeklySchedule
+                data={schedule.data}
+                isError={schedule.isError}
+                isLoading={schedule.isLoading}
+              />
             </CardContent>
           </Card>
           <Card>
@@ -183,4 +206,59 @@ export function PatientProfilePage() {
       </PatientShell>
     </WorkspaceBoundary>
   );
+}
+
+export function WeeklySchedule({
+  data,
+  isError,
+  isLoading,
+}: {
+  data: ScheduleReadResponse | undefined;
+  isError: boolean;
+  isLoading: boolean;
+}) {
+  if (isLoading)
+    return (
+      <p className="m-0 text-sm text-muted-foreground">Loading schedule…</p>
+    );
+  if (isError)
+    return (
+      <p className="m-0 text-sm text-danger">
+        The weekly schedule could not be loaded.
+      </p>
+    );
+  if (data?.state === 'ACTIVATED')
+    return (
+      <div className="grid gap-2 text-sm">
+        <p className="m-0 font-medium">
+          Timezone: {data.schedule.monitoringTimezone}
+        </p>
+        {data.periods.map((period) => (
+          <p className="m-0 text-muted-foreground" key={period.periodId}>
+            {formatPeriodTime(period.periodStartAt, period.monitoringTimezone)}
+            {' – '}
+            {formatPeriodTime(period.periodEndAt, period.monitoringTimezone)}
+          </p>
+        ))}
+      </div>
+    );
+  return (
+    <p className="m-0 text-sm text-muted-foreground">
+      Weekly monitoring is not yet activated. Your schedule will appear here
+      after setup is completed.
+    </p>
+  );
+}
+
+function formatPeriodTime(value: string, timeZone: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    timeZone,
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZoneName: 'short',
+  }).format(new Date(value));
 }

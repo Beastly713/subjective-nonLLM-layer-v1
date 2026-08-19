@@ -7,6 +7,7 @@ import {
 import { ErrorState } from '@/components/patterns/system-state';
 import { FoundationPage } from '@/features/foundation/foundation-page';
 import { AdminUsersPage } from '@/features/admin/users/admin-users-page';
+import { RegionalRoutingPage } from '@/features/admin/routing/regional-routing-page';
 import { ClinicianPatientsPage } from '@/features/clinician/patients/clinician-patients-page';
 import { PatientProfilePage } from '@/features/patient/profile/patient-profile-page';
 import { LoginPage } from '@/features/auth/login-page';
@@ -78,6 +79,11 @@ export const router = createBrowserRouter([
   {
     path: '/admin/users',
     element: <AdminUsersPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: '/admin/configuration/regional-routing',
+    element: <RegionalRoutingPage />,
     errorElement: <RouteErrorBoundary />,
   },
   ...(import.meta.env.DEV
