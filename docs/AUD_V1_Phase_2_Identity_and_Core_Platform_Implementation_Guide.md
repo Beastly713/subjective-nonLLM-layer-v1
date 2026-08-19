@@ -2,23 +2,23 @@
 
 ## Document status
 
-**Status:** **PLANNED**
+**Status:** **COMPLETE**
 
 **Phase:** 2 of 7
 
 **Phase name:** Identity + Core Platform
 
-**Target commits:** 3 balanced commits
+**Delivery:** 3 implementation commits plus bounded validation-closure corrections, consolidated into one final Phase 2 Commit 3
 
 **Implementation mode:** Commit packet method
 
-**Repository baseline inspected:** `e58a3ffa71451d7437c56b1680946362369c7e1b`
+**Validated implementation baseline:** `e548cc7` (`feat: add authoritative scheduling and regional routing`)
 
 **Validated Phase 1 implementation baseline:** `7a09757b89f1ed25fbc349bc269c217904d94c6e`
 
-**Repository state when this guide was written:** Clean `main` branch after Phase 1 completion and its documentation update
+**Repository state at completion:** Phase 2 implementation is consolidated on top of approved Commit 2 `41afe25`.
 
-This document defines the implementation boundary and commit plan for Phase 2 only. It is an execution guide, not a new product, clinical, UX, or architecture specification.
+This document records the implementation boundary, completed delivery, validation evidence, and Phase 3 handoff for Phase 2. It is not a new product, clinical, UX, or architecture specification.
 
 Authority remains:
 
@@ -30,6 +30,22 @@ Authority remains:
 6. later packet-specific instructions and implementation, provided they do not conflict with the sources above
 
 If this guide appears to conflict with a governing document, the higher-authority document wins. Do not silently reinterpret a locked decision; record the conflict and correct the packet or this guide.
+
+## Completion record
+
+Phase 2 is implemented and accepted as the identity and core-platform foundation. The final Phase 2 Commit 3 contains authentication integration, application-owned authorization, account and assignment administration, patient profile foundations, authoritative scheduling, versioned regional safety routing, role-specific web surfaces, deterministic prototype seed data, audit/idempotency/concurrency protections, and the associated contracts, migrations, tests, production build, and Docker packaging.
+
+The final implementation preserves the approved three-commit Phase 2 history:
+
+| Commit | Identity | Result |
+|---|---|---|
+| `bc17bc8` | `feat: establish secure authentication and session handling` | Complete — Better Auth integration, sessions, account state, and authentication surfaces |
+| `41afe25` | `feat: enforce role-based access and patient assignments` | Complete — application authorization, assignments, profiles, and role-specific access foundations |
+| `e548cc7` | `feat: add authoritative scheduling and regional routing` | Complete — persisted schedules, timezone-transition correctness, routing lifecycle, regional constraints, UI, and final Phase 2 validation closure |
+
+The final closeout corrections addressed pre-boundary and retroactive timezone transitions, delayed period provisioning, repeated pending timezone requests, canonical region database constraints and regression coverage, validation error status mapping, formatting, and the Admin routing evidence/activation Playwright synchronization path.
+
+Local CI-equivalent validation completed successfully for formatting, lint, strict typechecking, committed migrations, web tests, real-PostgreSQL backend tests, production build, Playwright E2E/accessibility coverage, Docker image build, and `git diff --check`. Phase 2 does not authorize real-patient monitoring; the later safety, onboarding, clinical, delivery, backup, retention, and operational controls remain outside this phase.
 
 ---
 
@@ -55,7 +71,7 @@ The phase creates a serious authenticated platform, not a complete clinical prod
 
 # 2. Actual Phase 1 baseline and carry-forward work
 
-Phase 2 planning is based on direct inspection of the completed repository, not only the Phase 1 completion summary.
+Phase 2 implementation and closeout were based on direct inspection of the repository and its completed validation evidence, not only the Phase 1 completion summary.
 
 ## 2.1 Confirmed foundation available for reuse
 
@@ -76,15 +92,15 @@ Phase 2 must extend these patterns rather than replace them.
 
 No unplanned product feature, speculative service, second datastore, or conflicting architecture was found. The three additional Phase 1 commits were bounded validation closures and are already accepted in the Phase 1 completion record.
 
-The following real integration work remains and is deliberately absorbed by the relevant Phase 2 packet:
+The following items were identified during planning and were absorbed by the completed Phase 2 implementation:
 
-1. **Application mode is not yet modeled.** The current config has `NODE_ENV` but no `APP_MODE=prototype|real_patient`. Commit 1 adds the locked application mode distinction. It must not claim that Phase 2 alone makes real-patient mode ready.
-2. **Foundation UUID references are not yet relationally linked.** `idempotency_records.actor_id`, `patient_processing_locks.patient_id`, and nullable audit actor/patient references were created before user/profile tables existed. Commit 2 reviews and adds safe foreign-key relationships where they preserve append-only history and the intended deletion policy.
-3. **The root route is still the Phase 1 reference surface.** Commit 1 makes `/` session-aware and moves or gates the reference surface so it remains useful in prototype/development without becoming the production product landing page.
-4. **There is no typed browser API client or form library yet.** Commit 1 introduces the locked native-fetch wrapper and React Hook Form only because authentication/profile workflows now concretely require them.
-5. **Readiness currently covers only configuration, Prisma, and PostgreSQL.** Commit 1 adds truthful authentication readiness. Commit 3 may add routing-configuration readiness facts, but neither commit may claim pg-boss, delivery, safety, content, backup, or complete real-patient readiness.
-6. **Security middleware is not yet installed.** Authentication creates the first concrete need for security headers and targeted rate limits; Commit 1 adds them without applying indiscriminate limits to normal authenticated reads.
-7. **CI and README still describe Phase 1.** Each packet updates only the documentation/tests it changes; Commit 3 finishes the Phase 2 naming, validation path, and handoff record without rewriting Phase 1 history.
+1. **Application mode was added.** `APP_MODE=prototype|real_patient` is typed and enforced; real-patient readiness remains false until later operational controls exist.
+2. **Foundation UUID references were reconciled.** Identity/profile foreign keys and deletion policies now preserve canonical ownership and append-only history.
+3. **The root route became session-aware.** The implemented role-specific shells and guarded destinations are exposed without turning the Phase 1 reference surface into a false clinical product.
+4. **The browser API and form boundaries were added where required.** Server state remains query-managed and API responses remain contract-validated projections.
+5. **Readiness now reports truthful authentication, authorization, routing, email, and real-patient operational states.** Missing safety, workers, delivery, content, backup, retention, and related controls continue to prevent real-patient readiness.
+6. **Security middleware and targeted authentication protections were added.**
+7. **README, CI-facing commands, tests, and this completion record now describe the implemented Phase 2 platform while retaining Phase 1 history.**
 
 These are integrations with the accepted foundation, not permission to reopen or redesign Phase 1.
 
@@ -187,7 +203,7 @@ Phase 2 must not create active recovery-goal history or an active monitoring sch
 
 ---
 
-# 4. Locked decisions Phase 2 must realize
+# 4. Locked decisions Phase 2 realized
 
 | Concern | Phase 2 decision |
 |---|---|
@@ -225,9 +241,9 @@ Phase 2 must not create active recovery-goal history or an active monitoring sch
 
 These references constrain Phase 2. They do not authorize implementation of the later clinical behavior described near them.
 
-## 4.2 Implementation-time technical verification
+## 4.2 Implementation-time technical verification record
 
-Before Commit 1 changes dependencies or generates auth schema, the packet must recheck the selected stable Better Auth version against its official Fastify, Prisma-adapter, database/UUID, session, security, and two-factor documentation.
+Before Commit 1 changed dependencies or generated auth schema, the implementation rechecked the selected stable Better Auth version against its official Fastify, Prisma-adapter, database/UUID, session, security, and two-factor documentation.
 
 Important current constraints to preserve:
 
@@ -242,7 +258,7 @@ Use current official documentation as technical input, not as authority over the
 
 ---
 
-# 5. Commit plan at a glance
+# 5. Completed commit plan
 
 | Commit | Identity | Coherent result |
 |---|---|---|
@@ -250,7 +266,7 @@ Use current official documentation as technical input, not as authority over the
 | 2 | `feat: enforce role-based access and patient assignments` | Application-owned RBAC, direct assignments, profile foundation, role-specific shells, Users & Access, and audited access mutations |
 | 3 | `feat: add authoritative scheduling and regional routing` | Luxon scheduling/versioned periods, regional route lifecycle/resolution, final Phase 2 seeds/tests/CI, and a clean Phase 3 handoff |
 
-The commit count is a target and these boundaries are the default. Split only if repository evidence shows a commit has become genuinely unreviewable. Merge only if a locked library or migration dependency makes two boundaries inseparable. Any boundary change must be justified in the active packet before implementation.
+These are the completed Phase 2 boundaries. The packet definitions that follow are retained as the historical implementation instructions and acceptance record for each commit; they do not authorize new implementation after Phase 2 completion.
 
 ---
 
