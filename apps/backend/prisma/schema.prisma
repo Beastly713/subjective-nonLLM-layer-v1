@@ -238,8 +238,91 @@ model PatientProfile {
   processingLock     PatientProcessingLock?
   scheduleVersions   MonitoringScheduleVersion[]
   scheduledPeriods   ScheduledPeriod[]
+  onboardingState    PatientOnboardingState?
+  onboardingRevisions OnboardingRevision[]
+  safetyInputRevisions SafetyInputRevision[]
+  safetyEvaluationResults SafetyEvaluationResult[]
 
   @@map("patient_profiles")
+}
+
+model PatientOnboardingState {
+  patientId                    String              @id @map("patient_id") @db.Uuid
+  version                      Int                 @default(1)
+  currentStep                  String              @map("current_step") @db.VarChar(64)
+  draftResponses               Json                @map("draft_responses")
+  authoritativeRevisionId      String?             @map("authoritative_revision_id") @db.Uuid
+  createdAt                    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdByUserId              String              @map("created_by_user_id") @db.Uuid
+  updatedAt                    DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedByUserId              String              @map("updated_by_user_id") @db.Uuid
+  @@unique([authoritativeRevisionId], map: "patient_onboarding_states_authoritative_revision_key")
+  profile                      PatientProfile      @relation(fields: [patientId], references: [patientId], onDelete: Restrict)
+  authoritativeRevision        OnboardingRevision? @relation(fields: [authoritativeRevisionId], references: [id], onDelete: Restrict)
+  @@map("patient_onboarding_states")
+}
+
+model OnboardingRevision {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  patientId             String                 @map("patient_id") @db.Uuid
+  revision              Int
+  sourceDraftVersion    Int                    @map("source_draft_version")
+  responseSnapshot      Json                   @map("response_snapshot")
+  auditCInstrument      String                 @map("audit_c_instrument") @db.VarChar(128)
+  auditCVersion         String                 @map("audit_c_version") @db.VarChar(64)
+  auditCSource          String                 @map("audit_c_source") @db.Text
+  schemaVersion         String                 @map("schema_version") @db.VarChar(64)
+  submittedAt           DateTime               @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  submittingActorId     String                 @map("submitting_actor_id") @db.Uuid
+  provenance            Json?
+  profile               PatientProfile         @relation(fields: [patientId], references: [patientId], onDelete: Restrict)
+  state                 PatientOnboardingState?
+  safetyInputs          SafetyInputRevision[]
+  @@unique([patientId, revision], map: "onboarding_revisions_patient_revision_key")
+  @@map("onboarding_revisions")
+}
+
+model SafetyInputRevision {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  patientId             String                 @map("patient_id") @db.Uuid
+  revision              Int
+  sourceOnboardingRevisionId String?            @map("source_onboarding_revision_id") @db.Uuid
+  inputSnapshot         Json                    @map("input_snapshot")
+  instrument            String                  @db.VarChar(128)
+  instrumentVersion     String                  @map("instrument_version") @db.VarChar(64)
+  instrumentSource      String                  @map("instrument_source") @db.Text
+  schemaVersion         String                  @map("schema_version") @db.VarChar(64)
+  trigger               String                  @db.VarChar(64)
+  actorId               String                  @map("actor_id") @db.Uuid
+  submittedAt           DateTime                @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  profile               PatientProfile          @relation(fields: [patientId], references: [patientId], onDelete: Restrict)
+  sourceOnboardingRevision OnboardingRevision? @relation(fields: [sourceOnboardingRevisionId], references: [id], onDelete: Restrict)
+  evaluationResults     SafetyEvaluationResult[]
+  @@unique([patientId, revision], map: "safety_input_revisions_patient_revision_key")
+  @@map("safety_input_revisions")
+}
+
+model SafetyEvaluationResult {
+  id                    String              @id @default(uuid()) @db.Uuid
+  patientId             String              @map("patient_id") @db.Uuid
+  safetyInputRevisionId String              @map("safety_input_revision_id") @db.Uuid
+  severity              String              @db.VarChar(32)
+  gateStatus            String              @map("gate_status") @db.VarChar(32)
+  reasonCodes           Json                @map("reason_codes")
+  safetyDomain          String?             @map("safety_domain") @db.VarChar(64)
+  ownerRole             String?             @map("owner_role") @db.VarChar(64)
+  clinicianContext      Boolean             @map("clinician_context")
+  allowedSubjectiveInterventions Json       @map("allowed_subjective_interventions")
+  monitoringPromptPolicy String              @map("monitoring_prompt_policy") @db.VarChar(32)
+  goalChangeAllowed     Boolean             @map("goal_change_allowed")
+  reassessmentDueAt     DateTime?           @map("reassessment_due_at") @db.Timestamptz(6)
+  evaluatorVersion      String              @map("evaluator_version") @db.VarChar(64)
+  configurationVersion  String              @map("configuration_version") @db.VarChar(64)
+  evaluatedAt           DateTime             @default(now()) @map("evaluated_at") @db.Timestamptz(6)
+  resultSnapshot        Json?                @map("result_snapshot")
+  profile               PatientProfile       @relation(fields: [patientId], references: [patientId], onDelete: Restrict)
+  safetyInputRevision   SafetyInputRevision  @relation(fields: [safetyInputRevisionId], references: [id], onDelete: Restrict)
+  @@map("safety_evaluation_results")
 }
 
 model MonitoringScheduleVersion {

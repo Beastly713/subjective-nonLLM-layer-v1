@@ -15,6 +15,7 @@ export const ReadinessResponseSchema = z.object({
     authentication: ReadinessCheckStatusSchema,
     authorization: ReadinessCheckStatusSchema,
     regionalRoutingSchema: ReadinessCheckStatusSchema,
+    onboardingSafetySchema: ReadinessCheckStatusSchema,
     regionalRoutingConfiguration: z.enum([
       'active_present',
       'none_active',

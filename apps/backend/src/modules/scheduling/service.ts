@@ -4,6 +4,7 @@ import type { Prisma, PrismaClient } from '../../generated/prisma/client.js';
 import type { Clock } from '../../shared/clock/clock.js';
 import { normalizeMonitoringTimezone } from '../../shared/authz/timezone.js';
 import { DomainError } from '../../shared/errors/domain-error.js';
+import { lockPatientForProcessing } from '../../shared/authz/patient-processing-lock.js';
 import {
   firstCompletePeriodStart,
   weeklyPeriodWindow,
@@ -11,20 +12,7 @@ import {
 
 type ScheduleStore = PrismaClient | Prisma.TransactionClient;
 
-export async function lockSchedulePatient(
-  tx: Prisma.TransactionClient,
-  patientId: string,
-) {
-  const locks = await tx.$queryRaw<Array<{ patient_id: string }>>`
-    SELECT "patient_id" FROM "patient_processing_locks" WHERE "patient_id" = ${patientId}::uuid FOR UPDATE
-  `;
-  if (locks.length !== 1)
-    throw new DomainError(
-      404,
-      'NOT_FOUND',
-      'The requested resource was not found.',
-    );
-}
+export const lockSchedulePatient = lockPatientForProcessing;
 
 function periodData(patientId: string, timezone: string, startAt: Date) {
   const window = weeklyPeriodWindow(startAt, timezone);

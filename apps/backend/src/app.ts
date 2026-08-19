@@ -16,6 +16,7 @@ import { registerIdentityRoutes } from './modules/identity/routes.js';
 import { registerProfileRoutes } from './modules/profiles/routes.js';
 import { registerScheduleRoutes } from './modules/scheduling/routes.js';
 import { registerRoutingRoutes } from './modules/routing/routes.js';
+import { registerOnboardingRoutes } from './modules/onboarding/routes.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerApplicationAuthRoutes } from './routes/auth.js';
 import { registerErrorHandlers } from './shared/errors/error-handler.js';
@@ -110,6 +111,7 @@ export function buildApp({
   registerProfileRoutes(app, prisma, auth, config, clock);
   registerScheduleRoutes(app, prisma, auth, config, clock);
   registerRoutingRoutes(app, prisma, auth, config, clock);
+  registerOnboardingRoutes(app, prisma, auth, config);
 
   if (webRoot) {
     void app.register(fastifyStatic, {

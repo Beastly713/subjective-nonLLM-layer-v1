@@ -7,3 +7,5 @@ export * from './health/health.js';
 export * from './patient/patient.js';
 export * from './routing/routing.js';
 export * from './schedule/schedule.js';
+export * from './onboarding/onboarding.js';
+export * from './safety/safety.js';

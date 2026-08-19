@@ -15,6 +15,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiGet, apiMutate } from '@/lib/api/client';
+import { Link } from 'react-router';
 
 export function PatientProfilePage() {
   const profile = useQuery({
@@ -122,6 +123,10 @@ export function PatientProfilePage() {
                 <p className="m-0 font-medium">Incomplete</p>
               </div>
             </CardContent>
+          </Card>
+          <Card>
+            <CardHeader><h2 className="m-0 text-lg font-semibold">Continue setup</h2></CardHeader>
+            <CardContent><p className="text-sm text-muted-foreground">Complete the guided onboarding screens when you are ready.</p><Link to="/patient/onboarding"><Button>Continue setup</Button></Link></CardContent>
           </Card>
           <Card>
             <CardHeader>

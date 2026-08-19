@@ -34,7 +34,8 @@ export function registerHealthRoutes(
             postgres: 'not_ready',
             authentication: 'not_ready',
             authorization: 'not_ready',
-            regionalRoutingSchema: 'not_ready',
+          regionalRoutingSchema: 'not_ready',
+          onboardingSafetySchema: 'not_ready',
             regionalRoutingConfiguration: 'unknown',
             realPatientOperation: 'not_ready',
             authEmailDelivery: config.authEmailDeliveryAvailable
@@ -91,6 +92,8 @@ export function registerHealthRoutes(
       authentication === 'ready' &&
       authorization === 'ready' &&
       regionalRoutingSchema === 'ready';
+    let onboardingSafetySchema: 'ready' | 'not_ready' = 'ready';
+    try { await prisma.patientOnboardingState.findFirst({ select: { patientId: true } }); await prisma.safetyEvaluationResult.findFirst({ select: { id: true } }); } catch { onboardingSafetySchema = 'not_ready'; }
     const response = ReadinessResponseSchema.parse({
       status:
         config.appMode === 'real_patient' || !platformFoundationReady
@@ -103,6 +106,7 @@ export function registerHealthRoutes(
         authentication,
         authorization,
         regionalRoutingSchema,
+        onboardingSafetySchema,
         regionalRoutingConfiguration,
         realPatientOperation: 'not_ready',
         authEmailDelivery: config.authEmailDeliveryAvailable

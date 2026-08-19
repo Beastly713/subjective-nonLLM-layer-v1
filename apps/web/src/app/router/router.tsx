@@ -10,6 +10,7 @@ import { AdminUsersPage } from '@/features/admin/users/admin-users-page';
 import { RegionalRoutingPage } from '@/features/admin/routing/regional-routing-page';
 import { ClinicianPatientsPage } from '@/features/clinician/patients/clinician-patients-page';
 import { PatientProfilePage } from '@/features/patient/profile/patient-profile-page';
+import { PatientOnboardingPage } from '@/features/patient/onboarding/patient-onboarding-page';
 import { LoginPage } from '@/features/auth/login-page';
 import { RecoverAccountPage } from '@/features/auth/recover-account-page';
 import { ResetPasswordPage } from '@/features/auth/reset-password-page';
@@ -71,6 +72,7 @@ export const router = createBrowserRouter([
     element: <PatientProfilePage />,
     errorElement: <RouteErrorBoundary />,
   },
+  { path: '/patient/onboarding', element: <PatientOnboardingPage />, errorElement: <RouteErrorBoundary /> },
   {
     path: '/clinician/patients',
     element: <ClinicianPatientsPage />,
