@@ -1,0 +1,1 @@
+export const CSSRS_RECENT_PROVENANCE = { instrument: 'C-SSRS Screener Basic Recent', version: 'Screener Basic Recent', source: 'Columbia Lighthouse Project official healthcare/community source' } as const;

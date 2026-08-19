@@ -242,6 +242,7 @@ model PatientProfile {
   onboardingRevisions OnboardingRevision[]
   safetyInputRevisions SafetyInputRevision[]
   safetyEvaluationResults SafetyEvaluationResult[]
+  safetyCases SafetyCase[]
 
   @@map("patient_profiles")
 }
@@ -320,9 +321,105 @@ model SafetyEvaluationResult {
   configurationVersion  String              @map("configuration_version") @db.VarChar(64)
   evaluatedAt           DateTime             @default(now()) @map("evaluated_at") @db.Timestamptz(6)
   resultSnapshot        Json?                @map("result_snapshot")
+  contextSnapshot       Json?                @map("evaluation_context_snapshot")
   profile               PatientProfile       @relation(fields: [patientId], references: [patientId], onDelete: Restrict)
   safetyInputRevision   SafetyInputRevision  @relation(fields: [safetyInputRevisionId], references: [id], onDelete: Restrict)
+  safetyCases           SafetyCase[]
   @@map("safety_evaluation_results")
+}
+
+enum SafetyCaseLifecycle {
+  DETECTED
+  HANDOFF_INITIATED
+  ACKNOWLEDGED
+  CLINICAL_REVIEW_IN_PROGRESS
+  PLAN_ESTABLISHED
+  RESOLVED
+  ESCALATED_TO_EMERGENCY
+  RESOLVED_EXTERNAL_HANDOFF
+}
+enum SafetyCaseDomain {
+  WITHDRAWAL_OR_MEDICAL
+  SUICIDE_OR_SELF_HARM
+  PREGNANCY
+  OTHER_SUBSTANCE
+  ROUTINE_MEDICAL_CONTEXT
+}
+enum SafetyDisposition {
+  SAFE_TO_CONTINUE_STANDARD_MONITORING
+  SAFE_TO_CONTINUE_WITH_RESTRICTIONS
+  CONTINUE_CLINICAL_HANDOFF
+  EMERGENCY_EXTERNAL_MANAGEMENT
+  MONITORING_TEMPORARILY_PAUSED
+}
+model SafetyCase {
+  id String @id @default(uuid()) @db.Uuid
+  patientId String @map("patient_id") @db.Uuid
+  domain SafetyCaseDomain
+  sourceSafetyEvaluationResultId String @map("source_safety_evaluation_result_id") @db.Uuid
+  severity String @db.VarChar(32)
+  gateStatus String @map("gate_status") @db.VarChar(32)
+  ownerRole String @map("owner_role") @db.VarChar(64)
+  lifecycle SafetyCaseLifecycle @default(DETECTED)
+  version Int @default(1)
+  detectedAt DateTime @default(now()) @map("detected_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  resolvedAt DateTime? @map("resolved_at") @db.Timestamptz(6)
+  currentRestrictionVersionId String? @map("current_restriction_version_id") @db.Uuid
+  currentRouteSnapshot Json? @map("current_route_snapshot")
+  routeStatus String @map("route_status") @db.VarChar(32)
+  routeProfileId String? @map("route_profile_id") @db.Uuid
+  routeProfileLogicalVersion Int? @map("route_profile_logical_version")
+  profile PatientProfile @relation(fields: [patientId], references: [patientId], onDelete: Restrict)
+  evaluation SafetyEvaluationResult @relation(fields: [sourceSafetyEvaluationResultId], references: [id], onDelete: Restrict)
+  restrictions SafetyCaseRestrictionVersion[]
+  dispositions SafetyCaseDisposition[]
+  lifecycleEvents SafetyCaseLifecycleEvent[]
+  @@index([patientId, domain, resolvedAt])
+  @@map("safety_cases")
+}
+model SafetyCaseRestrictionVersion {
+  id String @id @default(uuid()) @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  version Int
+  gateStatus String @map("gate_status") @db.VarChar(32)
+  allowedSubjectiveInterventions Json @map("allowed_subjective_interventions")
+  monitoringPromptPolicy String @map("monitoring_prompt_policy") @db.VarChar(32)
+  goalChangeAllowed Boolean @map("goal_change_allowed")
+  reassessmentDueAt DateTime? @map("reassessment_due_at") @db.Timestamptz(6)
+  sourceDispositionId String? @map("source_disposition_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdByUserId String @map("created_by_user_id") @db.Uuid
+  safetyCase SafetyCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  @@unique([caseId, version])
+  @@map("safety_case_restriction_versions")
+}
+model SafetyCaseDisposition {
+  id String @id @default(uuid()) @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  version Int
+  disposition SafetyDisposition
+  restrictions Json?
+  actorId String @map("actor_id") @db.Uuid
+  actorRole String @map("actor_role") @db.VarChar(64)
+  reason String @db.Text
+  sourceCaseVersion Int @map("source_case_version")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  safetyCase SafetyCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  @@unique([caseId, version])
+  @@map("safety_case_dispositions")
+}
+model SafetyCaseLifecycleEvent {
+  id String @id @default(uuid()) @db.Uuid
+  caseId String @map("case_id") @db.Uuid
+  fromState SafetyCaseLifecycle? @map("from_state")
+  toState SafetyCaseLifecycle @map("to_state")
+  actorId String @map("actor_id") @db.Uuid
+  reason String? @db.Text
+  requestId String? @map("request_id") @db.VarChar(128)
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  safetyCase SafetyCase @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  @@map("safety_case_lifecycle_events")
 }
 
 model MonitoringScheduleVersion {
