@@ -362,6 +362,17 @@ export function registerRoutingRoutes(
         key,
         canonical,
         async (tx) => {
+          const candidate = await tx.regionalRoutingProfileVersion.findUnique({
+            where: { id: profileId },
+            select: { id: true, regionKey: true },
+          });
+          if (!candidate)
+            throw new DomainError(
+              409,
+              'VERSION_CONFLICT',
+              'The routing draft changed before this action.',
+            );
+          await lockRegion(tx, candidate.regionKey);
           const profile = await tx.regionalRoutingProfileVersion.findUnique({
             where: { id: profileId },
             include: routingDetailInclude,
@@ -376,13 +387,13 @@ export function registerRoutingRoutes(
               'VERSION_CONFLICT',
               'The routing draft changed before this action.',
             );
-          await lockRegion(tx, profile.regionKey);
-          const latestDraft = await tx.regionalRoutingProfileVersion.findFirst({
-            where: { regionKey: profile.regionKey, lifecycle: 'DRAFT' },
+          const latestProfile =
+            await tx.regionalRoutingProfileVersion.findFirst({
+            where: { regionKey: profile.regionKey },
             orderBy: { logicalVersion: 'desc' },
             select: { id: true },
           });
-          if (latestDraft?.id !== profile.id)
+          if (latestProfile?.id !== profile.id)
             throw new DomainError(
               409,
               'VERSION_CONFLICT',

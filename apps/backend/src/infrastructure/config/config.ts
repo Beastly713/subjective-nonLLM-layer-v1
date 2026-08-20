@@ -55,6 +55,15 @@ const AppConfigSchema = z
       Boolean(RESEND_API_KEY) === Boolean(EMAIL_FROM),
     { message: 'RESEND_API_KEY and EMAIL_FROM must be configured together' },
   )
+  .refine(
+    ({ SAFETY_ROUTING_COUNTRY_CODE, SAFETY_ROUTING_REGION_CODE }) =>
+      !SAFETY_ROUTING_REGION_CODE || Boolean(SAFETY_ROUTING_COUNTRY_CODE),
+    {
+      path: ['SAFETY_ROUTING_COUNTRY_CODE'],
+      message:
+        'SAFETY_ROUTING_COUNTRY_CODE is required when SAFETY_ROUTING_REGION_CODE is configured',
+    },
+  )
   .transform((environment) => ({
     nodeEnv: environment.NODE_ENV,
     host: environment.HOST,

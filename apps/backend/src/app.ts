@@ -113,7 +113,7 @@ export function buildApp({
   registerScheduleRoutes(app, prisma, auth, config, clock);
   registerRoutingRoutes(app, prisma, auth, config, clock);
   registerOnboardingRoutes(app, prisma, auth, config, clock);
-  registerSafetyRoutes(app, prisma, auth, config);
+  registerSafetyRoutes(app, prisma, auth, config, clock);
 
   if (webRoot) {
     void app.register(fastifyStatic, {

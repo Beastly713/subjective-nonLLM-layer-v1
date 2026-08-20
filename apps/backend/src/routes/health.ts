@@ -6,6 +6,8 @@ import type { FastifyInstance } from 'fastify';
 
 import type { PrismaClient } from '../generated/prisma/client.js';
 import type { AppConfig } from '../infrastructure/config/config.js';
+import { AUDIT_C_PROVENANCE } from '../modules/onboarding/instrument-provenance.js';
+import { CSSRS_RECENT_PROVENANCE } from '../modules/safety/instrument-provenance.js';
 
 export function registerHealthRoutes(
   app: FastifyInstance,
@@ -24,7 +26,6 @@ export function registerHealthRoutes(
         { errorCode: 'DATABASE_UNAVAILABLE' },
         'Readiness check failed',
       );
-
       return reply.status(503).send(
         ReadinessResponseSchema.parse({
           status: 'not_ready',
@@ -34,10 +35,20 @@ export function registerHealthRoutes(
             postgres: 'not_ready',
             authentication: 'not_ready',
             authorization: 'not_ready',
-          regionalRoutingSchema: 'not_ready',
-          onboardingSafetySchema: 'not_ready',
-            safetyRoutingContext: config.safetyRoutingCountryCode ? 'configured' : 'unconfigured',
-            safetyInstrumentConfiguration: 'unavailable',
+            regionalRoutingSchema: 'not_ready',
+            onboardingSafetySchema: 'not_ready',
+            safetyCaseSchema: 'not_ready',
+            safetyRoutingContext: config.safetyRoutingCountryCode
+              ? 'configured'
+              : 'unconfigured',
+            onboardingInstrumentConfiguration:
+              AUDIT_C_PROVENANCE.configurationAvailable
+                ? 'available'
+                : 'unavailable',
+            safetyInstrumentConfiguration:
+              CSSRS_RECENT_PROVENANCE.configurationAvailable
+                ? 'available'
+                : 'unavailable',
             regionalRoutingConfiguration: 'unknown',
             realPatientOperation: 'not_ready',
             authEmailDelivery: config.authEmailDeliveryAvailable
@@ -63,6 +74,7 @@ export function registerHealthRoutes(
       config.appMode === 'real_patient' && !config.authEmailDeliveryAvailable;
     const authentication =
       authSchemaReady && !emailRequiredButUnavailable ? 'ready' : 'not_ready';
+
     let authorization: 'ready' | 'not_ready' = 'ready';
     try {
       await prisma.applicationAccount.findFirst({ select: { userId: true } });
@@ -73,9 +85,12 @@ export function registerHealthRoutes(
         'Authorization readiness check failed',
       );
     }
+
     let regionalRoutingSchema: 'ready' | 'not_ready' = 'ready';
     let regionalRoutingConfiguration:
-      'active_present' | 'none_active' | 'unknown' = 'none_active';
+      | 'active_present'
+      | 'none_active'
+      | 'unknown' = 'none_active';
     try {
       const active = await prisma.regionalRoutingProfileVersion.findFirst({
         where: { lifecycle: 'ACTIVE' },
@@ -90,12 +105,44 @@ export function registerHealthRoutes(
         'Regional routing readiness check failed',
       );
     }
+
+    let onboardingSafetySchema: 'ready' | 'not_ready' = 'ready';
+    try {
+      await prisma.patientOnboardingState.findFirst({
+        select: { patientId: true },
+      });
+      await prisma.safetyEvaluationResult.findFirst({ select: { id: true } });
+    } catch {
+      onboardingSafetySchema = 'not_ready';
+      request.log.warn(
+        { errorCode: 'ONBOARDING_SAFETY_SCHEMA_UNAVAILABLE' },
+        'Onboarding safety readiness check failed',
+      );
+    }
+
+    let safetyCaseSchema: 'ready' | 'not_ready' = 'ready';
+    try {
+      await prisma.safetyCase.findFirst({ select: { id: true } });
+      await prisma.safetyCaseRestrictionVersion.findFirst({
+        select: { id: true },
+      });
+      await prisma.safetyCaseDisposition.findFirst({ select: { id: true } });
+      await prisma.safetyCaseLifecycleEvent.findFirst({ select: { id: true } });
+    } catch {
+      safetyCaseSchema = 'not_ready';
+      request.log.warn(
+        { errorCode: 'SAFETY_CASE_SCHEMA_UNAVAILABLE' },
+        'Safety case readiness check failed',
+      );
+    }
+
     const platformFoundationReady =
       authentication === 'ready' &&
       authorization === 'ready' &&
-      regionalRoutingSchema === 'ready';
-    let onboardingSafetySchema: 'ready' | 'not_ready' = 'ready';
-    try { await prisma.patientOnboardingState.findFirst({ select: { patientId: true } }); await prisma.safetyEvaluationResult.findFirst({ select: { id: true } }); } catch { onboardingSafetySchema = 'not_ready'; }
+      regionalRoutingSchema === 'ready' &&
+      onboardingSafetySchema === 'ready' &&
+      safetyCaseSchema === 'ready';
+
     const response = ReadinessResponseSchema.parse({
       status:
         config.appMode === 'real_patient' || !platformFoundationReady
@@ -109,8 +156,16 @@ export function registerHealthRoutes(
         authorization,
         regionalRoutingSchema,
         onboardingSafetySchema,
-        safetyRoutingContext: config.safetyRoutingCountryCode ? 'configured' : 'unconfigured',
-        safetyInstrumentConfiguration: 'unavailable',
+        safetyCaseSchema,
+        safetyRoutingContext: config.safetyRoutingCountryCode
+          ? 'configured'
+          : 'unconfigured',
+        onboardingInstrumentConfiguration:
+          AUDIT_C_PROVENANCE.configurationAvailable ? 'available' : 'unavailable',
+        safetyInstrumentConfiguration:
+          CSSRS_RECENT_PROVENANCE.configurationAvailable
+            ? 'available'
+            : 'unavailable',
         regionalRoutingConfiguration,
         realPatientOperation: 'not_ready',
         authEmailDelivery: config.authEmailDeliveryAvailable
