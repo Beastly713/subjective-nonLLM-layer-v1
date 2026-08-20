@@ -389,10 +389,10 @@ export function registerRoutingRoutes(
             );
           const latestProfile =
             await tx.regionalRoutingProfileVersion.findFirst({
-            where: { regionKey: profile.regionKey },
-            orderBy: { logicalVersion: 'desc' },
-            select: { id: true },
-          });
+              where: { regionKey: profile.regionKey },
+              orderBy: { logicalVersion: 'desc' },
+              select: { id: true },
+            });
           if (latestProfile?.id !== profile.id)
             throw new DomainError(
               409,

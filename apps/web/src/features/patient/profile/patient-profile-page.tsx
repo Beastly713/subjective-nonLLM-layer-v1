@@ -8,7 +8,6 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { PatientShell } from '@/app/shells/patient-shell';
-import { WorkspaceBoundary } from '@/app/shells/workspace-boundary';
 import { ErrorState, LoadingState } from '@/components/patterns/system-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -16,8 +15,22 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiGet, apiMutate } from '@/lib/api/client';
 import { Link } from 'react-router';
+import {
+  PatientSafetyBoundary,
+  usePatientSafetyProjection,
+} from '@/features/patient/safety/patient-safety-boundary';
+import { PatientSafetyStatus } from '@/features/patient/safety/patient-safety-status';
 
 export function PatientProfilePage() {
+  return (
+    <PatientSafetyBoundary>
+      <PatientProfileContent />
+    </PatientSafetyBoundary>
+  );
+}
+
+function PatientProfileContent() {
+  const safetyProjection = usePatientSafetyProjection();
   const profile = useQuery({
     queryKey: ['patient', 'profile'],
     queryFn: ({ signal }) =>
@@ -86,130 +99,140 @@ export function PatientProfilePage() {
     }
   };
   return (
-    <WorkspaceBoundary destination="/patient/profile">
-      <PatientShell>
-        <div className="mb-8">
-          <p className="m-0 text-sm font-semibold text-success">
-            Setup incomplete
-          </p>
-          <h1 className="mb-0 mt-2 text-3xl font-semibold">
-            Profile preferences
-          </h1>
-          <p className="text-muted-foreground">
-            Review the account details and preferences used by future monitoring
-            setup.
-          </p>
-        </div>
-        <div className="grid gap-6">
-          <Card>
-            <CardHeader>
-              <h2 className="m-0 text-lg font-semibold">Identity</h2>
-            </CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <p className="m-0 text-xs text-muted-foreground">Name</p>
-                <p className="m-0 font-medium">{data.name}</p>
-              </div>
-              <div>
-                <p className="m-0 text-xs text-muted-foreground">Email</p>
-                <p className="m-0 font-medium">{data.email}</p>
-              </div>
-              <div>
-                <p className="m-0 text-xs text-muted-foreground">Account</p>
-                <p className="m-0 font-medium">{data.accountState}</p>
-              </div>
-              <div>
-                <p className="m-0 text-xs text-muted-foreground">Onboarding</p>
-                <p className="m-0 font-medium">Incomplete</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader><h2 className="m-0 text-lg font-semibold">Continue setup</h2></CardHeader>
-            <CardContent><p className="text-sm text-muted-foreground">Complete the guided onboarding screens when you are ready.</p><Link to="/patient/onboarding"><Button>Continue setup</Button></Link></CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <h2 className="m-0 text-lg font-semibold">Weekly Schedule</h2>
-            </CardHeader>
-            <CardContent>
-              <WeeklySchedule
-                data={schedule.data}
-                isError={schedule.isError}
-                isLoading={schedule.isLoading}
+    <PatientShell>
+      <div className="mb-8">
+        <p className="m-0 text-sm font-semibold text-success">
+          Setup incomplete
+        </p>
+        <h1 className="mb-0 mt-2 text-3xl font-semibold">
+          Profile preferences
+        </h1>
+        <p className="text-muted-foreground">
+          Review the account details and preferences used by future monitoring
+          setup.
+        </p>
+      </div>
+      <div className="mb-6">
+        <PatientSafetyStatus projection={safetyProjection} />
+      </div>
+      <div className="grid gap-6">
+        <Card>
+          <CardHeader>
+            <h2 className="m-0 text-lg font-semibold">Identity</h2>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <p className="m-0 text-xs text-muted-foreground">Name</p>
+              <p className="m-0 font-medium">{data.name}</p>
+            </div>
+            <div>
+              <p className="m-0 text-xs text-muted-foreground">Email</p>
+              <p className="m-0 font-medium">{data.email}</p>
+            </div>
+            <div>
+              <p className="m-0 text-xs text-muted-foreground">Account</p>
+              <p className="m-0 font-medium">{data.accountState}</p>
+            </div>
+            <div>
+              <p className="m-0 text-xs text-muted-foreground">Onboarding</p>
+              <p className="m-0 font-medium">Incomplete</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <h2 className="m-0 text-lg font-semibold">Continue setup</h2>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              Complete the guided onboarding screens when you are ready.
+            </p>
+            <Link to="/patient/onboarding">
+              <Button>Continue setup</Button>
+            </Link>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <h2 className="m-0 text-lg font-semibold">Weekly Schedule</h2>
+          </CardHeader>
+          <CardContent>
+            <WeeklySchedule
+              data={schedule.data}
+              isError={schedule.isError}
+              isLoading={schedule.isLoading}
+            />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <h2 className="m-0 text-lg font-semibold">Monitoring timezone</h2>
+          </CardHeader>
+          <CardContent>
+            <form
+              action={(form) => void updateTimezone(form)}
+              className="grid gap-3"
+            >
+              <Label htmlFor="monitoringTimezone">IANA timezone</Label>
+              <Input
+                id="monitoringTimezone"
+                name="monitoringTimezone"
+                defaultValue={data.monitoringTimezone}
+                required
               />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <h2 className="m-0 text-lg font-semibold">Monitoring timezone</h2>
-            </CardHeader>
-            <CardContent>
-              <form
-                action={(form) => void updateTimezone(form)}
-                className="grid gap-3"
-              >
-                <Label htmlFor="monitoringTimezone">IANA timezone</Label>
-                <Input
-                  id="monitoringTimezone"
-                  name="monitoringTimezone"
-                  defaultValue={data.monitoringTimezone}
-                  required
-                />
-                <Button className="sm:w-fit" type="submit" disabled={pending}>
-                  Save timezone
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <h2 className="m-0 text-lg font-semibold">Content preferences</h2>
-            </CardHeader>
-            <CardContent>
-              <form
-                action={(form) => void updatePreferences(form)}
-                className="grid gap-4"
-              >
-                <label className="grid gap-2 text-sm font-medium">
-                  Mutual-help preference
-                  <select
-                    className="h-11 rounded-md border bg-surface px-3"
-                    name="mutualHelpPreference"
-                    defaultValue={data.preferences.mutualHelpPreference ?? ''}
-                  >
-                    <option value="">Not supplied</option>
-                    <option value="NONE">None</option>
-                    <option value="AA_12_STEP">AA / 12-step</option>
-                    <option value="ALTERNATIVE">Alternative</option>
-                    <option value="UNSURE">Unsure</option>
-                    <option value="PREFER_NOT_TO_SAY">Prefer not to say</option>
-                  </select>
-                </label>
-                <label className="grid gap-2 text-sm font-medium">
-                  Spiritual content
-                  <select
-                    className="h-11 rounded-md border bg-surface px-3"
-                    name="spiritualContentPreference"
-                    defaultValue={
-                      data.preferences.spiritualContentPreference ?? ''
-                    }
-                  >
-                    <option value="">Not supplied</option>
-                    <option value="ALLOW">Allow</option>
-                    <option value="DO_NOT_ALLOW">Do not allow</option>
-                    <option value="UNSURE">Unsure</option>
-                  </select>
-                </label>
-                <Button className="sm:w-fit" type="submit" disabled={pending}>
-                  Save preferences
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        </div>
-      </PatientShell>
-    </WorkspaceBoundary>
+              <Button className="sm:w-fit" type="submit" disabled={pending}>
+                Save timezone
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <h2 className="m-0 text-lg font-semibold">Content preferences</h2>
+          </CardHeader>
+          <CardContent>
+            <form
+              action={(form) => void updatePreferences(form)}
+              className="grid gap-4"
+            >
+              <label className="grid gap-2 text-sm font-medium">
+                Mutual-help preference
+                <select
+                  className="h-11 rounded-md border bg-surface px-3"
+                  name="mutualHelpPreference"
+                  defaultValue={data.preferences.mutualHelpPreference ?? ''}
+                >
+                  <option value="">Not supplied</option>
+                  <option value="NONE">None</option>
+                  <option value="AA_12_STEP">AA / 12-step</option>
+                  <option value="ALTERNATIVE">Alternative</option>
+                  <option value="UNSURE">Unsure</option>
+                  <option value="PREFER_NOT_TO_SAY">Prefer not to say</option>
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm font-medium">
+                Spiritual content
+                <select
+                  className="h-11 rounded-md border bg-surface px-3"
+                  name="spiritualContentPreference"
+                  defaultValue={
+                    data.preferences.spiritualContentPreference ?? ''
+                  }
+                >
+                  <option value="">Not supplied</option>
+                  <option value="ALLOW">Allow</option>
+                  <option value="DO_NOT_ALLOW">Do not allow</option>
+                  <option value="UNSURE">Unsure</option>
+                </select>
+              </label>
+              <Button className="sm:w-fit" type="submit" disabled={pending}>
+                Save preferences
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    </PatientShell>
   );
 }
 

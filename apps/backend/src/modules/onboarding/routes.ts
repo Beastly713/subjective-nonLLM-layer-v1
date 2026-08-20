@@ -56,7 +56,8 @@ function completeDraft(draft: ReturnType<typeof OnboardingDraftSchema.parse>) {
 function baseOnboardingSnapshot(
   draft: ReturnType<typeof OnboardingDraftSchema.parse>,
 ) {
-  const { safetyDraft: _safetyDraft, ...base } = draft;
+  const base = { ...draft };
+  delete base.safetyDraft;
   return base;
 }
 

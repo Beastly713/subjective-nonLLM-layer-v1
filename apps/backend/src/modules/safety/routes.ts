@@ -18,13 +18,13 @@ import { z } from 'zod';
 import type { Prisma, PrismaClient } from '../../generated/prisma/client.js';
 import type { AppAuth } from '../../infrastructure/auth/auth.js';
 import type { AppConfig } from '../../infrastructure/config/config.js';
-import type { Clock } from '../../shared/clock/clock.js';
 import { requirePermission } from '../../shared/authz/authorize.js';
 import {
   executeIdempotently,
   requireIdempotencyKey,
 } from '../../shared/authz/idempotency.js';
 import { lockPatientForProcessing } from '../../shared/authz/patient-processing-lock.js';
+import type { Clock } from '../../shared/clock/clock.js';
 import { DomainError } from '../../shared/errors/domain-error.js';
 import { assertSafetyTransition } from './lifecycle.js';
 import {
@@ -35,6 +35,7 @@ import {
   safetyCaseInclude,
   type SafetyCaseWithProjection,
 } from './projections.js';
+import { SAFETY_ROUTE_POLICY_VERSION } from './route-policy.js';
 import {
   reconcileSafetyRoutingIncident,
   resolveSafetyRoute,
@@ -49,6 +50,7 @@ type SafetyReadDb = Pick<
 >;
 type Tx = Prisma.TransactionClient;
 type EffectiveGate = Exclude<SafetyGateStatus, 'NOT_ASSESSED'>;
+
 type EffectiveRestriction = {
   gateStatus: EffectiveGate;
   allowedSubjectiveInterventions: SubjectiveInterventionClass[];
@@ -89,6 +91,7 @@ async function assignedCase(
     },
     include: safetyCaseInclude,
   });
+
   if (!safetyCase) {
     throw new DomainError(
       404,
@@ -96,6 +99,7 @@ async function assignedCase(
       'The requested resource was not found.',
     );
   }
+
   return safetyCase;
 }
 
@@ -118,6 +122,7 @@ async function lockAndLoadAssignedCase(
     },
     select: { patientId: true },
   });
+
   if (!scoped) {
     throw new DomainError(
       404,
@@ -125,7 +130,9 @@ async function lockAndLoadAssignedCase(
       'The requested resource was not found.',
     );
   }
+
   await lockPatientForProcessing(tx, scoped.patientId);
+
   return assignedCase(tx, clinicianUserId, caseId);
 }
 
@@ -133,6 +140,7 @@ function currentRestriction(
   current: SafetyCaseWithProjection,
 ): EffectiveRestriction {
   const latest = current.restrictions[0];
+
   if (!latest) {
     throw new DomainError(
       409,
@@ -140,7 +148,9 @@ function currentRestriction(
       'The safety case does not have an effective restriction state.',
     );
   }
+
   const gate = SafetyGateStatusSchema.safeParse(latest.gateStatus);
+
   if (!gate.success || gate.data === 'NOT_ASSESSED') {
     throw new DomainError(
       409,
@@ -148,6 +158,7 @@ function currentRestriction(
       'The safety case restriction state is invalid.',
     );
   }
+
   return {
     gateStatus: gate.data,
     allowedSubjectiveInterventions: canonicalStoredInterventions(
@@ -163,8 +174,7 @@ function currentRestriction(
 function serializeRestriction(restriction: EffectiveRestriction) {
   return SafetyRestrictionSnapshotSchema.parse({
     gateStatus: restriction.gateStatus,
-    allowedSubjectiveInterventions:
-      restriction.allowedSubjectiveInterventions,
+    allowedSubjectiveInterventions: restriction.allowedSubjectiveInterventions,
     monitoringPromptPolicy: restriction.monitoringPromptPolicy,
     goalChangeAllowed: restriction.goalChangeAllowed,
     reassessmentDueAt: restriction.reassessmentDueAt?.toISOString() ?? null,
@@ -190,6 +200,7 @@ function assertDoesNotBroaden(
   requested: EffectiveRestriction,
 ) {
   const allowedSet = new Set(current.allowedSubjectiveInterventions);
+
   if (
     requested.allowedSubjectiveInterventions.some(
       (intervention) => !allowedSet.has(intervention),
@@ -201,6 +212,7 @@ function assertDoesNotBroaden(
       'Continuing a handoff cannot broaden patient interventions.',
     );
   }
+
   if (
     current.monitoringPromptPolicy === 'PAUSE' &&
     requested.monitoringPromptPolicy === 'CONTINUE'
@@ -211,6 +223,7 @@ function assertDoesNotBroaden(
       'Continuing a handoff cannot resume paused monitoring prompts.',
     );
   }
+
   if (!current.goalChangeAllowed && requested.goalChangeAllowed) {
     throw new DomainError(
       409,
@@ -218,6 +231,7 @@ function assertDoesNotBroaden(
       'Continuing a handoff cannot re-enable goal changes.',
     );
   }
+
   if (current.reassessmentDueAt) {
     if (
       !requested.reassessmentDueAt ||
@@ -241,7 +255,9 @@ async function appendRestriction(
   now: Date,
 ) {
   const existing = currentRestriction(current);
+
   if (restrictionsEqual(existing, restriction)) return null;
+
   return tx.safetyCaseRestrictionVersion.create({
     data: {
       caseId: current.id,
@@ -273,12 +289,15 @@ async function createDisposition(
     orderBy: { version: 'desc' },
     select: { version: true },
   });
+
   return tx.safetyCaseDisposition.create({
     data: {
       caseId: current.id,
       version: (latest?.version ?? 0) + 1,
       disposition,
-      restrictions: serializeRestriction(restriction) as Prisma.InputJsonValue,
+      restrictions: serializeRestriction(
+        restriction,
+      ) as Prisma.InputJsonValue,
       actorId,
       actorRole: 'CLINICIAN',
       reason,
@@ -315,12 +334,20 @@ async function auditRoute(
   });
 }
 
-async function loadProjectedCase(tx: Tx, caseId: string) {
+async function loadProjectedCase(
+  tx: Tx,
+  caseId: string,
+): Promise<Prisma.InputJsonValue> {
   const updated = await tx.safetyCase.findUniqueOrThrow({
     where: { id: caseId },
     include: safetyCaseInclude,
   });
-  return SafetyCaseProjectionSchema.parse(projectSafetyCase(updated));
+
+  const projected = SafetyCaseProjectionSchema.parse(
+    projectSafetyCase(updated),
+  );
+
+  return projected as unknown as Prisma.InputJsonValue;
 }
 
 function restrictionFromRequest(
@@ -334,7 +361,9 @@ function restrictionFromRequest(
 ): EffectiveRestriction {
   return {
     gateStatus,
-    allowedSubjectiveInterventions: [...input.allowedSubjectiveInterventions],
+    allowedSubjectiveInterventions: [
+      ...input.allowedSubjectiveInterventions,
+    ],
     monitoringPromptPolicy: input.monitoringPromptPolicy,
     goalChangeAllowed: input.goalChangeAllowed,
     reassessmentDueAt: input.reassessmentDueAt
@@ -362,7 +391,12 @@ async function applyDisposition(
     clock: Clock;
   },
 ) {
-  const current = await lockAndLoadAssignedCase(tx, args.actorId, args.caseId);
+  const current = await lockAndLoadAssignedCase(
+    tx,
+    args.actorId,
+    args.caseId,
+  );
+
   if (current.version !== args.expectedVersion) {
     throw new DomainError(
       409,
@@ -370,6 +404,7 @@ async function applyDisposition(
       'The safety case changed before this update.',
     );
   }
+
   if (current.resolvedAt) {
     throw new DomainError(
       409,
@@ -380,6 +415,7 @@ async function applyDisposition(
 
   const now = args.clock.now();
   const existingRestriction = currentRestriction(current);
+
   let targetRestriction = existingRestriction;
   let nextLifecycle: SafetyCaseLifecycle = current.lifecycle;
   let resolvedAt: Date | null | undefined;
@@ -395,7 +431,9 @@ async function applyDisposition(
           'Resolve an emergency external handoff through the external-handoff resolution action.',
         );
       }
+
       assertSafetyTransition(current.lifecycle, 'RESOLVED');
+
       targetRestriction = {
         gateStatus: 'ALLOW_MONITORING',
         allowedSubjectiveInterventions: [],
@@ -403,35 +441,50 @@ async function applyDisposition(
         goalChangeAllowed: true,
         reassessmentDueAt: null,
       };
+
       nextLifecycle = 'RESOLVED';
       resolvedAt = now;
-      lifecycleReason = 'Authorized safety owner cleared the case for standard monitoring.';
+      lifecycleReason =
+        'Authorized safety owner cleared the case for standard monitoring.';
+
       route = {
         status: 'NOT_REQUIRED',
         snapshot: {
           status: 'NOT_REQUIRED',
           resolvedAt: now.toISOString(),
-          reason: 'CASE_RESOLVED_BY_AUTHORIZED_OWNER',
+          policyVersion: SAFETY_ROUTE_POLICY_VERSION,
+          selected: {
+            primary: null,
+            fallback: null,
+          },
         },
         profileId: null,
         logicalVersion: null,
       };
+
       break;
     }
+
     case 'SAFE_TO_CONTINUE_WITH_RESTRICTIONS': {
-      if (current.lifecycle !== 'PLAN_ESTABLISHED' || !args.restrictions) {
+      if (
+        current.lifecycle !== 'PLAN_ESTABLISHED' ||
+        !args.restrictions
+      ) {
         throw new DomainError(
           409,
           'SAFETY_CASE_TRANSITION_INVALID',
           'A structured plan must be established before restrictions can be relaxed.',
         );
       }
+
       targetRestriction = restrictionFromRequest(
         'ALLOW_WITH_HANDOFF',
         args.restrictions,
       );
+
       break;
     }
+
     case 'CONTINUE_CLINICAL_HANDOFF': {
       if (
         ![
@@ -447,16 +500,20 @@ async function applyDisposition(
           'The case is not in the ordinary clinical handoff path.',
         );
       }
+
       if (args.restrictions) {
         const requested = restrictionFromRequest(
           existingRestriction.gateStatus,
           args.restrictions,
         );
+
         assertDoesNotBroaden(existingRestriction, requested);
         targetRestriction = requested;
       }
+
       break;
     }
+
     case 'MONITORING_TEMPORARILY_PAUSED': {
       targetRestriction = {
         ...existingRestriction,
@@ -465,14 +522,22 @@ async function applyDisposition(
         ],
         monitoringPromptPolicy: 'PAUSE',
       };
+
       break;
     }
+
     case 'EMERGENCY_EXTERNAL_MANAGEMENT': {
       if (current.lifecycle !== 'ESCALATED_TO_EMERGENCY') {
-        assertSafetyTransition(current.lifecycle, 'ESCALATED_TO_EMERGENCY');
+        assertSafetyTransition(
+          current.lifecycle,
+          'ESCALATED_TO_EMERGENCY',
+        );
+
         nextLifecycle = 'ESCALATED_TO_EMERGENCY';
-        lifecycleReason = 'Authorized safety owner escalated the case to emergency external management.';
+        lifecycleReason =
+          'Authorized safety owner escalated the case to emergency external management.';
       }
+
       targetRestriction = {
         gateStatus: 'BLOCK_AND_HANDOFF',
         allowedSubjectiveInterventions: [],
@@ -480,10 +545,12 @@ async function applyDisposition(
         goalChangeAllowed: false,
         reassessmentDueAt: existingRestriction.reassessmentDueAt,
       };
+
       route = await resolveSafetyRoute(tx, args.config, now, {
         severity: 'S0_EMERGENCY',
         domain: current.domain,
       });
+
       break;
     }
   }
@@ -497,6 +564,7 @@ async function applyDisposition(
     targetRestriction,
     now,
   );
+
   const restriction = await appendRestriction(
     tx,
     current,
@@ -515,15 +583,24 @@ async function applyDisposition(
       : {}),
     ...(resolvedAt !== undefined ? { resolvedAt } : {}),
   };
+
   if (route) {
     updateData.routeStatus = route.status;
-    updateData.currentRouteSnapshot = route.snapshot as Prisma.InputJsonValue;
+    updateData.currentRouteSnapshot =
+      route.snapshot as Prisma.InputJsonValue;
     updateData.routeProfileId = route.profileId;
     updateData.routeProfileLogicalVersion = route.logicalVersion;
   }
-  await tx.safetyCase.update({ where: { id: current.id }, data: updateData });
 
-  if (nextLifecycle !== current.lifecycle && lifecycleReason) {
+  await tx.safetyCase.update({
+    where: { id: current.id },
+    data: updateData,
+  });
+
+  if (
+    nextLifecycle !== current.lifecycle &&
+    lifecycleReason
+  ) {
     await tx.safetyCaseLifecycleEvent.create({
       data: {
         caseId: current.id,
@@ -544,7 +621,14 @@ async function applyDisposition(
       route,
       now,
     });
-    await auditRoute(tx, args.request, args.actorId, current, route);
+
+    await auditRoute(
+      tx,
+      args.request,
+      args.actorId,
+      current,
+      route,
+    );
   }
 
   await tx.auditEvent.create({
@@ -560,7 +644,9 @@ async function applyDisposition(
         disposition: args.disposition,
         fromLifecycle: current.lifecycle,
         toLifecycle: nextLifecycle,
-        effectiveRestriction: serializeRestriction(targetRestriction),
+        effectiveRestriction: serializeRestriction(
+          targetRestriction,
+        ),
       } as Prisma.InputJsonValue,
     },
   });
@@ -579,7 +665,12 @@ async function resolveExternalHandoff(
     clock: Clock;
   },
 ) {
-  const current = await lockAndLoadAssignedCase(tx, args.actorId, args.caseId);
+  const current = await lockAndLoadAssignedCase(
+    tx,
+    args.actorId,
+    args.caseId,
+  );
+
   if (current.version !== args.expectedVersion) {
     throw new DomainError(
       409,
@@ -587,8 +678,14 @@ async function resolveExternalHandoff(
       'The safety case changed before this update.',
     );
   }
-  assertSafetyTransition(current.lifecycle, 'RESOLVED_EXTERNAL_HANDOFF');
+
+  assertSafetyTransition(
+    current.lifecycle,
+    'RESOLVED_EXTERNAL_HANDOFF',
+  );
+
   const now = args.clock.now();
+
   const targetRestriction: EffectiveRestriction = {
     gateStatus: 'ALLOW_MONITORING',
     allowedSubjectiveInterventions: [],
@@ -596,16 +693,22 @@ async function resolveExternalHandoff(
     goalChangeAllowed: true,
     reassessmentDueAt: null,
   };
+
   const route: ResolvedSafetyRoute = {
     status: 'NOT_REQUIRED',
     snapshot: {
       status: 'NOT_REQUIRED',
       resolvedAt: now.toISOString(),
-      reason: 'EXTERNAL_HANDOFF_RESOLVED_BY_AUTHORIZED_OWNER',
+      policyVersion: SAFETY_ROUTE_POLICY_VERSION,
+      selected: {
+        primary: null,
+        fallback: null,
+      },
     },
     profileId: null,
     logicalVersion: null,
   };
+
   const disposition = await createDisposition(
     tx,
     current,
@@ -615,6 +718,7 @@ async function resolveExternalHandoff(
     targetRestriction,
     now,
   );
+
   const restriction = await appendRestriction(
     tx,
     current,
@@ -623,6 +727,7 @@ async function resolveExternalHandoff(
     disposition.id,
     now,
   );
+
   await tx.safetyCase.update({
     where: { id: current.id },
     data: {
@@ -634,18 +739,28 @@ async function resolveExternalHandoff(
         ? { currentRestrictionVersionId: restriction.id }
         : {}),
       routeStatus: route.status,
-      currentRouteSnapshot: route.snapshot as Prisma.InputJsonValue,
+      currentRouteSnapshot:
+        route.snapshot as Prisma.InputJsonValue,
       routeProfileId: null,
       routeProfileLogicalVersion: null,
     },
   });
+
   await reconcileSafetyRoutingIncident(tx, {
     caseId: current.id,
     requestId: args.request.id,
     route,
     now,
   });
-  await auditRoute(tx, args.request, args.actorId, current, route);
+
+  await auditRoute(
+    tx,
+    args.request,
+    args.actorId,
+    current,
+    route,
+  );
+
   await tx.safetyCaseLifecycleEvent.create({
     data: {
       caseId: current.id,
@@ -657,6 +772,7 @@ async function resolveExternalHandoff(
       occurredAt: now,
     },
   });
+
   await tx.auditEvent.create({
     data: {
       actorId: args.actorId,
@@ -671,6 +787,7 @@ async function resolveExternalHandoff(
       },
     },
   });
+
   return loadProjectedCase(tx, current.id);
 }
 
@@ -689,54 +806,84 @@ export function registerSafetyRoutes(
       config,
       'PATIENT_SAFETY_READ',
     );
+
     requireScope(actor, 'OWN_PATIENT');
-    return loadPatientSafetyProjection(prisma, actor.userId);
+
+    return loadPatientSafetyProjection(
+      prisma,
+      actor.userId,
+    );
   });
 
-  app.get('/api/v1/clinician/safety-cases', async (request) => {
-    const actor = await requirePermission(
-      request,
-      auth,
-      prisma,
-      config,
-      'SAFETY_CASE_READ',
-    );
-    requireScope(actor, 'ASSIGNED_PATIENTS');
-    const cases = await prisma.safetyCase.findMany({
-      where: {
-        resolvedAt: null,
-        profile: {
-          patient: {
-            applicationAccount: { is: { state: 'ACTIVE' } },
-            patientAssignments: {
-              some: { clinicianUserId: actor.userId, endedAt: null },
+  app.get(
+    '/api/v1/clinician/safety-cases',
+    async (request) => {
+      const actor = await requirePermission(
+        request,
+        auth,
+        prisma,
+        config,
+        'SAFETY_CASE_READ',
+      );
+
+      requireScope(actor, 'ASSIGNED_PATIENTS');
+
+      const cases = await prisma.safetyCase.findMany({
+        where: {
+          resolvedAt: null,
+          profile: {
+            patient: {
+              applicationAccount: {
+                is: { state: 'ACTIVE' },
+              },
+              patientAssignments: {
+                some: {
+                  clinicianUserId: actor.userId,
+                  endedAt: null,
+                },
+              },
             },
           },
         },
-      },
-      include: safetyCaseInclude,
-      orderBy: [{ updatedAt: 'desc' }],
-      take: 100,
-    });
-    return SafetyCaseListResponseSchema.parse({
-      items: cases.map(projectSafetyCase),
-    });
-  });
+        include: safetyCaseInclude,
+        orderBy: [{ updatedAt: 'desc' }],
+        take: 100,
+      });
 
-  app.get('/api/v1/clinician/safety-cases/:caseId', async (request) => {
-    const actor = await requirePermission(
-      request,
-      auth,
-      prisma,
-      config,
-      'SAFETY_CASE_READ',
-    );
-    requireScope(actor, 'ASSIGNED_PATIENTS');
-    const { caseId } = CaseParamsSchema.parse(request.params);
-    return SafetyCaseProjectionSchema.parse(
-      projectSafetyCase(await assignedCase(prisma, actor.userId, caseId)),
-    );
-  });
+      return SafetyCaseListResponseSchema.parse({
+        items: cases.map(projectSafetyCase),
+      });
+    },
+  );
+
+  app.get(
+    '/api/v1/clinician/safety-cases/:caseId',
+    async (request) => {
+      const actor = await requirePermission(
+        request,
+        auth,
+        prisma,
+        config,
+        'SAFETY_CASE_READ',
+      );
+
+      requireScope(actor, 'ASSIGNED_PATIENTS');
+
+      const { caseId } = CaseParamsSchema.parse(
+        request.params,
+      );
+
+      return SafetyCaseProjectionSchema.parse(
+        projectSafetyCase(
+          await assignedCase(
+            prisma,
+            actor.userId,
+            caseId,
+          ),
+        ),
+      );
+    },
+  );
 
   const lifecycleActions = {
     acknowledge: {
@@ -753,10 +900,16 @@ export function registerSafetyRoutes(
     },
   } as const;
 
-  for (const [endpoint, policy] of Object.entries(lifecycleActions) as Array<
-    [keyof typeof lifecycleActions, (typeof lifecycleActions)[keyof typeof lifecycleActions]]
+  for (const [endpoint, policy] of Object.entries(
+    lifecycleActions,
+  ) as Array<
+    [
+      keyof typeof lifecycleActions,
+      (typeof lifecycleActions)[keyof typeof lifecycleActions],
+    ]
   >) {
     const { toState, action } = policy;
+
     app.post(
       `/api/v1/clinician/safety-cases/:caseId/${endpoint}`,
       async (request) => {
@@ -768,10 +921,22 @@ export function registerSafetyRoutes(
           'SAFETY_CASE_ACKNOWLEDGE',
           { fresh: true },
         );
+
         requireScope(actor, 'ASSIGNED_PATIENTS');
-        const { caseId } = CaseParamsSchema.parse(request.params);
-        const body = SafetyCaseMutationRequestSchema.parse(request.body);
-        const key = requireIdempotencyKey(request.headers['idempotency-key']);
+
+        const { caseId } = CaseParamsSchema.parse(
+          request.params,
+        );
+
+        const body =
+          SafetyCaseMutationRequestSchema.parse(
+            request.body,
+          );
+
+        const key = requireIdempotencyKey(
+          request.headers['idempotency-key'],
+        );
+
         const result = await executeIdempotently(
           prisma,
           actor.userId,
@@ -779,36 +944,56 @@ export function registerSafetyRoutes(
           key,
           { caseId, ...body },
           async (tx) => {
-            const current = await lockAndLoadAssignedCase(
-              tx,
-              actor.userId,
-              caseId,
-            );
-            if (current.version !== body.expectedVersion) {
+            const current =
+              await lockAndLoadAssignedCase(
+                tx,
+                actor.userId,
+                caseId,
+              );
+
+            if (
+              current.version !== body.expectedVersion
+            ) {
               throw new DomainError(
                 409,
                 'VERSION_CONFLICT',
                 'The safety case changed before this update.',
               );
             }
+
             const now = clock.now();
             let transitionFrom = current.lifecycle;
-            if (endpoint === 'acknowledge' && transitionFrom === 'DETECTED') {
-              assertSafetyTransition('DETECTED', 'HANDOFF_INITIATED');
+
+            if (
+              endpoint === 'acknowledge' &&
+              transitionFrom === 'DETECTED'
+            ) {
+              assertSafetyTransition(
+                'DETECTED',
+                'HANDOFF_INITIATED',
+              );
+
               await tx.safetyCaseLifecycleEvent.create({
                 data: {
                   caseId,
                   fromState: 'DETECTED',
                   toState: 'HANDOFF_INITIATED',
                   actorId: actor.userId,
-                  reason: 'Recovered legacy detected case into the canonical handoff path.',
+                  reason:
+                    'Recovered legacy detected case into the canonical handoff path.',
                   requestId: request.id,
                   occurredAt: now,
                 },
               });
+
               transitionFrom = 'HANDOFF_INITIATED';
             }
-            assertSafetyTransition(transitionFrom, toState);
+
+            assertSafetyTransition(
+              transitionFrom,
+              toState,
+            );
+
             await tx.safetyCase.update({
               where: { id: caseId },
               data: {
@@ -816,6 +1001,7 @@ export function registerSafetyRoutes(
                 version: { increment: 1 },
               },
             });
+
             await tx.safetyCaseLifecycleEvent.create({
               data: {
                 caseId,
@@ -827,6 +1013,7 @@ export function registerSafetyRoutes(
                 occurredAt: now,
               },
             });
+
             await tx.auditEvent.create({
               data: {
                 actorId: actor.userId,
@@ -836,12 +1023,18 @@ export function registerSafetyRoutes(
                 entityId: caseId,
                 patientId: current.patientId,
                 requestId: request.id,
-                metadata: { fromState: current.lifecycle, transitionFrom, toState },
+                metadata: {
+                  fromState: current.lifecycle,
+                  transitionFrom,
+                  toState,
+                },
               },
             });
+
             return loadProjectedCase(tx, caseId);
           },
         );
+
         return result.value;
       },
     );
@@ -858,10 +1051,22 @@ export function registerSafetyRoutes(
         'SAFETY_CASE_DISPOSITION',
         { fresh: true },
       );
+
       requireScope(actor, 'ASSIGNED_PATIENTS');
-      const { caseId } = CaseParamsSchema.parse(request.params);
-      const body = SafetyDispositionRequestSchema.parse(request.body);
-      const key = requireIdempotencyKey(request.headers['idempotency-key']);
+
+      const { caseId } = CaseParamsSchema.parse(
+        request.params,
+      );
+
+      const body =
+        SafetyDispositionRequestSchema.parse(
+          request.body,
+        );
+
+      const key = requireIdempotencyKey(
+        request.headers['idempotency-key'],
+      );
+
       const result = await executeIdempotently(
         prisma,
         actor.userId,
@@ -876,11 +1081,14 @@ export function registerSafetyRoutes(
             expectedVersion: body.expectedVersion,
             reason: body.reason,
             disposition: body.disposition,
-            ...(body.restrictions ? { restrictions: body.restrictions } : {}),
+            ...(body.restrictions
+              ? { restrictions: body.restrictions }
+              : {}),
             config,
             clock,
           }),
       );
+
       return result.value;
     },
   );
@@ -896,10 +1104,22 @@ export function registerSafetyRoutes(
         'SAFETY_CASE_DISPOSITION',
         { fresh: true },
       );
+
       requireScope(actor, 'ASSIGNED_PATIENTS');
-      const { caseId } = CaseParamsSchema.parse(request.params);
-      const body = SafetyCaseMutationRequestSchema.parse(request.body);
-      const key = requireIdempotencyKey(request.headers['idempotency-key']);
+
+      const { caseId } = CaseParamsSchema.parse(
+        request.params,
+      );
+
+      const body =
+        SafetyCaseMutationRequestSchema.parse(
+          request.body,
+        );
+
+      const key = requireIdempotencyKey(
+        request.headers['idempotency-key'],
+      );
+
       const result = await executeIdempotently(
         prisma,
         actor.userId,
@@ -913,11 +1133,13 @@ export function registerSafetyRoutes(
             caseId,
             expectedVersion: body.expectedVersion,
             reason: body.reason,
-            disposition: 'EMERGENCY_EXTERNAL_MANAGEMENT',
+            disposition:
+              'EMERGENCY_EXTERNAL_MANAGEMENT',
             config,
             clock,
           }),
       );
+
       return result.value;
     },
   );
@@ -933,10 +1155,22 @@ export function registerSafetyRoutes(
         'SAFETY_CASE_DISPOSITION',
         { fresh: true },
       );
+
       requireScope(actor, 'ASSIGNED_PATIENTS');
-      const { caseId } = CaseParamsSchema.parse(request.params);
-      const body = SafetyCaseMutationRequestSchema.parse(request.body);
-      const key = requireIdempotencyKey(request.headers['idempotency-key']);
+
+      const { caseId } = CaseParamsSchema.parse(
+        request.params,
+      );
+
+      const body =
+        SafetyCaseMutationRequestSchema.parse(
+          request.body,
+        );
+
+      const key = requireIdempotencyKey(
+        request.headers['idempotency-key'],
+      );
+
       const result = await executeIdempotently(
         prisma,
         actor.userId,
@@ -953,78 +1187,126 @@ export function registerSafetyRoutes(
             clock,
           }),
       );
+
       return result.value;
     },
   );
 
-  app.get('/api/v1/admin/safety-cases', async (request) => {
-    const actor = await requirePermission(
-      request,
-      auth,
-      prisma,
-      config,
-      'SAFETY_CASE_READ',
-    );
-    requireScope(actor, 'ADMIN_OPERATIONAL');
-    const cases = await prisma.safetyCase.findMany({
-      include: safetyCaseInclude,
-      orderBy: [{ updatedAt: 'desc' }],
-      take: 100,
-    });
-    const caseIds = cases.map((item) => item.id);
-    const incidents = caseIds.length
-      ? await prisma.operationalIncident.findMany({
+  app.get(
+    '/api/v1/admin/safety-cases',
+    async (request) => {
+      const actor = await requirePermission(
+        request,
+        auth,
+        prisma,
+        config,
+        'SAFETY_CASE_READ',
+      );
+
+      requireScope(actor, 'ADMIN_OPERATIONAL');
+
+      const cases = await prisma.safetyCase.findMany({
+        include: safetyCaseInclude,
+        orderBy: [{ updatedAt: 'desc' }],
+        take: 100,
+      });
+
+      const caseIds = cases.map((item) => item.id);
+
+      const incidents = caseIds.length
+        ? await prisma.operationalIncident.findMany({
+            where: {
+              incidentType: 'SAFETY_ROUTING',
+              provenanceReference: {
+                in: caseIds,
+              },
+            },
+            orderBy: {
+              createdAt: 'desc',
+            },
+          })
+        : [];
+
+      const byCase = new Map<
+        string,
+        typeof incidents
+      >();
+
+      for (const incident of incidents) {
+        if (!incident.provenanceReference) continue;
+
+        const current =
+          byCase.get(
+            incident.provenanceReference,
+          ) ?? [];
+
+        current.push(incident);
+
+        byCase.set(
+          incident.provenanceReference,
+          current,
+        );
+      }
+
+      return AdminSafetyCaseListResponseSchema.parse({
+        items: cases.map((item) =>
+          projectAdminSafetyCase(
+            item,
+            byCase.get(item.id) ?? [],
+          ),
+        ),
+      });
+    },
+  );
+
+  app.get(
+    '/api/v1/admin/safety-cases/:caseId',
+    async (request) => {
+      const actor = await requirePermission(
+        request,
+        auth,
+        prisma,
+        config,
+        'SAFETY_CASE_READ',
+      );
+
+      requireScope(actor, 'ADMIN_OPERATIONAL');
+
+      const { caseId } = CaseParamsSchema.parse(
+        request.params,
+      );
+
+      const safetyCase =
+        await prisma.safetyCase.findUnique({
+          where: { id: caseId },
+          include: safetyCaseInclude,
+        });
+
+      if (!safetyCase) {
+        throw new DomainError(
+          404,
+          'NOT_FOUND',
+          'The requested resource was not found.',
+        );
+      }
+
+      const incidents =
+        await prisma.operationalIncident.findMany({
           where: {
             incidentType: 'SAFETY_ROUTING',
-            provenanceReference: { in: caseIds },
+            provenanceReference: caseId,
           },
-          orderBy: { createdAt: 'desc' },
-        })
-      : [];
-    const byCase = new Map<string, typeof incidents>();
-    for (const incident of incidents) {
-      if (!incident.provenanceReference) continue;
-      const current = byCase.get(incident.provenanceReference) ?? [];
-      current.push(incident);
-      byCase.set(incident.provenanceReference, current);
-    }
-    return AdminSafetyCaseListResponseSchema.parse({
-      items: cases.map((item) =>
-        projectAdminSafetyCase(item, byCase.get(item.id) ?? []),
-      ),
-    });
-  });
+          orderBy: {
+            createdAt: 'desc',
+          },
+        });
 
-  app.get('/api/v1/admin/safety-cases/:caseId', async (request) => {
-    const actor = await requirePermission(
-      request,
-      auth,
-      prisma,
-      config,
-      'SAFETY_CASE_READ',
-    );
-    requireScope(actor, 'ADMIN_OPERATIONAL');
-    const { caseId } = CaseParamsSchema.parse(request.params);
-    const safetyCase = await prisma.safetyCase.findUnique({
-      where: { id: caseId },
-      include: safetyCaseInclude,
-    });
-    if (!safetyCase) {
-      throw new DomainError(
-        404,
-        'NOT_FOUND',
-        'The requested resource was not found.',
+      return AdminSafetyCaseProjectionSchema.parse(
+        projectAdminSafetyCase(
+          safetyCase,
+          incidents,
+        ),
       );
-    }
-    const incidents = await prisma.operationalIncident.findMany({
-      where: {
-        incidentType: 'SAFETY_ROUTING',
-        provenanceReference: caseId,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    return AdminSafetyCaseProjectionSchema.parse(
-      projectAdminSafetyCase(safetyCase, incidents),
-    );
-  });
+    },
+  );
 }

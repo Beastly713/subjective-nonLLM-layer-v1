@@ -21,9 +21,15 @@ export function selectSafetyRouteTargets(
   if (severity === 'S1_URGENT') {
     return domain === 'SUICIDE_OR_SELF_HARM'
       ? { primary: 'CRISIS_SERVICE', fallback: 'ON_CALL_CLINICIAN_QUEUE' }
-      : { primary: 'URGENT_MEDICAL_SERVICE', fallback: 'ON_CALL_CLINICIAN_QUEUE' };
+      : {
+          primary: 'URGENT_MEDICAL_SERVICE',
+          fallback: 'ON_CALL_CLINICIAN_QUEUE',
+        };
   }
   return domain === 'SUICIDE_OR_SELF_HARM'
     ? { primary: 'ON_CALL_CLINICIAN_QUEUE', fallback: 'CRISIS_SERVICE' }
-    : { primary: 'ON_CALL_CLINICIAN_QUEUE', fallback: 'URGENT_MEDICAL_SERVICE' };
+    : {
+        primary: 'ON_CALL_CLINICIAN_QUEUE',
+        fallback: 'URGENT_MEDICAL_SERVICE',
+      };
 }

@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  SafetyInputSchema,
-  type SafetyInput,
-} from '@aud-subjective/contracts';
+import { SafetyInputSchema, type SafetyInput } from '@aud-subjective/contracts';
 import {
   evaluateSafety,
   type SafetyContext,
@@ -78,10 +75,7 @@ describe('deterministic safety evaluator', () => {
       'HALLUCINATIONS_WITH_DISORIENTATION',
       { hallucinations: true, hallucinationDisorientation: true },
     ],
-    [
-      'DIFFICULTY_REMAINING_CONSCIOUS',
-      { difficultyRemainingConscious: true },
-    ],
+    ['DIFFICULTY_REMAINING_CONSCIOUS', { difficultyRemainingConscious: true }],
     ['BREATHING_DIFFICULTY', { breathingDifficulty: true }],
     [
       'REPEATED_VOMITING_WITH_SEVERE_ILLNESS',
@@ -113,7 +107,10 @@ describe('deterministic safety evaluator', () => {
     );
 
     const urgent = evaluateSafety(
-      recent({ hallucinations: true, currentWithdrawalSymptoms: ['HALLUCINATIONS'] }),
+      recent({
+        hallucinations: true,
+        currentWithdrawalSymptoms: ['HALLUCINATIONS'],
+      }),
       context,
     );
     expect(urgent.severity).toBe('S1_URGENT');
@@ -220,12 +217,15 @@ describe('deterministic safety evaluator', () => {
       input({ previousWithdrawalSeizure: 'YES' }),
       context,
     ],
-  ] as const)('routes %s as S2/ALLOW_WITH_HANDOFF', (reason, safetyInput, safetyContext) => {
-    const result = evaluateSafety(safetyInput, safetyContext);
-    expect(result.severity).toBe('S2_PRIORITY');
-    expect(result.gateStatus).toBe('ALLOW_WITH_HANDOFF');
-    expect(result.reasonCodes).toContain(reason);
-  });
+  ] as const)(
+    'routes %s as S2/ALLOW_WITH_HANDOFF',
+    (reason, safetyInput, safetyContext) => {
+      const result = evaluateSafety(safetyInput, safetyContext);
+      expect(result.severity).toBe('S2_PRIORITY');
+      expect(result.gateStatus).toBe('ALLOW_WITH_HANDOFF');
+      expect(result.reasonCodes).toContain(reason);
+    },
+  );
 
   it.each([
     [
@@ -239,13 +239,16 @@ describe('deterministic safety evaluator', () => {
         seriousMedicalContexts: ['CLINICIAN_DIRECTED_SAFETY_REVIEW'],
       }),
     ],
-  ] as const)('routes %s as routine clinician context', (reason, safetyInput) => {
-    const result = evaluateSafety(safetyInput, context);
-    expect(result.severity).toBe('S3_ROUTINE');
-    expect(result.gateStatus).toBe('ALLOW_MONITORING');
-    expect(result.clinicianContext).toBe(true);
-    expect(result.reasonCodes).toContain(reason);
-  });
+  ] as const)(
+    'routes %s as routine clinician context',
+    (reason, safetyInput) => {
+      const result = evaluateSafety(safetyInput, context);
+      expect(result.severity).toBe('S3_ROUTINE');
+      expect(result.gateStatus).toBe('ALLOW_MONITORING');
+      expect(result.clinicianContext).toBe(true);
+      expect(result.reasonCodes).toContain(reason);
+    },
+  );
 
   it('returns S_NONE with ordinary monitoring when nothing triggers', () => {
     const result = evaluateSafety(input(), context);

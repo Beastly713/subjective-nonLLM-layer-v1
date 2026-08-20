@@ -88,9 +88,7 @@ export function registerHealthRoutes(
 
     let regionalRoutingSchema: 'ready' | 'not_ready' = 'ready';
     let regionalRoutingConfiguration:
-      | 'active_present'
-      | 'none_active'
-      | 'unknown' = 'none_active';
+      'active_present' | 'none_active' | 'unknown' = 'none_active';
     try {
       const active = await prisma.regionalRoutingProfileVersion.findFirst({
         where: { lifecycle: 'ACTIVE' },
@@ -161,7 +159,9 @@ export function registerHealthRoutes(
           ? 'configured'
           : 'unconfigured',
         onboardingInstrumentConfiguration:
-          AUDIT_C_PROVENANCE.configurationAvailable ? 'available' : 'unavailable',
+          AUDIT_C_PROVENANCE.configurationAvailable
+            ? 'available'
+            : 'unavailable',
         safetyInstrumentConfiguration:
           CSSRS_RECENT_PROVENANCE.configurationAvailable
             ? 'available'

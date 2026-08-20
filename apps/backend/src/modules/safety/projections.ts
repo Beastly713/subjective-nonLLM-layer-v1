@@ -37,10 +37,7 @@ export type SafetyProjectionDb = Pick<
   'safetyCase' | 'safetyEvaluationResult'
 >;
 
-const GATE_RANK: Record<
-  Exclude<SafetyGateStatus, 'NOT_ASSESSED'>,
-  number
-> = {
+const GATE_RANK: Record<Exclude<SafetyGateStatus, 'NOT_ASSESSED'>, number> = {
   BLOCK_AND_HANDOFF: 0,
   ALLOW_WITH_HANDOFF: 1,
   ALLOW_MONITORING: 2,
@@ -63,7 +60,8 @@ export function canonicalStoredInterventions(
   const result: SubjectiveInterventionClass[] = [];
   for (const entry of value) {
     const parsed = SubjectiveInterventionClassSchema.safeParse(entry);
-    if (parsed.success && !result.includes(parsed.data)) result.push(parsed.data);
+    if (parsed.success && !result.includes(parsed.data))
+      result.push(parsed.data);
   }
   return result;
 }
@@ -99,7 +97,9 @@ function effectiveRestriction(item: SafetyCaseWithProjection) {
     gateStatus,
     allowedSubjectiveInterventions: [] as SubjectiveInterventionClass[],
     monitoringPromptPolicy:
-      gateStatus === 'BLOCK_AND_HANDOFF' ? ('PAUSE' as const) : ('CONTINUE' as const),
+      gateStatus === 'BLOCK_AND_HANDOFF'
+        ? ('PAUSE' as const)
+        : ('CONTINUE' as const),
     goalChangeAllowed: gateStatus === 'ALLOW_MONITORING',
     reassessmentDueAt: null,
     createdAt: null,
@@ -112,7 +112,9 @@ function reasonCodesForCase(item: SafetyCaseWithProjection) {
   return item.evaluation.reasonCodes.flatMap((entry) => {
     const parsed = SafetyReasonCodeSchema.safeParse(entry);
     if (!parsed.success) return [];
-    return REASON_POLICY[parsed.data].domain === item.domain ? [parsed.data] : [];
+    return REASON_POLICY[parsed.data].domain === item.domain
+      ? [parsed.data]
+      : [];
   });
 }
 
@@ -163,10 +165,14 @@ function targetToPatientAction(
 ) {
   if (!target || typeof target !== 'object') return null;
   const record = target as Record<string, unknown>;
-  if (typeof record.label !== 'string' || record.label.length === 0) return null;
+  if (typeof record.label !== 'string' || record.label.length === 0)
+    return null;
   if (typeof record.representation !== 'string') return null;
 
-  if (record.representation === 'TELEPHONE' && typeof record.targetValue === 'string') {
+  if (
+    record.representation === 'TELEPHONE' &&
+    typeof record.targetValue === 'string'
+  ) {
     return {
       label: record.label,
       actionType: 'CALL' as const,
@@ -174,7 +180,10 @@ function targetToPatientAction(
       priority,
     };
   }
-  if (record.representation === 'DEEP_LINK' && typeof record.targetValue === 'string') {
+  if (
+    record.representation === 'DEEP_LINK' &&
+    typeof record.targetValue === 'string'
+  ) {
     return {
       label: record.label,
       actionType: 'OPEN_LINK' as const,
@@ -240,19 +249,22 @@ export function projectPatientSafety(
 
   const restrictions = cases.map(effectiveRestriction);
   const allowedSubjectiveInterventions = restrictions.length
-    ? restrictions.slice(1).reduce<SubjectiveInterventionClass[]>(
-        (allowed, item) =>
-          allowed.filter((entry) =>
-            item.allowedSubjectiveInterventions.includes(entry),
-          ),
-        [...restrictions[0]!.allowedSubjectiveInterventions],
-      )
+    ? restrictions
+        .slice(1)
+        .reduce<SubjectiveInterventionClass[]>(
+          (allowed, item) =>
+            allowed.filter((entry) =>
+              item.allowedSubjectiveInterventions.includes(entry),
+            ),
+          [...restrictions[0]!.allowedSubjectiveInterventions],
+        )
     : [];
 
-  const reassessmentDueAt = restrictions
-    .map((item) => item.reassessmentDueAt)
-    .filter((value): value is string => value !== null)
-    .sort()[0] ?? null;
+  const reassessmentDueAt =
+    restrictions
+      .map((item) => item.reassessmentDueAt)
+      .filter((value): value is string => value !== null)
+      .sort()[0] ?? null;
 
   const controllingCases = controllingGate
     ? cases.filter(
@@ -276,7 +288,8 @@ export function projectPatientSafety(
   const routeAvailability =
     routeStatuses.length === 0
       ? ('NOT_REQUIRED' as const)
-      : routeStatuses.includes('AVAILABLE') && routeStatuses.includes('UNAVAILABLE')
+      : routeStatuses.includes('AVAILABLE') &&
+          routeStatuses.includes('UNAVAILABLE')
         ? ('PARTIAL' as const)
         : routeStatuses.includes('AVAILABLE')
           ? ('AVAILABLE' as const)
@@ -298,9 +311,7 @@ export function projectPatientSafety(
     safetyState,
     requiresSafetyShell: blocked,
     handoffStatus:
-      blocked || restricted
-        ? patientHandoffStatus(controllingCases)
-        : 'NONE',
+      blocked || restricted ? patientHandoffStatus(controllingCases) : 'NONE',
     allowedSubjectiveInterventions,
     monitoringPromptPolicy: restrictions.some(
       (item) => item.monitoringPromptPolicy === 'PAUSE',

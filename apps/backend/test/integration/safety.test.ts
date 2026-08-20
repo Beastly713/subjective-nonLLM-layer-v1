@@ -1,12 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import {
-  afterAll,
-  beforeAll,
-  describe,
-  expect,
-  it,
-} from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   PatientSafetyProjectionSchema,
   SafetyCaseProjectionSchema,
@@ -146,10 +140,7 @@ async function createIdentity(key: FixtureKey, name: string) {
   });
 }
 
-async function signIn(
-  targetApp: typeof app,
-  key: FixtureKey,
-) {
+async function signIn(targetApp: typeof app, key: FixtureKey) {
   const response = await targetApp.inject({
     method: 'POST',
     url: '/api/auth/sign-in/email',
@@ -225,6 +216,112 @@ async function clinicianMutation(
   });
 }
 
+type RoutingFixture = {
+  id: string;
+  rowVersion: number;
+};
+
+const safetyRoutingTargets = [
+  {
+    kind: 'EMERGENCY_SERVICE',
+    representation: 'TELEPHONE',
+    targetValue: '+15550000001',
+    label: 'Fixture emergency service',
+  },
+  {
+    kind: 'CRISIS_SERVICE',
+    representation: 'DEEP_LINK',
+    targetValue: 'https://example.invalid/crisis',
+    label: 'Fixture crisis service',
+  },
+  {
+    kind: 'URGENT_MEDICAL_SERVICE',
+    representation: 'EXTERNAL_SERVICE',
+    targetValue: `urn:test:urgent:${marker}`,
+    label: 'Fixture urgent medical service',
+  },
+  {
+    kind: 'ON_CALL_CLINICIAN_QUEUE',
+    representation: 'INTERNAL_QUEUE',
+    targetValue: `queue:safety-${marker.toLowerCase()}`,
+    label: 'Fixture on-call clinician queue',
+  },
+] as const;
+
+async function createActiveSafetyRoutingFixture() {
+  const draftResponse = await app.inject({
+    method: 'POST',
+    url: '/api/v1/admin/configuration/regional-routing/drafts',
+    headers: {
+      cookie: cookies.admin,
+      'idempotency-key': randomUUID(),
+    },
+    payload: {
+      countryCode: 'XZ',
+      regionCode: routeRegion,
+      reason: 'Safety integration fixture',
+    },
+  });
+
+  expect(draftResponse.statusCode).toBe(201);
+
+  let profile = draftResponse.json<RoutingFixture>();
+
+  const editResponse = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/configuration/regional-routing/${profile.id}/edit`,
+    headers: {
+      cookie: cookies.admin,
+      'idempotency-key': randomUUID(),
+    },
+    payload: {
+      expectedVersion: profile.rowVersion,
+      targets: safetyRoutingTargets,
+      reason: 'Configure safety integration routing targets',
+    },
+  });
+
+  expect(editResponse.statusCode).toBe(200);
+
+  profile = editResponse.json<RoutingFixture>();
+
+  for (const target of safetyRoutingTargets) {
+    const evidenceResponse = await app.inject({
+      method: 'POST',
+      url: `/api/v1/admin/configuration/regional-routing/${profile.id}/test-evidence`,
+      headers: {
+        cookie: cookies.admin,
+        'idempotency-key': randomUUID(),
+      },
+      payload: {
+        expectedVersion: profile.rowVersion,
+        targetKind: target.kind,
+        result: 'PASS',
+        provenance: `Safety integration fixture verified ${target.kind}`,
+      },
+    });
+
+    expect(evidenceResponse.statusCode).toBe(200);
+
+    profile = evidenceResponse.json<RoutingFixture>();
+  }
+
+  const activateResponse = await app.inject({
+    method: 'POST',
+    url: `/api/v1/admin/configuration/regional-routing/${profile.id}/activate`,
+    headers: {
+      cookie: cookies.admin,
+      'idempotency-key': randomUUID(),
+    },
+    payload: {
+      expectedVersion: profile.rowVersion,
+      reason: 'Activate safety integration routing fixture',
+    },
+  });
+
+  expect(activateResponse.statusCode).toBe(200);
+}
+
 beforeAll(async () => {
   await Promise.all([
     createIdentity('admin', 'Safety Administrator'),
@@ -297,59 +394,22 @@ beforeAll(async () => {
     })),
   });
 
-  await prisma.regionalRoutingProfileVersion.create({
-    data: {
-      countryCode: 'XZ',
-      regionCode: routeRegion,
-      regionKey: `XZ:${routeRegion}`,
-      logicalVersion: 1,
-      lifecycle: 'ACTIVE',
-      effectiveAt: new Date('2026-08-19T00:00:00.000Z'),
-      createdByUserId: ids.admin,
-      provenance: 'Safety integration fixture',
-      targets: {
-        create: [
-          {
-            kind: 'EMERGENCY_SERVICE',
-            representation: 'TELEPHONE',
-            targetValue: '+15550000001',
-            label: 'Fixture emergency service',
-          },
-          {
-            kind: 'CRISIS_SERVICE',
-            representation: 'DEEP_LINK',
-            targetValue: 'https://example.invalid/crisis',
-            label: 'Fixture crisis service',
-          },
-          {
-            kind: 'URGENT_MEDICAL_SERVICE',
-            representation: 'EXTERNAL_SERVICE',
-            targetValue: `urn:test:urgent:${marker}`,
-            label: 'Fixture urgent medical service',
-          },
-          {
-            kind: 'ON_CALL_CLINICIAN_QUEUE',
-            representation: 'INTERNAL_QUEUE',
-            targetValue: `queue:safety-${marker.toLowerCase()}`,
-            label: 'Fixture on-call clinician queue',
-          },
-        ],
-      },
-    },
-  });
+await app.ready();
+await noRouteApp.ready();
 
-  await app.ready();
-  await noRouteApp.ready();
-  cookies.admin = await signIn(app, 'admin');
-  cookies.clinician = await signIn(app, 'clinician');
-  cookies.emergency = await signIn(app, 'emergency');
-  cookies.priority = await signIn(app, 'priority');
-  cookies.safe = await signIn(app, 'safe');
-  cookies.unassigned = await signIn(noRouteApp, 'unassigned');
+cookies.admin = await signIn(app, 'admin');
 
-  await saveAndSubmitOnboarding(app, 'priority');
-  await saveAndSubmitOnboarding(app, 'safe');
-  await saveAndSubmitOnboarding(noRouteApp, 'unassigned');
+await createActiveSafetyRoutingFixture();
+
+cookies.clinician = await signIn(app, 'clinician');
+cookies.emergency = await signIn(app, 'emergency');
+cookies.priority = await signIn(app, 'priority');
+cookies.safe = await signIn(app, 'safe');
+cookies.unassigned = await signIn(noRouteApp, 'unassigned');
+
+await saveAndSubmitOnboarding(app, 'priority');
+await saveAndSubmitOnboarding(app, 'safe');
+await saveAndSubmitOnboarding(noRouteApp, 'unassigned');
 }, 30_000);
 
 afterAll(async () => {
@@ -368,7 +428,10 @@ describe.sequential('onboarding safety and controlled handoff', () => {
       headers: { cookie: cookies.emergency },
     });
     expect(initial.statusCode).toBe(200);
-    expect(initial.json()).toMatchObject({ version: 0, currentStep: 'ACCOUNT' });
+    expect(initial.json()).toMatchObject({
+      version: 0,
+      currentStep: 'ACCOUNT',
+    });
 
     const incompleteDraft = {
       ...completeDraft,
@@ -442,7 +505,7 @@ describe.sequential('onboarding safety and controlled handoff', () => {
       payload: { expectedVersion: 2 },
     });
     expect(submitA.statusCode).toBe(200);
-    expect(submitB.body).toBe(submitA.body);
+    expect(submitB.json()).toEqual(submitA.json());
     expect(
       await prisma.onboardingRevision.count({
         where: { patientId: ids.emergency },
@@ -476,9 +539,14 @@ describe.sequential('onboarding safety and controlled handoff', () => {
     expect(patientJson).not.toContain('CURRENT_SEIZURE');
     expect(patientJson).not.toContain('profileId');
 
-    const replay = await safetyEvaluation(app, 'emergency', emergencyInput, key);
+    const replay = await safetyEvaluation(
+      app,
+      'emergency',
+      emergencyInput,
+      key,
+    );
     expect(replay.statusCode).toBe(200);
-    expect(replay.body).toBe(first.body);
+    expect(replay.json()).toEqual(first.json());
     expect(
       await prisma.safetyInputRevision.count({
         where: { patientId: ids.emergency },
@@ -501,7 +569,11 @@ describe.sequential('onboarding safety and controlled handoff', () => {
     expect(active.gateStatus).toBe('BLOCK_AND_HANDOFF');
     expect(active.currentRestrictionVersionId).not.toBeNull();
 
-    const selfReportedSafe = await safetyEvaluation(app, 'emergency', safeInput);
+    const selfReportedSafe = await safetyEvaluation(
+      app,
+      'emergency',
+      safeInput,
+    );
     expect(selfReportedSafe.statusCode).toBe(200);
     expect(
       SafetyEvaluationResponseSchema.parse(selfReportedSafe.json()).safety
@@ -524,7 +596,8 @@ describe.sequential('onboarding safety and controlled handoff', () => {
       'resolve-external-handoff',
       {
         expectedVersion: active.version,
-        reason: 'External emergency handoff completed and owner cleared monitoring.',
+        reason:
+          'External emergency handoff completed and owner cleared monitoring.',
       },
       resolveKey,
     );
@@ -539,9 +612,9 @@ describe.sequential('onboarding safety and controlled handoff', () => {
       url: '/api/v1/patient/safety',
       headers: { cookie: cookies.emergency },
     });
-    expect(PatientSafetyProjectionSchema.parse(afterResolution.json()).safetyState).toBe(
-      'MONITORING_AVAILABLE',
-    );
+    expect(
+      PatientSafetyProjectionSchema.parse(afterResolution.json()).safetyState,
+    ).toBe('MONITORING_AVAILABLE');
 
     const recurrence = await safetyEvaluation(app, 'emergency', emergencyInput);
     expect(recurrence.statusCode).toBe(200);
@@ -574,8 +647,13 @@ describe.sequential('onboarding safety and controlled handoff', () => {
       where: { patientId: ids.safe },
       orderBy: { revision: 'desc' },
     });
-    const contextSnapshot = evaluation.contextSnapshot as Record<string, unknown>;
-    expect(contextSnapshot.evaluatedAt).toBe(evaluation.evaluatedAt.toISOString());
+    const contextSnapshot = evaluation.contextSnapshot as Record<
+      string,
+      unknown
+    >;
+    expect(contextSnapshot.evaluatedAt).toBe(
+      evaluation.evaluatedAt.toISOString(),
+    );
     expect(contextSnapshot.ageOver65).toBe('UNSURE');
     expect(contextSnapshot.canonicalProlongedHeavyRegularUse).toEqual({
       state: 'UNKNOWN',
@@ -636,7 +714,9 @@ describe.sequential('onboarding safety and controlled handoff', () => {
     const restrictedBody = SafetyCaseProjectionSchema.parse(restricted.json());
     expect(restrictedBody.lifecycle).toBe('PLAN_ESTABLISHED');
     expect(restrictedBody.gateStatus).toBe('ALLOW_WITH_HANDOFF');
-    expect(restrictedBody.currentRestriction?.monitoringPromptPolicy).toBe('PAUSE');
+    expect(restrictedBody.currentRestriction?.monitoringPromptPolicy).toBe(
+      'PAUSE',
+    );
 
     current = await prisma.safetyCase.findUniqueOrThrow({
       where: { id: current.id },
@@ -669,7 +749,7 @@ describe.sequential('onboarding safety and controlled handoff', () => {
       },
       finalKey,
     );
-    expect(replay.body).toBe(cleared.body);
+    expect(replay.json()).toEqual(cleared.json());
 
     const stored = await prisma.safetyCase.findUniqueOrThrow({
       where: { id: current.id },
@@ -731,9 +811,11 @@ describe.sequential('onboarding safety and controlled handoff', () => {
     });
     expect(clinicianList.statusCode).toBe(200);
     expect(
-      clinicianList.json().items.some(
-        (item: { patientId: string }) => item.patientId === ids.unassigned,
-      ),
+      clinicianList
+        .json()
+        .items.some(
+          (item: { patientId: string }) => item.patientId === ids.unassigned,
+        ),
     ).toBe(false);
     const detail = await app.inject({
       method: 'GET',

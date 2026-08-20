@@ -75,8 +75,10 @@ const AppConfigSchema = z
     appBaseUrl: environment.APP_BASE_URL,
     resendApiKey: environment.RESEND_API_KEY,
     emailFrom: environment.EMAIL_FROM,
-    safetyRoutingCountryCode: environment.SAFETY_ROUTING_COUNTRY_CODE?.toUpperCase(),
-    safetyRoutingRegionCode: environment.SAFETY_ROUTING_REGION_CODE?.toUpperCase(),
+    safetyRoutingCountryCode:
+      environment.SAFETY_ROUTING_COUNTRY_CODE?.toUpperCase(),
+    safetyRoutingRegionCode:
+      environment.SAFETY_ROUTING_REGION_CODE?.toUpperCase(),
     authEmailDeliveryAvailable: Boolean(
       environment.RESEND_API_KEY && environment.EMAIL_FROM,
     ),

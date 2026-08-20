@@ -1,4 +1,4 @@
-import { Stethoscope, UsersRound } from 'lucide-react';
+import { ShieldAlert, Stethoscope, UsersRound } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router';
 
@@ -16,13 +16,22 @@ export function ClinicianShell({ children }: { children: ReactNode }) {
               <p className="m-0 font-semibold">Assigned care directory</p>
             </div>
           </div>
-          <NavLink
-            className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-inverse-foreground"
-            to="/clinician/patients"
-          >
-            <UsersRound className="size-4" />
-            Patients
-          </NavLink>
+          <nav className="flex items-center gap-2">
+            <NavLink
+              className="flex items-center gap-2 rounded-md border border-border-strong px-4 py-2 text-sm font-semibold"
+              to="/clinician/patients"
+            >
+              <UsersRound className="size-4" />
+              Patients
+            </NavLink>
+            <NavLink
+              className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-inverse-foreground"
+              to="/clinician/safety"
+            >
+              <ShieldAlert className="size-4" />
+              Safety
+            </NavLink>
+          </nav>
         </div>
       </header>
       <main className="mx-auto max-w-6xl px-[var(--page-gutter)] py-8">

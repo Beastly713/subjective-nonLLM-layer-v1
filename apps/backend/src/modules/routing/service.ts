@@ -2,10 +2,7 @@ import { RoutingResolverResultSchema } from '@aud-subjective/contracts';
 
 import type { PrismaClient } from '../../generated/prisma/client.js';
 
-type RoutingPrisma = Pick<
-  PrismaClient,
-  'regionalRoutingProfileVersion'
->;
+type RoutingPrisma = Pick<PrismaClient, 'regionalRoutingProfileVersion'>;
 
 export const REQUIRED_ROUTING_TARGETS = [
   'EMERGENCY_SERVICE',

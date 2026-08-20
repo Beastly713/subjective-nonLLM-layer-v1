@@ -27,9 +27,11 @@ describe('workspace shells', () => {
         </AdminShell>
       </MemoryRouter>,
     );
+
     expect(
       screen.queryByRole('link', { name: 'Regional Routing' }),
     ).not.toBeInTheDocument();
+
     rerender(
       <MemoryRouter>
         <AdminShell permissions={['ROUTING_CONFIG_READ']}>
@@ -37,18 +39,19 @@ describe('workspace shells', () => {
         </AdminShell>
       </MemoryRouter>,
     );
+
     expect(
       screen.getByRole('link', { name: 'Regional Routing' }),
     ).toBeVisible();
   });
 
   it.each([
-    [PatientShell, 'Patient space', 'Profile'],
-    [ClinicianShell, 'Clinician workspace', 'Patients'],
-    [AdminShell, 'Administrative console', 'Users & Access'],
+    [PatientShell, 'Patient space', ['Profile']],
+    [ClinicianShell, 'Clinician workspace', ['Patients', 'Safety']],
+    [AdminShell, 'Administrative console', ['Users & Access']],
   ] as const)(
-    'renders a distinct implemented destination for %s',
-    (Shell, identity, destination) => {
+    'renders distinct implemented destinations for %s',
+    (Shell, identity, destinations) => {
       render(
         <MemoryRouter>
           <Shell>
@@ -56,9 +59,22 @@ describe('workspace shells', () => {
           </Shell>
         </MemoryRouter>,
       );
+
       expect(screen.getByText(identity)).toBeVisible();
-      expect(screen.getByRole('link', { name: destination })).toBeVisible();
+
+      for (const destination of destinations) {
+        expect(
+          screen.getByRole('link', { name: destination }),
+        ).toBeVisible();
+      }
+
+      const implementedDestinations = new Set<string>(destinations);
+
       for (const label of forbiddenNavigation) {
+        if (implementedDestinations.has(label)) {
+          continue;
+        }
+
         expect(
           screen.queryByRole('link', { name: label }),
         ).not.toBeInTheDocument();

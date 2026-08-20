@@ -1,4 +1,4 @@
-import { KeyRound, Settings, ShieldCheck } from 'lucide-react';
+import { Activity, KeyRound, Settings, ShieldCheck } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router';
 
@@ -10,6 +10,7 @@ export function AdminShell({
   permissions?: readonly string[];
 }) {
   const canReadRouting = permissions.includes('ROUTING_CONFIG_READ');
+  const canReadSafety = permissions.includes('SAFETY_CASE_READ');
   return (
     <div className="min-h-screen bg-surface-subtle">
       <header className="bg-foreground px-[var(--page-gutter)] py-4 text-inverse-foreground">
@@ -38,6 +39,15 @@ export function AdminShell({
               >
                 <Settings className="size-4" />
                 Regional Routing
+              </NavLink>
+            ) : null}
+            {canReadSafety ? (
+              <NavLink
+                className="flex items-center gap-2 rounded-md border border-white/30 px-4 py-2 text-sm font-semibold"
+                to="/admin/safety"
+              >
+                <Activity className="size-4" />
+                Safety
               </NavLink>
             ) : null}
           </nav>

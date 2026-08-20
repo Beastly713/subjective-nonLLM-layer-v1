@@ -156,10 +156,10 @@ const SafetyInputBaseSchema = z.object({
 
 function addSafetyInputCrossFieldIssues(
   input: {
-    hallucinations?: boolean;
-    hallucinationDisorientation?: boolean;
-    currentWithdrawalSymptoms?: readonly string[];
-    otherSubstanceCategories?: readonly string[];
+    hallucinations?: boolean | undefined;
+    hallucinationDisorientation?: boolean | undefined;
+    currentWithdrawalSymptoms?: readonly string[] | undefined;
+    otherSubstanceCategories?: readonly string[] | undefined;
   },
   ctx: {
     addIssue: (issue: {
@@ -169,11 +169,15 @@ function addSafetyInputCrossFieldIssues(
     }) => void;
   },
 ) {
-  if (input.hallucinationDisorientation === true && input.hallucinations === false) {
+  if (
+    input.hallucinationDisorientation === true &&
+    input.hallucinations === false
+  ) {
     ctx.addIssue({
       code: 'custom',
       path: ['hallucinationDisorientation'],
-      message: 'Hallucination disorientation requires hallucinations to be reported.',
+      message:
+        'Hallucination disorientation requires hallucinations to be reported.',
     });
   }
 
@@ -261,9 +265,10 @@ export const SafetyRestrictionInputSchema = z.object({
   reassessmentDueAt: z.iso.datetime().nullable(),
 });
 
-export const SafetyRestrictionSnapshotSchema = SafetyRestrictionInputSchema.extend({
-  gateStatus: SafetyGateStatusSchema.exclude(['NOT_ASSESSED']),
-});
+export const SafetyRestrictionSnapshotSchema =
+  SafetyRestrictionInputSchema.extend({
+    gateStatus: SafetyGateStatusSchema.exclude(['NOT_ASSESSED']),
+  });
 
 export const SafetyRouteActionSchema = z.object({
   label: z.string().min(1),
@@ -381,9 +386,10 @@ export const SafetyOperationalIncidentProjectionSchema = z.object({
   resolvedAt: z.iso.datetime().nullable(),
 });
 
-export const AdminSafetyCaseProjectionSchema = SafetyCaseProjectionSchema.extend({
-  operationalIncidents: z.array(SafetyOperationalIncidentProjectionSchema),
-});
+export const AdminSafetyCaseProjectionSchema =
+  SafetyCaseProjectionSchema.extend({
+    operationalIncidents: z.array(SafetyOperationalIncidentProjectionSchema),
+  });
 
 export const AdminSafetyCaseListResponseSchema = z.object({
   items: z.array(AdminSafetyCaseProjectionSchema),
@@ -398,8 +404,7 @@ export const SafetyDispositionRequestSchema =
   SafetyCaseMutationRequestSchema.extend({
     disposition: SafetyDispositionSchema,
     restrictions: SafetyRestrictionInputSchema.optional(),
-  })
-  .superRefine((input, ctx) => {
+  }).superRefine((input, ctx) => {
     if (
       input.disposition === 'SAFE_TO_CONTINUE_WITH_RESTRICTIONS' &&
       !input.restrictions
@@ -407,7 +412,8 @@ export const SafetyDispositionRequestSchema =
       ctx.addIssue({
         code: 'custom',
         path: ['restrictions'],
-        message: 'Restrictions are required for a restricted continuation plan.',
+        message:
+          'Restrictions are required for a restricted continuation plan.',
       });
     }
   });
@@ -432,13 +438,17 @@ export type SubjectiveInterventionClass = z.infer<
   typeof SubjectiveInterventionClassSchema
 >;
 export type TriState = z.infer<typeof TriStateSchema>;
-export type OtherSubstanceCategory = z.infer<typeof OtherSubstanceCategorySchema>;
+export type OtherSubstanceCategory = z.infer<
+  typeof OtherSubstanceCategorySchema
+>;
 export type SeriousMedicalContext = z.infer<typeof SeriousMedicalContextSchema>;
 export type SafetyCaseLifecycle = z.infer<typeof SafetyCaseLifecycleSchema>;
 export type SafetyCaseDomain = z.infer<typeof SafetyCaseDomainSchema>;
 export type SafetyOwnerRole = z.infer<typeof SafetyOwnerRoleSchema>;
 export type SafetyDisposition = z.infer<typeof SafetyDispositionSchema>;
-export type SafetyRestrictionInput = z.infer<typeof SafetyRestrictionInputSchema>;
+export type SafetyRestrictionInput = z.infer<
+  typeof SafetyRestrictionInputSchema
+>;
 export type SafetyRestrictionSnapshot = z.infer<
   typeof SafetyRestrictionSnapshotSchema
 >;

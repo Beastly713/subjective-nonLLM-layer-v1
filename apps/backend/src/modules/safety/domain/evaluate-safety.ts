@@ -173,10 +173,7 @@ export function evaluateSafety(i: SafetyInput, c: SafetyContext): SafetyResult {
   };
 
   add(i.currentSeizure, 'CURRENT_SEIZURE');
-  add(
-    i.severeConfusionOrDisorientation,
-    'SEVERE_CONFUSION_OR_DISORIENTATION',
-  );
+  add(i.severeConfusionOrDisorientation, 'SEVERE_CONFUSION_OR_DISORIENTATION');
   add(
     i.hallucinations && i.hallucinationDisorientation,
     'HALLUCINATIONS_WITH_DISORIENTATION',
@@ -188,10 +185,7 @@ export function evaluateSafety(i: SafetyInput, c: SafetyContext): SafetyResult {
     'REPEATED_VOMITING_WITH_SEVERE_ILLNESS',
   );
   add(i.currentSuicideAttempt, 'CURRENT_SUICIDE_ATTEMPT');
-  add(
-    i.currentSelfHarmMedicalEmergency,
-    'CURRENT_SELF_HARM_MEDICAL_EMERGENCY',
-  );
+  add(i.currentSelfHarmMedicalEmergency, 'CURRENT_SELF_HARM_MEDICAL_EMERGENCY');
   add(
     i.immediateSuicidePlanAndIntent,
     'EXPLICIT_IMMEDIATE_SUICIDE_PLAN_AND_INTENT_TO_ACT_NOW',
@@ -235,10 +229,7 @@ export function evaluateSafety(i: SafetyInput, c: SafetyContext): SafetyResult {
       i.cssrs.item5 !== 'YES',
     'CSSRS_ITEMS_1_TO_3_POSITIVE_WITHOUT_4_5',
   );
-  add(
-    rr && nonEmergencyCount === 1,
-    'RECENT_REDUCTION_ONE_WITHDRAWAL_SYMPTOM',
-  );
+  add(rr && nonEmergencyCount === 1, 'RECENT_REDUCTION_ONE_WITHDRAWAL_SYMPTOM');
   add(
     rr && majorRiskFactorCount === 1,
     'RECENT_REDUCTION_ONE_MAJOR_RISK_FACTOR',
@@ -281,10 +272,7 @@ export function evaluateSafety(i: SafetyInput, c: SafetyContext): SafetyResult {
     triggered.has(reason),
   );
 
-  const severityRank: Record<
-    Exclude<SafetySeverity, 'S_NONE'>,
-    number
-  > = {
+  const severityRank: Record<Exclude<SafetySeverity, 'S_NONE'>, number> = {
     S0_EMERGENCY: 0,
     S1_URGENT: 1,
     S2_PRIORITY: 2,

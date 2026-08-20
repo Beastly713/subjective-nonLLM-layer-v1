@@ -74,7 +74,11 @@ export const router = createBrowserRouter([
     element: <PatientProfilePage />,
     errorElement: <RouteErrorBoundary />,
   },
-  { path: '/patient/onboarding', element: <PatientOnboardingPage />, errorElement: <RouteErrorBoundary /> },
+  {
+    path: '/patient/onboarding',
+    element: <PatientOnboardingPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
   {
     path: '/clinician/patients',
     element: <ClinicianPatientsPage />,

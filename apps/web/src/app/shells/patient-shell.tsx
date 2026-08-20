@@ -2,7 +2,13 @@ import { HeartHandshake, UserRound } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router';
 
-export function PatientShell({ children }: { children: ReactNode }) {
+export function PatientShell({
+  children,
+  navigation = true,
+}: {
+  children: ReactNode;
+  navigation?: boolean;
+}) {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-surface px-[var(--page-gutter)] py-5">
@@ -18,13 +24,23 @@ export function PatientShell({ children }: { children: ReactNode }) {
               <p className="m-0 font-semibold">Your account</p>
             </div>
           </div>
-          <NavLink
-            className="flex items-center gap-2 rounded-lg bg-surface-interactive px-4 py-2 text-sm font-semibold"
-            to="/patient/profile"
-          >
-            <UserRound className="size-4" />
-            Profile
-          </NavLink>
+          {navigation ? (
+            <nav className="flex items-center gap-2">
+              <NavLink
+                className="flex items-center gap-2 rounded-lg bg-surface-interactive px-4 py-2 text-sm font-semibold"
+                to="/patient/onboarding"
+              >
+                Setup
+              </NavLink>
+              <NavLink
+                className="flex items-center gap-2 rounded-lg bg-surface-interactive px-4 py-2 text-sm font-semibold"
+                to="/patient/profile"
+              >
+                <UserRound className="size-4" />
+                Profile
+              </NavLink>
+            </nav>
+          ) : null}
         </div>
       </header>
       <main className="mx-auto max-w-3xl px-[var(--page-gutter)] py-10 sm:py-16">

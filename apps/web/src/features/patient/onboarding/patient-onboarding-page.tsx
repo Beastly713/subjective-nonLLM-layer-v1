@@ -1,135 +1,432 @@
-import { useQuery } from '@tanstack/react-query';
-import { Save } from 'lucide-react';
+import {
+  OnboardingStateResponseSchema,
+  SaveOnboardingDraftRequestSchema,
+  SaveOnboardingDraftResponseSchema,
+  SafetyEvaluationResponseSchema,
+  SafetyInputSchema,
+  SubmitOnboardingRequestSchema,
+  SubmitOnboardingResponseSchema,
+  type OnboardingDraft,
+  type OnboardingStep,
+  type SafetyDraftInput,
+} from '@aud-subjective/contracts';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { z } from 'zod';
-import { PatientShell } from '@/app/shells/patient-shell';
-import { WorkspaceBoundary } from '@/app/shells/workspace-boundary';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { apiGet, apiMutate } from '@/lib/api/client';
 
-const response = (value?: unknown) =>
-  value === undefined ? { state: 'NOT_YET_ANSWERED' } : { state: 'ANSWERED', value };
-const initialDraft = {
-  auditC: { frequency: response(), quantity: response(), heavy: response() },
-  drinkingDaysPerWeek: response(),
-  drinksPerDrinkingDay: response(),
-  heavyDrinkingDaysRecent: response(),
-  lastDrink: { state: 'UNKNOWN' },
-  recoveryDirection: response('UNSURE'),
-  mutualHelpPreference: response('UNSURE'),
-  spiritualContentPreference: response('UNSURE'),
+import { ErrorState, LoadingState } from '@/components/patterns/system-state';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { ApiClientError, apiGet, apiMutate } from '@/lib/api/client';
+import {
+  PatientSafetyBoundary,
+  usePatientSafetyProjection,
+} from '@/features/patient/safety/patient-safety-boundary';
+import { PatientSafetyStatus } from '@/features/patient/safety/patient-safety-status';
+import { AccountStep } from './steps/account-step';
+import { AuditCStep } from './steps/audit-c-step';
+import { DrinkingContextStep } from './steps/drinking-context-step';
+import { PreferencesStep } from './steps/preferences-step';
+import { RecoveryDirectionStep } from './steps/recovery-direction-step';
+import { ResultStep } from './steps/result-step';
+import { SafetyStep } from './steps/safety-step';
+import { OnboardingNavigation } from './onboarding-navigation';
+import { OnboardingProgress } from './onboarding-progress';
+import { createInitialDraft } from './types';
+
+type OnboardingState = z.infer<typeof OnboardingStateResponseSchema>;
+
+type LocalOnboardingState = {
+  draft: OnboardingDraft;
+  step: OnboardingStep;
+  version: number;
 };
-const OnboardingResponse = z.object({
-  draft: z.unknown().nullable(),
-  currentStep: z.string(),
-  version: z.number(),
-  dependencyState: z.string(),
-});
+
+const nextStep: Partial<Record<OnboardingStep, OnboardingStep>> = {
+  ACCOUNT: 'AUDIT_C',
+  AUDIT_C: 'DRINKING_CONTEXT',
+  DRINKING_CONTEXT: 'RECOVERY_DIRECTION',
+  RECOVERY_DIRECTION: 'PREFERENCES',
+  PREFERENCES: 'SAFETY',
+};
 
 export function PatientOnboardingPage() {
+  return (
+    <PatientSafetyBoundary>
+      <PatientOnboardingContent />
+    </PatientSafetyBoundary>
+  );
+}
+
+function PatientOnboardingContent() {
+  const queryClient = useQueryClient();
+  const safetyProjection = usePatientSafetyProjection();
+
   const query = useQuery({
     queryKey: ['patient', 'onboarding'],
     queryFn: ({ signal }) =>
-      apiGet('/api/v1/patient/onboarding', { schema: OnboardingResponse, signal }),
+      apiGet<OnboardingState>('/api/v1/patient/onboarding', {
+        schema: OnboardingStateResponseSchema,
+        signal,
+      }),
   });
-  const [draft, setDraft] = useState<Record<string, unknown> | null>(null);
-  const [step, setStep] = useState('ACCOUNT');
+
+  const [local, setLocal] = useState<LocalOnboardingState>();
   const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState<string>();
+  const [notice, setNotice] = useState<string>();
+
   const data = query.data;
-  if (query.isLoading) return <PatientShell><p>Loading setup...</p></PatientShell>;
-  if (query.isError || !data) return <PatientShell><p>Setup could not be loaded. Please try again.</p></PatientShell>;
-  const current = draft ?? (data.draft as Record<string, unknown> | null) ?? (initialDraft as Record<string, unknown>);
-  const safetyDraft = (current.safetyDraft as { responses?: Record<string, unknown> } | undefined)?.responses ?? {};
-  async function save(nextStep = step, nextDraft = current) {
+  const initialDraft = createInitialDraft();
+
+  const serverState: LocalOnboardingState | null = data
+    ? {
+        version: data.version,
+        step: data.currentStep,
+        draft: data.draft ?? initialDraft,
+      }
+    : null;
+
+  const current =
+    local && serverState && local.version === serverState.version
+      ? local
+      : serverState;
+
+  if (query.isError) {
+    return (
+      <ErrorState
+        action={<Button onClick={() => void query.refetch()}>Try again</Button>}
+      />
+    );
+  }
+
+  if (query.isLoading || !data || !current) {
+    return <LoadingState />;
+  }
+
+  const safety = current.draft.safetyDraft?.responses ?? {};
+
+  const updateDraft = <K extends keyof OnboardingDraft>(
+    key: K,
+    value: OnboardingDraft[K],
+  ) => {
+    setLocal((previous) => {
+      const base =
+        previous && previous.version === current.version ? previous : current;
+
+      return {
+        ...base,
+        draft: {
+          ...base.draft,
+          [key]: value,
+        },
+      };
+    });
+
+    setFormError(undefined);
+  };
+
+  const updateSafety = (changes: Partial<SafetyDraftInput>) => {
+    setLocal((previous) => {
+      const base =
+        previous && previous.version === current.version ? previous : current;
+
+      const existing = base.draft.safetyDraft?.responses ?? {};
+
+      const nextResponses: SafetyDraftInput = {
+        ...existing,
+        ...changes,
+        ...(changes.cssrs
+          ? {
+              cssrs: {
+                ...existing.cssrs,
+                ...changes.cssrs,
+              },
+            }
+          : {}),
+      };
+
+      return {
+        ...base,
+        draft: {
+          ...base.draft,
+          safetyDraft: {
+            schemaVersion: 'safety_draft_v1',
+            responses: nextResponses,
+          },
+        },
+      };
+    });
+
+    setFormError(undefined);
+  };
+
+  const updateCssrs = (
+    key: keyof NonNullable<SafetyDraftInput['cssrs']>,
+    value: 'YES' | 'NO' | 'UNSURE',
+  ) =>
+    updateSafety({
+      cssrs: {
+        ...(safety.cssrs ?? {}),
+        [key]: value,
+      },
+    });
+
+  const reloadAuthoritative = async () => {
+    const refreshed = await query.refetch();
+
+    if (refreshed.data) {
+      setLocal(undefined);
+    }
+  };
+
+  const errorCode = (error: unknown) =>
+    error instanceof ApiClientError ? error.response?.error.code : undefined;
+
+  const errorMessage = (error: unknown, fallback: string) => {
+    if (errorCode(error) === 'VERSION_CONFLICT') {
+      return 'This setup changed in another session. The latest saved version has been reloaded.';
+    }
+
+    if (errorCode(error) === 'ONBOARDING_INCOMPLETE') {
+      return 'Complete the required onboarding responses before submitting.';
+    }
+
+    if (errorCode(error) === 'PERMISSION_DENIED') {
+      return 'This setup is not available for the current account.';
+    }
+
+    return fallback;
+  };
+
+  const saveDraft = async (
+    targetStep: OnboardingStep = current.step,
+    draftToSave: OnboardingDraft = current.draft,
+  ) => {
     setSaving(true);
+    setFormError(undefined);
+    setNotice(undefined);
+
     try {
+      const body = SaveOnboardingDraftRequestSchema.parse({
+        expectedVersion: current.version,
+        currentStep: targetStep,
+        draftResponses: draftToSave,
+      });
+
       const result = await apiMutate(
         '/api/v1/patient/onboarding/draft',
         'PUT',
-        { expectedVersion: data!.version, currentStep: nextStep, draftResponses: nextDraft },
-        { schema: z.object({ version: z.number(), currentStep: z.string(), draft: z.unknown() }) },
+        body,
+        {
+          schema: SaveOnboardingDraftResponseSchema,
+        },
       );
-      setDraft(result.draft as Record<string, unknown>);
-      setStep(nextStep);
-      await query.refetch();
+
+      setLocal({
+        version: result.version,
+        step: result.currentStep,
+        draft: result.draft,
+      });
+
+      setNotice('Progress saved.');
+
+      return result;
+    } catch (error) {
+      setFormError(errorMessage(error, 'Progress could not be saved.'));
+
+      if (errorCode(error) === 'VERSION_CONFLICT') {
+        await reloadAuthoritative();
+      }
+
+      return null;
     } finally {
       setSaving(false);
     }
-  }
-  function updateSafetyDraft(key: string, value: unknown) {
-    setDraft({
-      ...current,
-      safetyDraft: {
-        schemaVersion: 'safety_draft_v1',
-        updatedAt: new Date().toISOString(),
-        responses: { ...safetyDraft, [key]: value },
-      },
+  };
+
+  const submitSafety = async () => {
+    const parsed = SafetyInputSchema.safeParse({
+      ...safety,
+      reductionStartedAt: safety.reductionStartedAt ?? null,
+      reductionPercent: safety.reductionPercent ?? null,
+      currentWithdrawalSymptoms: safety.currentWithdrawalSymptoms ?? [],
+      seriousMedicalContexts: safety.seriousMedicalContexts ?? [],
     });
-  }
+
+    if (!parsed.success) {
+      const missing = parsed.error.issues
+        .slice(0, 4)
+        .map((issue) => issue.path.join('.'))
+        .filter(Boolean)
+        .join(', ');
+
+      setFormError(
+        missing
+          ? `Complete the safety responses before submitting: ${missing}.`
+          : 'Complete the safety responses before submitting.',
+      );
+
+      return;
+    }
+
+    const saved = await saveDraft('RESULT', current.draft);
+
+    if (!saved) return;
+
+    setSaving(true);
+    setFormError(undefined);
+    setNotice(undefined);
+
+    try {
+      const submitBody = SubmitOnboardingRequestSchema.parse({
+        expectedVersion: saved.version,
+      });
+
+      await apiMutate('/api/v1/patient/onboarding/submit', 'POST', submitBody, {
+        schema: SubmitOnboardingResponseSchema,
+        headers: {
+          'Idempotency-Key': crypto.randomUUID(),
+        },
+      });
+
+      const evaluation = await apiMutate(
+        '/api/v1/patient/onboarding/safety-evaluations',
+        'POST',
+        parsed.data,
+        {
+          schema: SafetyEvaluationResponseSchema,
+          headers: {
+            'Idempotency-Key': crypto.randomUUID(),
+          },
+        },
+      );
+
+      queryClient.setQueryData(['patient', 'safety'], evaluation.safety);
+
+      await query.refetch();
+
+      setNotice('Your onboarding and safety assessment are saved.');
+    } catch (error) {
+      setFormError(errorMessage(error, 'The setup could not be submitted.'));
+
+      if (errorCode(error) === 'VERSION_CONFLICT') {
+        await reloadAuthoritative();
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const continueStep = async () => {
+    if (current.step === 'SAFETY') {
+      await submitSafety();
+      return;
+    }
+
+    const target = nextStep[current.step];
+
+    if (target) {
+      await saveDraft(target);
+    }
+  };
+
+  const stepProps = {
+    draft: current.draft,
+    safety,
+    updateDraft,
+    updateSafety,
+    updateCssrs,
+    recoveryDirectionLocked: !safetyProjection.goalChangeAllowed,
+  };
+
   return (
-    <WorkspaceBoundary destination="/patient/onboarding">
-      <PatientShell>
-        <div className="mb-8">
-          <p className="text-sm font-semibold text-success">Setup incomplete</p>
-          <h1 className="mt-2 text-3xl font-semibold">Set up your support plan</h1>
-          <p className="text-muted-foreground">Your progress is saved securely so you can return later.</p>
+    <div className="grid gap-6">
+      <header className="grid gap-5">
+        <div>
+          <p className="m-0 text-sm font-semibold text-success">Guided setup</p>
+
+          <h1 className="mb-0 mt-2 text-3xl font-semibold sm:text-4xl">
+            Set up your support plan
+          </h1>
+
+          <p className="mb-0 mt-3 max-w-2xl text-base leading-7 text-muted-foreground">
+            Answer at your own pace. The server keeps the current step and draft
+            version authoritative when you return.
+          </p>
         </div>
-        <div className="grid gap-5">
-          <Card>
-            <CardHeader>
-              <p className="m-0 text-sm font-semibold">Step: {step}</p>
-              <h2 className="m-0 text-xl">Account and preferences</h2>
-            </CardHeader>
-            <CardContent className="grid gap-5">
-              <label className="grid gap-2 text-sm font-medium">
-                Recovery direction
-                <select className="h-11 rounded-md border bg-surface px-3" value={(current.recoveryDirection as { value?: string })?.value ?? 'UNSURE'} onChange={(event) => setDraft({ ...current, recoveryDirection: response(event.target.value) })}>
-                  <option value="UNSURE">I am not sure yet</option>
-                  <option value="ABSTINENCE">Abstinence</option>
-                  <option value="REDUCTION">Reduction</option>
-                </select>
-              </label>
-              <div className="flex flex-wrap gap-3">
-                <Button type="button" disabled={saving} onClick={() => void save('SAFETY')}>
-                  <Save className="size-4" /> {saving ? 'Saving...' : 'Save and continue'}
-                </Button>
-                <Button type="button" variant="secondary" disabled={saving} onClick={() => void save(step)}>Save progress</Button>
-              </div>
-            </CardContent>
-          </Card>
-          {step === 'SAFETY' ? (
-            <Card>
-              <CardHeader>
-                <p className="m-0 text-sm font-semibold text-warning">Instrument configuration unavailable</p>
-                <h2 className="m-0 text-xl">Safety check draft</h2>
-              </CardHeader>
-              <CardContent className="grid gap-5">
-                <label className="grid gap-2 text-sm font-medium">
-                  Age over 65
-                  <select className="h-11 rounded-md border bg-surface px-3" value={(safetyDraft.ageOver65 as string | undefined) ?? 'UNSURE'} onChange={(event) => updateSafetyDraft('ageOver65', event.target.value)}>
-                    <option value="UNSURE">Unsure</option>
-                    <option value="YES">Yes</option>
-                    <option value="NO">No</option>
-                  </select>
-                </label>
-                <label className="grid gap-2 text-sm font-medium">
-                  Similar heavy regular use for at least 3 months
-                  <select className="h-11 rounded-md border bg-surface px-3" value={(safetyDraft.similarHeavyRegularUseAtLeast3Months as string | undefined) ?? 'UNSURE'} onChange={(event) => updateSafetyDraft('similarHeavyRegularUseAtLeast3Months', event.target.value)}>
-                    <option value="UNSURE">Unsure</option>
-                    <option value="YES">Yes</option>
-                    <option value="NO">No</option>
-                  </select>
-                </label>
-                <p className="m-0 text-sm text-muted-foreground">The licensed screener wording is not configured for this deployment, so this step can be saved but not completed here.</p>
-                <Button type="button" variant="secondary" disabled={saving} onClick={() => void save('SAFETY')}>
-                  <Save className="size-4" /> Save safety draft
-                </Button>
-              </CardContent>
-            </Card>
-          ) : null}
-        </div>
-      </PatientShell>
-    </WorkspaceBoundary>
+
+        <OnboardingProgress currentStep={current.step} />
+      </header>
+
+      <PatientSafetyStatus projection={safetyProjection} />
+
+      {formError ? (
+        <Card
+          className="border-danger-border bg-danger-surface/40"
+          role="alert"
+        >
+          <CardContent>
+            <p className="m-0 text-sm font-semibold text-danger">{formError}</p>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {notice ? (
+        <p
+          className="m-0 rounded-lg border border-success-border bg-success-surface p-4 text-sm text-success"
+          role="status"
+        >
+          {notice}
+        </p>
+      ) : null}
+
+      {current.step === 'ACCOUNT' ? <AccountStep /> : null}
+
+      {current.step === 'AUDIT_C' ? <AuditCStep {...stepProps} /> : null}
+
+      {current.step === 'DRINKING_CONTEXT' ? (
+        <DrinkingContextStep {...stepProps} />
+      ) : null}
+
+      {current.step === 'RECOVERY_DIRECTION' ? (
+        <RecoveryDirectionStep {...stepProps} />
+      ) : null}
+
+      {current.step === 'PREFERENCES' ? (
+        <PreferencesStep {...stepProps} />
+      ) : null}
+
+      {current.step === 'SAFETY' ? <SafetyStep {...stepProps} /> : null}
+
+      {current.step === 'RESULT' ? (
+        <ResultStep
+          data={{
+            ...data,
+            draft: current.draft,
+            currentStep: current.step,
+          }}
+        />
+      ) : null}
+
+      {current.step === 'RESULT' ? (
+        <Button
+          disabled={saving}
+          onClick={() => void saveDraft('RESULT')}
+          variant="secondary"
+        >
+          Save current progress
+        </Button>
+      ) : (
+        <OnboardingNavigation
+          {...(current.step === 'SAFETY'
+            ? { continueLabel: 'Submit setup and safety assessment' }
+            : {})}
+          onContinue={() => void continueStep()}
+          onSave={() => void saveDraft()}
+          saving={saving}
+        />
+      )}
+    </div>
   );
 }
