@@ -2,23 +2,27 @@
 
 ## Document status
 
-**Status:** **PLANNED**
+**Status:** **COMPLETE**
 
 **Phase:** 3 of 7
 
 **Phase name:** Safety + Onboarding + Reduction Setup
 
-**Target commits:** 4 balanced commits
+**Delivery:** 4 primary feature commits plus bounded validation, schema, and UI-closure corrections
 
 **Implementation mode:** Commit packet method
 
 **Validated Phase 1 baseline:** `7a09757b89f1ed25fbc349bc269c217904d94c6e`
 
-**Validated Phase 2 baseline:** `d6cb7d8` documentation closeout on top of the accepted Phase 2 implementation
+**Validated Phase 2 implementation baseline:** `3e31659` (`feat: add authoritative scheduling and regional routing`)
 
-**Repository state when this guide was written:** Clean `main` branch after Phase 2 completion and documentation update
+**Phase 2 documentation closeout:** `d6cb7d8` (`docs: update post Phase-2 completion`)
 
-This document defines the implementation boundary and commit plan for Phase 3 only. It is an execution guide, not a new product, clinical, UX, or architecture specification.
+**Validated Phase 3 baseline:** `c7fd012` (`test: close phase 3 activation coverage and validation gaps`)
+
+**Repository state at completion:** Clean `main` branch at the Phase 3 validation-closeout commit above
+
+This document records the implementation boundary, delivered feature commits, validation-closeout corrections, and Phase 4 handoff for Phase 3. It is not a new product, clinical, UX, or architecture specification.
 
 Authority remains:
 
@@ -32,11 +36,44 @@ Authority remains:
 
 If this guide appears to conflict with a governing document, the higher-authority document wins. Do not silently reinterpret a locked decision; record the conflict and correct the packet or this guide.
 
+## Completion record
+
+Phase 3 is implemented and accepted at `c7fd012`. The current codebase delivers:
+
+- server-backed onboarding drafts, immutable submitted onboarding revisions, authoritative revision selection, and completion states (`INCOMPLETE`, `PENDING_SAFETY_REVIEW`, `SAFETY_HANDOFF`, and `COMPLETE`);
+- deterministic, versioned safety evaluation with canonical precedence, persisted input/result provenance, safety cases, append-only restrictions/dispositions/lifecycle events, route resolution, and patient-safe safety projections;
+- authorized clinician safety-case lifecycle and disposition routes plus admin operational-incident visibility;
+- a 28-day local-calendar reduction baseline with explicit known-zero, known-quantity, and unknown days, 14g ethanol conversion provenance, derived metrics, audited correction revisions, and backend target validation;
+- versioned `RecoveryGoalVersion` records and one transactional onboarding completion service that applies the safety outcome, creates or withholds the initial schedule, and records auditable completion state;
+- patient onboarding, reduction setup, profile/status, patient safety-shell, clinician patient/safety, and admin safety surfaces wired to the current contracts and routes;
+- prototype-only activation behavior while readiness continues to refuse `real_patient` operation.
+
+The Phase 3 migration additions are, in order:
+
+1. `20260819140000_onboarding_safety_foundation`
+2. `20260820100000_safety_evaluation_context`
+3. `20260820103000_safety_cases`
+4. `20260820120000_reconcile_safety_case_lifecycle` — synchronizes the current lifecycle projection to the latest historical event without rewriting event history;
+5. `20260820223000_reduction_baseline_goal_proposal`
+6. `20260821003000_safety_gated_onboarding_activation`
+
+The implemented Phase 3 HTTP surface is:
+
+| Area | Endpoints |
+|---|---|
+| Patient onboarding | `GET /api/v1/patient/onboarding`, `PUT /api/v1/patient/onboarding/draft`, `POST /api/v1/patient/onboarding/submit`, `POST /api/v1/patient/onboarding/safety-evaluations`, `POST /api/v1/patient/onboarding/complete` |
+| Patient reduction setup | `GET /api/v1/patient/reduction-setup`, `POST`/`PUT /api/v1/patient/reduction-setup/baseline-draft`, `POST /api/v1/patient/reduction-setup/baseline-confirm`, `POST /api/v1/patient/reduction-setup/baseline-correction`, and `POST /api/v1/patient/reduction-setup/target-proposal` |
+| Patient safety | `GET /api/v1/patient/safety` |
+| Clinician safety | Assigned-case list/detail plus `acknowledge`, `begin-review`, `establish-plan`, `disposition`, `escalate`, and `resolve-external-handoff` actions under `/api/v1/clinician/safety-cases/*` |
+| Admin safety | Case list/detail routes under `/api/v1/admin/safety-cases/*`, including route-incident projections |
+
+The current automated coverage is concentrated in `apps/backend/test/domain/safety-evaluator.test.ts`, `apps/backend/test/domain/reduction-domain.test.ts`, `apps/backend/test/integration/safety.test.ts`, `apps/backend/test/integration/onboarding-activation.test.ts`, the workspace/profile web tests, and `tests/e2e/access.spec.ts`. Activation-matrix scenarios are covered by backend integration tests; there is not a separate Playwright activation spec in the current tree.
+
 ---
 
 # 1. Phase outcome
 
-At the end of Phase 3, an authenticated patient can complete the real V1 onboarding path, including safety-controlled setup and a reduction baseline when applicable, while the backend remains the sole authority for safety, activation, and scheduling decisions.
+Phase 3 gives an authenticated patient the real V1 onboarding path, including safety-controlled setup and a reduction baseline when applicable, while the backend remains the sole authority for safety, activation, and scheduling decisions.
 
 The phase provides:
 
@@ -59,7 +96,7 @@ This phase does not implement weekly assessments or subjective-monitoring evalua
 
 # 2. Actual Phase 2 baseline and carry-forward assessment
 
-Phase 3 planning is based on direct inspection of the accepted Phase 2 repository, not only its guide.
+The Phase 3 implementation was based on direct inspection of the accepted Phase 2 repository, not only its guide. The following baseline describes the starting boundary at the time Phase 3 began.
 
 ## 2.1 Confirmed Phase 2 foundations to reuse
 
@@ -67,24 +104,24 @@ The repository already contains:
 
 - Better Auth sessions, secure cookies, authentication routes, reset/verification capability, and two-factor support;
 - application-owned account state, roles, permissions, direct clinician-patient assignments, privileged identity-verification provenance, and authorization-before-query patterns;
-- patient profiles with IANA monitoring timezone, immutable preference versions, onboarding status fixed as incomplete, and one processing-lock row per patient;
+- patient profiles with IANA monitoring timezone, immutable preference versions, an onboarding-state foundation, and one processing-lock row per patient;
 - Luxon/fixed-clock scheduling math, persisted schedule versions, scheduled periods, timezone-transition handling, delayed period provisioning, and reschedule audit;
 - versioned regional routing profiles, route targets, test evidence, active-route resolution, region constraints, and permission/step-up/idempotency protection;
 - shared Zod contracts, API projections, shells, confirmation patterns, readiness reporting, audit/idempotency/error infrastructure, seed fixtures, PostgreSQL migrations, Playwright, CI, Docker, and same-origin production serving.
 
-Phase 3 must extend these boundaries. It must not create a second identity, schedule, routing, locking, audit, or authorization mechanism.
+The Phase 3 implementation extends these boundaries without creating a second identity, schedule, routing, locking, audit, or authorization mechanism.
 
-## 2.2 Phase 2 drift and integration points to address here
+## 2.2 Phase 2 drift and integration points addressed here
 
-No unplanned service, datastore, framework, or conflicting architecture was found in the Phase 2 closeout. The following deliberate Phase 2 boundaries become concrete Phase 3 work:
+No unplanned service, datastore, framework, or conflicting architecture was found in the Phase 2 closeout. The following deliberate Phase 2 boundaries became the Phase 3 integration work and are now implemented:
 
-1. **Onboarding is still incomplete by design.** `PatientProfile` and preferences are foundations only. Phase 3 adds the draft/submission lifecycle and required response fields without mutating Phase 2 preference history.
-2. **No active goal or monitoring schedule exists.** Phase 2 schedule creation is a callable boundary and correctly refuses to activate monitoring through Phase 2 endpoints. Phase 3 must call it only after safety-gated activation.
-3. **Regional routing exists but has no safety interpretation.** Phase 3 must resolve route targets for the safety pathway and preserve unavailable-route behavior; it must not hard-code fallback numbers or alter routing version history.
-4. **Readiness is intentionally incomplete.** Phase 3 may add truthful safety/onboarding/baseline readiness facts, but it must not claim complete real-patient readiness while worker, durable delivery, approved content, backup/restore, retention, and operational controls remain absent.
-5. **Phase 2’s timezone corrections are authoritative.** Onboarding baseline dates and safety “previous seven calendar days” calculations must use the patient’s stored monitoring timezone and the existing clock/time utilities, never server-local time.
-6. **Phase 2’s audit/idempotency/lock patterns are mandatory.** Goal activation, onboarding submission/correction, safety disposition, baseline confirmation/correction, and route-mediated handoff actions must use the existing transaction and patient serialization patterns where applicable.
-7. **Phase 2 seed data is synthetic and pre-clinical.** Extend it with explicit safety/onboarding fixtures only in prototype mode; do not turn existing users into silently active clinical patients.
+1. **Onboarding was incomplete by design.** `PatientProfile` and preferences were foundations only. Phase 3 added the draft/submission lifecycle and required response fields without mutating Phase 2 preference history.
+2. **No active goal or monitoring schedule existed.** Phase 2 schedule creation was a callable boundary; Phase 3 now calls it only after safety-gated activation.
+3. **Regional routing existed but had no safety interpretation.** Phase 3 resolves route targets for the safety pathway and preserves unavailable-route behavior without hard-coded fallback numbers or routing-history rewrites.
+4. **Readiness remains intentionally incomplete.** Phase 3 adds truthful safety/onboarding facts but does not claim complete real-patient readiness while worker, durable delivery, approved content, backup/restore, retention, and operational controls remain absent.
+5. **Phase 2’s timezone corrections remain authoritative.** Onboarding baseline dates and safety “previous seven calendar days” calculations use the patient’s stored monitoring timezone and existing clock/time utilities, never server-local time.
+6. **Phase 2’s audit/idempotency/lock patterns remain mandatory.** Goal activation, onboarding submission, safety disposition, baseline confirmation/correction, and route-mediated handoff actions use the existing transaction and patient-serialization patterns where applicable.
+7. **Phase 2 seed data remains synthetic and pre-clinical.** Phase 3 adds explicit safety/onboarding fixtures only in prototype mode; existing users are not silently turned into real clinical patients.
 
 These are integration requirements, not permission to reopen Phase 2 design decisions.
 
@@ -192,11 +229,11 @@ The following belong to later phases and must not be implemented in Phase 3:
 - automatic event reconciliation or use-event creation from weekly onboarding answers;
 - speculative generic questionnaire engines, form builders, state-machine frameworks, or workflow orchestration platforms.
 
-Phase 3 may create safety and onboarding state machines because the domain requires them, but they must remain explicit module-local transitions, not a generic workflow platform.
+The implemented safety and onboarding state machines remain explicit module-local transitions, not a generic workflow platform.
 
 ---
 
-# 4. Locked decisions Phase 3 must realize
+# 4. Locked decisions realized by Phase 3
 
 | Concern | Phase 3 decision |
 |---|---|
@@ -236,20 +273,22 @@ These references constrain Phase 3. They do not authorize Phase 4 weekly assessm
 
 ---
 
-# 5. Commit plan at a glance
+# 5. Delivered commit record
 
-| Commit | Identity | Coherent result |
+| Commit | Primary commit | Coherent result |
 |---|---|---|
-| 1 | `feat: establish onboarding drafts and deterministic safety evaluation` | Versioned onboarding inputs, pure safety evaluator/gate, safety contracts, and unit/integration foundation without activation |
-| 2 | `feat: add safety cases and controlled patient handoff` | Durable safety cases, route-mediated synchronous safety response, owner lifecycle/dispositions, and safety-controlled UX |
-| 3 | `feat: implement the reduction baseline and goal proposal` | 28-day calendar/baseline, standard-drink metrics, proposed target validation, and reduction setup UX |
-| 4 | `feat: complete safety-gated onboarding and activation` | Transactional onboarding completion, goal/schedule activation, final role surfaces, seeds, CI, and Phase 4 handoff |
+| 1 | `e916f76` — `feat: establish onboarding drafts and deterministic safety evaluation` | Versioned onboarding inputs, pure safety evaluator/gate, safety contracts, and unit/integration foundation |
+| 2 | `13fd026` — `feat: add safety cases and controlled patient handoff` | Durable safety cases, route-mediated synchronous safety response, owner lifecycle/dispositions, and safety-controlled UX; completed through subsequent safety-invariant and surface corrections |
+| 3 | `12bd5af` — `feat: implement the reduction baseline and goal proposal` | 28-day calendar/baseline, standard-drink metrics, proposed target validation, and reduction setup UX |
+| 4 | `db9aa75` — `feat: complete safety-gated onboarding and activation` | Transactional onboarding completion, goal/schedule activation, final role surfaces, and Phase 4 handoff |
 
-The commit count is a target and these boundaries are the default. Split only if a packet becomes genuinely unreviewable. Merge only if actual dependency evidence makes two boundaries technically inseparable. Any change must be justified in the active packet before implementation.
+The primary feature boundaries were delivered as planned. Bounded corrections were completed in `37100a6`, `457b3a9`, `4e76d76`, `f17deae`, and `c7fd012`; they closed safety transaction invariants, migration/schema alignment, patient/role surfaces, activation coverage, and validation gaps without introducing a fifth product scope.
+
+Sections 6–9 retain the original packet definitions as a historical scope record. They describe the constraints used during implementation, not pending work.
 
 ---
 
-# 6. Commit 1 packet definition
+# 6. Original Commit 1 packet definition
 
 ## Commit identity
 
@@ -352,7 +391,7 @@ tests/e2e/onboarding-draft*.spec.ts
 
 ---
 
-# 7. Commit 2 packet definition
+# 7. Original Commit 2 packet definition
 
 ## Commit identity
 
@@ -452,7 +491,7 @@ tests/e2e/safety-flow*.spec.ts
 
 ---
 
-# 8. Commit 3 packet definition
+# 8. Original Commit 3 packet definition
 
 ## Commit identity
 
@@ -543,7 +582,7 @@ tests/e2e/reduction-baseline*.spec.ts
 
 ---
 
-# 9. Commit 4 packet definition
+# 9. Original Commit 4 packet definition
 
 ## Commit identity
 
@@ -658,9 +697,9 @@ tests/e2e/safety-activation*.spec.ts
 
 ---
 
-# 10. Phase-wide acceptance criteria
+# 10. Phase-wide acceptance record
 
-Phase 3 is complete only when all of the following are true:
+The following criteria were used for Phase 3 closeout. The current implementation at `c7fd012` is the accepted result:
 
 1. All four commit scopes have been implemented and individually reviewed through the packet method.
 2. Onboarding drafts and submitted revisions are server-backed, immutable/versioned, auditable, resumable, and patient-scoped.
@@ -683,13 +722,13 @@ Phase 3 is complete only when all of the following are true:
 19. Readiness remains truthful and refuses real-patient activation until later delivery, workers, content, backups, retention, and operational requirements exist.
 20. Documentation and CI describe Phase 3 accurately while preserving the accepted Phase 1 and Phase 2 records.
 
-Phase 3 is **not** accepted merely because an onboarding form renders or a safety score is computed. It must prove reproducible safety decisions, durable controlled handoff, complete reduction setup, correct activation transactions, and honest patient state together.
+Phase 3 was not accepted merely because an onboarding form rendered or a safety score was computed. The closeout covered reproducible safety decisions, durable controlled handoff, complete reduction setup, correct activation transactions, and honest patient state together.
 
 ---
 
-# 11. Commit packet operating method
+# 11. Commit packet operating method (historical)
 
-The four definitions above are phase-level packet templates. Before each implementation attempt, create a current packet from the relevant template using the process below.
+The four definitions above were phase-level packet templates. The process below records the method used during Phase 3 and is retained for auditability; it is not an instruction to implement another Phase 3 packet.
 
 ## 11.1 Before issuing a packet
 
@@ -810,7 +849,7 @@ Required complexity must remain: deterministic safety rules, immutable revisions
 
 # 14. Phase completion handoff to Phase 4
 
-Phase 3 hands Phase 4 an activated-or-controlled patient platform with reproducible safety and reduction setup—not a weekly monitoring engine.
+Phase 3 now hands Phase 4 an activated-or-controlled patient platform with reproducible safety and reduction setup—not a weekly monitoring engine.
 
 Phase 4 may rely on:
 
@@ -829,4 +868,4 @@ Phase 4 owns:
 - deterministic monitoring evaluator, longitudinal state, recurrence, recomputation, serialization, and effect planning;
 - assessment-driven consumption calendar integration for active reduction goals.
 
-Phase 3 must not pre-implement those behaviors through weekly prompts, assessment tables, monitoring evaluators, or synthetic “current” assessment results.
+Phase 3 did not pre-implement those behaviors through weekly prompts, assessment tables, monitoring evaluators, or synthetic “current” assessment results.

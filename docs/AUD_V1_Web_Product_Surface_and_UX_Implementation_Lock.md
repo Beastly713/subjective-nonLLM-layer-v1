@@ -12,6 +12,8 @@ The authoritative V1 behavior remains defined by:
 - instrument: `AUD_WEEKLY_CHECKIN` version `1.0`
 - system version: `subjective_monitoring_v1`
 
+**Current implementation note:** Phase 3 is complete at `c7fd012`. The implemented web surface currently includes patient onboarding, reduction setup, profile/status, patient safety-shell states, clinician patients and safety views, admin users/regional-routing/safety views, and the development foundation reference. The weekly check-in, patient home/progress/support, monitoring, content, engagement, and broader operations surfaces below remain locked product design for later implementation; they are not current routes.
+
 ---
 
 # 1. Product direction
@@ -1930,45 +1932,39 @@ Any such capability should be added only if a later feature/service explicitly r
 
 # 37. Suggested evaluator/demo journey
 
-A strong demonstration flow could be:
+The current Phase 3 implementation can be demonstrated through this flow:
 
 ```text
 1. Sign in as PATIENT
        ↓
-2. Show polished patient home
+2. Open onboarding and save/resume a server-backed draft
        ↓
-3. Complete weekly check-in
+3. Submit the authoritative onboarding revision
        ↓
-4. Receive appropriate support
+4. Complete the safety assessment and observe the patient-safe projection
        ↓
-5. View progress
+5. If REDUCTION, complete the 28-day baseline and propose a target
+       ↓
+6. Finish onboarding and observe COMPLETE, pending-review, or safety-handoff state
 
 
-6. Switch to CLINICIAN
+7. Switch to CLINICIAN
        ↓
-7. See the patient's new current visibility state
+8. Open assigned patients and safety cases
        ↓
-8. Show clinician review case generated from the same assessment
-       ↓
-9. Open patient detail
-       ↓
-10. Show longitudinal history + case lifecycle
+9. Acknowledge, review, disposition, or escalate an authorized safety case
 
 
-11. Switch to ADMIN
-       ↓
-12. Show approved content that produced the patient resource
-       ↓
-13. Show users / operational controls
-       ↓
-14. Open audit trail
-       ↓
-15. Demonstrate why the system produced the observed outputs
+10. Switch to ADMIN
+        ↓
+11. Inspect users, regional routing, safety cases, and route incidents
+        ↓
+12. Demonstrate that prototype activation remains separate from real-patient readiness
 ```
 
-The ideal result is that the product demonstrates its architecture through the interface itself.
+The weekly check-in, support/content, progress, engagement, and longitudinal-monitoring journey remains the later implementation path described by the product lock; those screens are not current routes.
 
-The evaluator should be able to understand that the application is doing much more than simply storing questionnaire answers.
+The current evaluator should be able to see that the application is doing more than storing questionnaire answers: authoritative revisions, safety state, reduction provenance, goal status, schedule activation, access boundaries, and audit effects are all backend-controlled.
 
 ---
 

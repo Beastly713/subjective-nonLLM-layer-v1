@@ -12,11 +12,13 @@
 
 **Implementation mode:** Commit packet method
 
-**Validated implementation baseline:** `e548cc7` (`feat: add authoritative scheduling and regional routing`)
+**Validated implementation baseline:** `3e31659` (`feat: add authoritative scheduling and regional routing`)
 
 **Validated Phase 1 implementation baseline:** `7a09757b89f1ed25fbc349bc269c217904d94c6e`
 
 **Repository state at completion:** Phase 2 implementation is consolidated on top of approved Commit 2 `41afe25`.
+
+**Documentation closeout:** `d6cb7d8` (`docs: update post Phase-2 completion`)
 
 This document records the implementation boundary, completed delivery, validation evidence, and Phase 3 handoff for Phase 2. It is not a new product, clinical, UX, or architecture specification.
 
@@ -41,7 +43,7 @@ The final implementation preserves the approved three-commit Phase 2 history:
 |---|---|---|
 | `bc17bc8` | `feat: establish secure authentication and session handling` | Complete — Better Auth integration, sessions, account state, and authentication surfaces |
 | `41afe25` | `feat: enforce role-based access and patient assignments` | Complete — application authorization, assignments, profiles, and role-specific access foundations |
-| `e548cc7` | `feat: add authoritative scheduling and regional routing` | Complete — persisted schedules, timezone-transition correctness, routing lifecycle, regional constraints, UI, and final Phase 2 validation closure |
+| `3e31659` | `feat: add authoritative scheduling and regional routing` | Complete — persisted schedules, timezone-transition correctness, routing lifecycle, regional constraints, UI, and final Phase 2 validation closure |
 
 The final closeout corrections addressed pre-boundary and retroactive timezone transitions, delayed period provisioning, repeated pending timezone requests, canonical region database constraints and regression coverage, validation error status mapping, formatting, and the Admin routing evidence/activation Playwright synchronization path.
 
@@ -65,7 +67,7 @@ At the end of Phase 2, the product has one secure identity and core-platform pat
 - deterministic synthetic Phase 2 accounts and relationships support development and access-control testing;
 - the existing CI path validates the new identity/core-platform behavior against real PostgreSQL and the production same-origin application.
 
-The phase creates a serious authenticated platform, not a complete clinical product. A signed-in patient still cannot activate monitoring or submit a weekly assessment until later phases implement the required safety and onboarding behavior.
+The phase created a serious authenticated platform, not a complete clinical product. At the Phase 2 boundary, a signed-in patient could not activate monitoring or submit a weekly assessment; Phase 3 now supplies the safety-gated onboarding and activation path, while weekly assessment remains a later-phase capability.
 
 ---
 
@@ -199,7 +201,7 @@ The following belong to later phases and must not be implemented in Phase 2:
 - broad production readiness, backup/restore configuration, retention/deletion workflow, or permission to process real-patient data;
 - full patient, clinician, or admin dashboards whose authoritative data does not exist yet.
 
-Phase 2 must not create active recovery-goal history or an active monitoring schedule merely to make seeded screens look complete. Phase 3 owns activation after the required safety and onboarding decisions exist.
+At the Phase 2 boundary, Phase 2 did not create active recovery-goal history or an active monitoring schedule merely to make seeded screens look complete; Phase 3 was assigned activation after the required safety and onboarding decisions existed.
 
 ---
 
@@ -928,7 +930,7 @@ Architectural simplicity is not permission to omit MFA readiness for privileged 
 
 ---
 
-# 13. Phase completion handoff to Phase 3
+# 13. Phase completion handoff to Phase 3 (historical)
 
 Phase 2 hands Phase 3 an authenticated, authorized, versioned core platform—not a partially implemented safety system.
 
@@ -946,7 +948,7 @@ Phase 3 may rely on:
 - deterministic prototype accounts and access fixtures;
 - expanded real-PostgreSQL, browser, accessibility, build, and CI validation.
 
-Phase 3 must still inspect the actual repository before defining its first packet. It then owns:
+At the handoff, Phase 3 was required to inspect the actual repository before defining its first packet. The handoff assigned it:
 
 - the safety evaluator/gate/cases and immediate patient routing behavior;
 - the 28-day reduction baseline and proposed target;
@@ -954,3 +956,5 @@ Phase 3 must still inspect the actual repository before defining its first packe
 - completion of the full onboarding sequence.
 
 Phase 2 must not pre-empt those behaviors through seeded active goals, fake passed safety results, active monitoring, safety-case placeholders, or patient-facing emergency instructions.
+
+That handoff was completed by the Phase 3 implementation recorded in `AUD_V1_Phase_3_Safety_Onboarding_and_Reduction_Setup_Implementation_Guide.md`. The statements above describe the boundary at the end of Phase 2, not the current repository capability.

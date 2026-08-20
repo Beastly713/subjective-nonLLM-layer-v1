@@ -38,7 +38,7 @@ The three planned delivery commits were followed by three narrowly scoped closur
 
 The successful CI run verified frozen dependency installation, formatting, linting, strict typechecking, committed migration deployment against PostgreSQL 17, web component tests, backend integration tests against real PostgreSQL, the production build, Chromium smoke and axe accessibility checks, and the Docker image build.
 
-Phase 1 remains foundation-only. Authentication, authorization, clinical/domain workflows, background jobs, email, and real-patient activation remain deliberately unimplemented.
+At the Phase 1 boundary, the repository remained foundation-only. Authentication, authorization, clinical/domain workflows, background jobs, email, and real-patient activation were deliberately unimplemented at that point; later phase guides record the work subsequently added.
 
 ---
 
@@ -743,7 +743,7 @@ No new service, framework, datastore, package, or abstraction is acceptable unle
 
 ---
 
-# 12. Phase completion handoff to Phase 2
+# 12. Phase completion handoff to Phase 2 (historical)
 
 Phase 1 hands Phase 2 a verified platform foundation, not a partially implemented identity system.
 
@@ -759,4 +759,4 @@ Phase 2 may rely on:
 
 Phase 2 must still inspect the actual repository before defining its first packet. It should then implement identity, authentication, authorization/assignments, profiles, scheduling, and routing foundation according to its own phase guide and the governing specifications.
 
-Phase 1 must not pre-empt those decisions through placeholder implementations.
+Phase 1 did not pre-empt those decisions through placeholder implementations. The handoff was completed by the Phase 2 and Phase 3 implementations recorded in their respective guides.

@@ -1,8 +1,8 @@
 # AUD Subjective Monitoring Platform
 
-This repository is the implementation workspace for the V1 AUD subjective monitoring product. It contains the runtime, accessible product-design foundation, Phase 2 identity and authorization platform, patient profiles, authoritative weekly-schedule foundation, and versioned regional-routing configuration.
+This repository is the implementation workspace for the V1 AUD subjective monitoring product. Phase 1 foundation, Phase 2 identity/core-platform work, and Phase 3 safety-gated onboarding and reduction setup are complete. The current codebase includes server-backed onboarding drafts and revisions, deterministic safety evaluation and case handoff, a 28-day reduction baseline with target proposals, and backend-authoritative recovery-goal and schedule activation.
 
-Phase 2 does not activate patient monitoring or authorize real-patient operation. Safety workflows, workers and delivery, governed content, backup/retention controls, and clinical monitoring behavior remain later-phase work.
+Weekly assessment and subjective-monitoring evaluation, patient support/content, engagement handling, workers and durable delivery, backup/retention controls, and other later-phase operational controls remain outside the current implementation. Prototype activation is supported; `real_patient` operation remains refused until the locked production requirements are present.
 
 ## Prerequisites
 
@@ -51,9 +51,9 @@ The root route resolves the authoritative server session and backend-provided wo
 
 Authentication uses Better Auth database-backed, HTTP-only cookie sessions. Public signup is disabled. Application-owned account state, roles, permissions, direct assignments, and privileged-identity provenance control backend access. Configure `RESEND_API_KEY` and `EMAIL_FROM` together to enable verification and password recovery.
 
-Weekly boundaries are calculated only by the backend from the stored IANA monitoring timezone and persisted as immutable Monday-to-Monday periods. No monitoring-activation API exists in Phase 2. Regional routing is relational, versioned, and requires current per-target deployment-test evidence before a draft can activate; the platform never supplies a universal emergency fallback.
+Weekly boundaries are calculated only by the backend from the stored IANA monitoring timezone and persisted as immutable Monday-to-Monday periods. Phase 3 onboarding completion can create the initial goal and schedule only after the required authoritative onboarding revision, reduction setup where applicable, and safety result are present. The weekly assessment and subjective-monitoring API is not implemented yet. Regional routing is relational, versioned, and requires current per-target deployment-test evidence before a draft can activate; the platform never supplies a universal emergency fallback.
 
-Readiness separately reports PostgreSQL, authentication schema, authorization schema, email capability, routing schema/configuration, and real-patient operational status. Prototype mode can be healthy without an active real-world route. `real_patient` remains explicitly not ready because the full locked operational controls are not present.
+Readiness separately reports PostgreSQL, authentication and authorization schemas, regional-routing schema/configuration, onboarding/safety and safety-case schemas, instrument configuration, email capability, and real-patient operational status. Prototype mode can be healthy without an active real-world route. `real_patient` remains explicitly not ready because the full locked operational controls are not present.
 
 ## Database commands
 
