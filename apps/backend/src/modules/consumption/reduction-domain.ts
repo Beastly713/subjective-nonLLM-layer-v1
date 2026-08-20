@@ -37,6 +37,23 @@ export function heavyDayThresholdTenths(
   return thresholdProfile === 'HIGHER_THRESHOLD' ? 50 : 40;
 }
 
+export function heavyWeekThreshold(
+  thresholdProfile: AlcoholThresholdProfile,
+) {
+  return thresholdProfile === 'HIGHER_THRESHOLD' ? 15 : 8;
+}
+
+export function canonicalProlongedHeavyRegularUse(
+  baselineAverageWeeklyDrinks: number,
+  thresholdProfile: AlcoholThresholdProfile,
+  similarHeavyRegularUseAtLeast3Months: 'YES' | 'NO' | 'UNSURE',
+) {
+  return (
+    baselineAverageWeeklyDrinks >= heavyWeekThreshold(thresholdProfile) &&
+    similarHeavyRegularUseAtLeast3Months === 'YES'
+  );
+}
+
 export function calculateReductionBaselineMetrics(
   days: readonly CompleteReductionBaselineDay[],
   thresholdProfile: AlcoholThresholdProfile,

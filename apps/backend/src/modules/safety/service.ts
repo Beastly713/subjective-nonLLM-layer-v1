@@ -399,6 +399,13 @@ export async function evaluatePatientSafety(
     actorId: string;
     requestId: string;
     input: SafetyInput;
+    activationContext?: {
+      plannedDirection: 'ABSTINENCE' | 'REDUCTION' | 'UNSURE';
+      baselineAverageWeeklyDrinks?: number;
+      targetWeeklyDrinks?: number;
+      canonicalProlongedHeavyRegularUse?: boolean;
+    };
+    trigger?: string;
   },
 ) {
   const { tx } = args;
@@ -446,6 +453,8 @@ export async function evaluatePatientSafety(
     'ANSWERED'
       ? submitted.recoveryDirection.value
       : 'UNSURE';
+  const plannedDirection =
+    args.activationContext?.plannedDirection ?? direction;
 
   const evaluationNow = args.clock.now();
 
@@ -456,38 +465,70 @@ export async function evaluatePatientSafety(
         ? false
         : undefined;
 
-  const evaluationContext = {
-    evaluatedAt: evaluationNow.toISOString(),
-    timezone: profile.monitoringTimezone,
-    sourceOnboardingRevisionId:
-      onboarding.authoritativeRevisionId,
-    plannedDirection: direction,
-    baselineAverageWeeklyDrinks: {
-      availability:
-        'UNAVAILABLE_UNTIL_REDUCTION_BASELINE',
-    },
-    targetWeeklyDrinks: {
-      availability:
-        'UNAVAILABLE_UNTIL_REDUCTION_BASELINE',
-    },
-    patientReportedSimilarHeavyRegularUseAtLeast3Months:
-      args.input
-        .similarHeavyRegularUseAtLeast3Months,
-    canonicalProlongedHeavyRegularUse: {
-      state: 'UNKNOWN',
-      missingDependency:
-        'COMMIT_3_28_DAY_BASELINE',
-    },
-    ageOver65: args.input.ageOver65,
-    cssrs: CSSRS_RECENT_PROVENANCE,
-  };
+  const evaluationContext = args.activationContext
+    ? {
+        evaluatedAt: evaluationNow.toISOString(),
+        timezone: profile.monitoringTimezone,
+        sourceOnboardingRevisionId:
+          onboarding.authoritativeRevisionId,
+        plannedDirection,
+        baselineAverageWeeklyDrinks:
+          args.activationContext.baselineAverageWeeklyDrinks ?? null,
+        targetWeeklyDrinks:
+          args.activationContext.targetWeeklyDrinks ?? null,
+        patientReportedSimilarHeavyRegularUseAtLeast3Months:
+          args.input.similarHeavyRegularUseAtLeast3Months,
+        canonicalProlongedHeavyRegularUse:
+          args.activationContext.canonicalProlongedHeavyRegularUse ?? false,
+        ageOver65: args.input.ageOver65,
+        cssrs: CSSRS_RECENT_PROVENANCE,
+      }
+    : {
+        evaluatedAt: evaluationNow.toISOString(),
+        timezone: profile.monitoringTimezone,
+        sourceOnboardingRevisionId:
+          onboarding.authoritativeRevisionId,
+        plannedDirection,
+        baselineAverageWeeklyDrinks: {
+          availability:
+            'UNAVAILABLE_UNTIL_REDUCTION_BASELINE',
+        },
+        targetWeeklyDrinks: {
+          availability:
+            'UNAVAILABLE_UNTIL_REDUCTION_BASELINE',
+        },
+        patientReportedSimilarHeavyRegularUseAtLeast3Months:
+          args.input.similarHeavyRegularUseAtLeast3Months,
+        canonicalProlongedHeavyRegularUse: {
+          state: 'UNKNOWN',
+          missingDependency: 'COMMIT_3_28_DAY_BASELINE',
+        },
+        ageOver65: args.input.ageOver65,
+        cssrs: CSSRS_RECENT_PROVENANCE,
+      };
 
   const evaluation = evaluateSafety(
     args.input,
     {
       now: evaluationNow,
       timezone: profile.monitoringTimezone,
-      plannedDirection: direction,
+      plannedDirection,
+      ...(args.activationContext?.baselineAverageWeeklyDrinks !== undefined
+        ? {
+            baselineAverageWeeklyDrinks:
+              args.activationContext.baselineAverageWeeklyDrinks,
+          }
+        : {}),
+      ...(args.activationContext?.targetWeeklyDrinks !== undefined
+        ? { targetWeeklyDrinks: args.activationContext.targetWeeklyDrinks }
+        : {}),
+      ...(args.activationContext?.canonicalProlongedHeavyRegularUse !==
+      undefined
+        ? {
+            canonicalProlongedHeavyRegularUse:
+              args.activationContext.canonicalProlongedHeavyRegularUse,
+          }
+        : {}),
       ...(ageOver65 !== undefined
         ? { ageOver65 }
         : {}),
@@ -525,7 +566,7 @@ export async function evaluatePatientSafety(
         instrumentSource:
           SAFETY_SCREEN_PROVENANCE.source,
         schemaVersion: 'safety_v1',
-        trigger: 'ONBOARDING',
+        trigger: args.trigger ?? 'ONBOARDING',
         actorId: args.actorId,
         submittedAt: evaluationNow,
       },
@@ -993,7 +1034,7 @@ export async function evaluatePatientSafety(
 
   const setupState = requiresReview
     ? 'SAFETY_REVIEW_REQUIRED'
-    : direction === 'REDUCTION'
+    : plannedDirection === 'REDUCTION'
       ? 'REDUCTION_SETUP_REQUIRED'
       : 'SETUP_INCOMPLETE';
 

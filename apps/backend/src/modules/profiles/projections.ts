@@ -9,6 +9,15 @@ export function projectPatientProfile(profile: {
     email: string;
     applicationAccount: { state: 'PENDING' | 'ACTIVE' | 'DISABLED' } | null;
   };
+  onboardingState?:
+    | {
+        completionStatus:
+          | 'INCOMPLETE'
+          | 'PENDING_SAFETY_REVIEW'
+          | 'SAFETY_HANDOFF'
+          | 'COMPLETE';
+      }
+    | null;
   preferences: Array<{
     version: number;
     mutualHelpPreference:
@@ -28,7 +37,7 @@ export function projectPatientProfile(profile: {
     name: profile.patient.name,
     email: profile.patient.email,
     accountState: profile.patient.applicationAccount.state,
-    onboardingStatus: 'INCOMPLETE',
+    onboardingStatus: profile.onboardingState?.completionStatus ?? 'INCOMPLETE',
     monitoringTimezone: profile.monitoringTimezone,
     version: profile.version,
     preferences: preference,
@@ -37,5 +46,6 @@ export function projectPatientProfile(profile: {
 
 export const patientProfileInclude = {
   patient: { include: { applicationAccount: true } },
+  onboardingState: { select: { completionStatus: true } },
   preferences: { orderBy: { version: 'desc' as const }, take: 1 },
 } as const;

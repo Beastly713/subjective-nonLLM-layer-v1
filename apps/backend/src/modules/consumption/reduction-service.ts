@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import {
   OnboardingDraftSchema,
+  RecoveryGoalProjectionSchema,
   ReductionSetupResponseSchema,
   type ReductionBaselineDayInput,
   type ReductionSetupResponse,
@@ -44,6 +45,7 @@ type ReductionDatabase = Pick<
   | 'reductionSetupState'
   | 'reductionBaselineRevision'
   | 'reductionBaselineDay'
+  | 'recoveryGoalVersion'
   | 'auditEvent'
   | 'safetyCase'
   | 'safetyEvaluationResult'
@@ -155,7 +157,10 @@ async function loadEligibility(
     select: { authoritativeRevisionId: true },
   });
   if (!state?.authoritativeRevisionId) {
-    return { status: 'MISSING_AUTHORITATIVE_REVISION' as const };
+    return {
+      sourceOnboardingRevisionId: null,
+      status: 'MISSING_AUTHORITATIVE_REVISION' as const,
+    };
   }
 
   const revision = await db.onboardingRevision.findUnique({
@@ -185,6 +190,7 @@ async function loadEligibility(
       : 'UNSURE';
 
   return {
+    sourceOnboardingRevisionId: state.authoritativeRevisionId,
     status:
       recoveryDirection === 'REDUCTION'
         ? ('REDUCTION_REQUIRED' as const)
@@ -343,13 +349,56 @@ function proposalProjection(state: ReductionState) {
   };
 }
 
+function recoveryGoalProjection(goal: {
+  id: string;
+  goalVersion: number;
+  goal: 'ABSTINENCE' | 'REDUCTION' | 'UNSURE';
+  status:
+    | 'PENDING_CLINICAL_SAFETY_REVIEW'
+    | 'ACTIVE'
+    | 'SUSPENDED_SAFETY_HANDOFF'
+    | 'SUPERSEDED'
+    | 'ENDED';
+  baselineRevisionId: string | null;
+  targetWeeklyStandardDrinks: unknown;
+  effectiveFromPeriodId: string | null;
+  setBy: 'PATIENT' | 'CLINICIAN' | 'SHARED';
+  createdAt: Date;
+}) {
+  const target = decimalToNumber(goal.targetWeeklyStandardDrinks);
+  return RecoveryGoalProjectionSchema.parse({
+    id: goal.id,
+    goalVersion: goal.goalVersion,
+    goal: goal.goal,
+    status: goal.status,
+    baselineRevisionId: goal.baselineRevisionId,
+    targetWeeklyStandardDrinks: target,
+    effectiveFromPeriodId: goal.effectiveFromPeriodId,
+    setBy: goal.setBy,
+    createdAt: goal.createdAt.toISOString(),
+  });
+}
+
 export async function loadReductionSetupProjection(
   db: ReductionDatabase,
   patientId: string,
 ): Promise<ReductionSetupResponse> {
-  const [state, eligibility] = await Promise.all([
+  const [state, eligibility, currentGoal] = await Promise.all([
     loadReductionState(db, patientId),
     loadEligibility(db, patientId),
+    db.recoveryGoalVersion.findFirst({
+      where: {
+        patientId,
+        status: {
+          in: [
+            'PENDING_CLINICAL_SAFETY_REVIEW',
+            'ACTIVE',
+            'SUSPENDED_SAFETY_HANDOFF',
+          ],
+        },
+      },
+      orderBy: { goalVersion: 'desc' },
+    }),
   ]);
 
   if (eligibility.status !== 'REDUCTION_REQUIRED') {
@@ -363,9 +412,12 @@ export async function loadReductionSetupProjection(
         patientInputDecimalPlaces: PATIENT_INPUT_DECIMAL_PLACES,
       },
       thresholdProfile: DEFAULT_THRESHOLD_PROFILE,
+      sourceOnboardingRevisionId:
+        eligibility.sourceOnboardingRevisionId ?? null,
       draftBaseline: null,
       authoritativeBaseline: null,
       proposal: null,
+      recoveryGoal: currentGoal ? recoveryGoalProjection(currentGoal) : null,
     });
   }
 
@@ -400,9 +452,12 @@ export async function loadReductionSetupProjection(
       patientInputDecimalPlaces: PATIENT_INPUT_DECIMAL_PLACES,
     },
     thresholdProfile,
+    sourceOnboardingRevisionId:
+      eligibility.sourceOnboardingRevisionId ?? null,
     draftBaseline,
     authoritativeBaseline,
     proposal: state ? proposalProjection(state) : null,
+    recoveryGoal: currentGoal ? recoveryGoalProjection(currentGoal) : null,
   });
 }
 
@@ -896,6 +951,17 @@ export async function proposeReductionTarget(
   targetWeeklyStandardDrinks: number,
 ) {
   await lockPatientForProcessing(context.tx, context.patientId);
+  const onboardingState = await context.tx.patientOnboardingState.findUnique({
+    where: { patientId: context.patientId },
+    select: { completionStatus: true },
+  });
+  if (onboardingState?.completionStatus === 'COMPLETE') {
+    throw new DomainError(
+      409,
+      'GOAL_CHANGE_REQUIRES_VERSIONED_WORKFLOW',
+      'The active recovery goal cannot be changed through reduction setup.',
+    );
+  }
   const state = await loadReductionState(context.tx, context.patientId);
   assertExpectedVersion(state, expectedVersion);
   await requireReductionEligibility(context.tx, context.patientId);

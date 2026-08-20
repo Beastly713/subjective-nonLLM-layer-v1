@@ -1,6 +1,8 @@
 import {
+  CompleteOnboardingRequestSchema,
   OnboardingDraftSchema,
   OnboardingStateResponseSchema,
+  RecoveryGoalProjectionSchema,
   SaveOnboardingDraftRequestSchema,
   SaveOnboardingDraftResponseSchema,
   SafetyInputSchema,
@@ -24,6 +26,7 @@ import { DomainError } from '../../shared/errors/domain-error.js';
 import { loadPatientSafetyProjection } from '../safety/projections.js';
 import { evaluatePatientSafety } from '../safety/service.js';
 import { AUDIT_C_PROVENANCE } from './instrument-provenance.js';
+import { completePatientOnboarding } from './activation-service.js';
 
 function completeDraft(draft: ReturnType<typeof OnboardingDraftSchema.parse>) {
   const values = [
@@ -83,15 +86,34 @@ export function registerOnboardingRoutes(
         'The action is not permitted.',
       );
     }
-    const state = await prisma.patientOnboardingState.findUnique({
-      where: { patientId: actor.userId },
-      include: {
-        authoritativeRevision: {
-          select: { id: true, revision: true, submittedAt: true },
+    const [state, safety, reductionSetup, currentGoal] = await Promise.all([
+      prisma.patientOnboardingState.findUnique({
+        where: { patientId: actor.userId },
+        include: {
+          authoritativeRevision: {
+            select: { id: true, revision: true, submittedAt: true },
+          },
         },
-      },
-    });
-    const safety = await loadPatientSafetyProjection(prisma, actor.userId);
+      }),
+      loadPatientSafetyProjection(prisma, actor.userId),
+      prisma.reductionSetupState.findUnique({
+        where: { patientId: actor.userId },
+        include: { authoritativeBaselineRevision: true },
+      }),
+      prisma.recoveryGoalVersion.findFirst({
+        where: {
+          patientId: actor.userId,
+          status: {
+            in: [
+              'PENDING_CLINICAL_SAFETY_REVIEW',
+              'ACTIVE',
+              'SUSPENDED_SAFETY_HANDOFF',
+            ],
+          },
+        },
+        orderBy: { goalVersion: 'desc' },
+      }),
+    ]);
     const draft = state
       ? OnboardingDraftSchema.parse(state.draftResponses)
       : null;
@@ -99,14 +121,43 @@ export function registerOnboardingRoutes(
       draft?.recoveryDirection.state === 'ANSWERED'
         ? draft.recoveryDirection.value
         : 'UNSURE';
+    const reductionSetupComplete = Boolean(
+      reductionSetup?.authoritativeBaselineRevision &&
+        reductionSetup.authoritativeBaselineRevision.lifecycle === 'CONFIRMED' &&
+        reductionSetup.proposalKind &&
+        reductionSetup.targetWeeklyStandardDrinks !== null &&
+        reductionSetup.proposalBaselineRevisionId ===
+          reductionSetup.authoritativeBaselineRevisionId,
+    );
     const dependencyState =
-      safety.safetyState === 'HANDOFF_REQUIRED' ||
-      safety.safetyState === 'REVIEW_REQUIRED'
-        ? 'SAFETY_REVIEW_REQUIRED'
-        : recoveryDirection === 'REDUCTION' &&
-            safety.safetyState !== 'NOT_ASSESSED'
-          ? 'REDUCTION_SETUP_REQUIRED'
-          : 'SETUP_INCOMPLETE';
+      state?.completionStatus === 'COMPLETE'
+        ? 'SETUP_COMPLETE'
+        : safety.safetyState === 'HANDOFF_REQUIRED' ||
+            (safety.safetyState === 'REVIEW_REQUIRED' &&
+              !safety.goalChangeAllowed)
+          ? 'SAFETY_REVIEW_REQUIRED'
+          : !state?.authoritativeRevisionId
+            ? 'SETUP_INCOMPLETE'
+            : recoveryDirection === 'REDUCTION' && !reductionSetupComplete
+              ? 'REDUCTION_SETUP_REQUIRED'
+              : 'READY_TO_COMPLETE';
+
+    const recoveryGoal = currentGoal
+      ? RecoveryGoalProjectionSchema.parse({
+          id: currentGoal.id,
+          goalVersion: currentGoal.goalVersion,
+          goal: currentGoal.goal,
+          status: currentGoal.status,
+          baselineRevisionId: currentGoal.baselineRevisionId,
+          targetWeeklyStandardDrinks:
+            currentGoal.targetWeeklyStandardDrinks === null
+              ? null
+              : Number(currentGoal.targetWeeklyStandardDrinks),
+          effectiveFromPeriodId: currentGoal.effectiveFromPeriodId,
+          setBy: currentGoal.setBy,
+          createdAt: currentGoal.createdAt.toISOString(),
+        })
+      : null;
 
     return OnboardingStateResponseSchema.parse({
       draft,
@@ -116,8 +167,10 @@ export function registerOnboardingRoutes(
         ? {
             ...state.authoritativeRevision,
             submittedAt: state.authoritativeRevision.submittedAt.toISOString(),
-          }
+        }
         : null,
+      completionStatus: state?.completionStatus ?? 'INCOMPLETE',
+      recoveryGoal,
       safety,
       dependencyState,
     });
@@ -158,6 +211,13 @@ export function registerOnboardingRoutes(
       const existing = await tx.patientOnboardingState.findUnique({
         where: { patientId: actor.userId },
       });
+      if (existing?.completionStatus === 'COMPLETE') {
+        throw new DomainError(
+          409,
+          'ONBOARDING_ALREADY_COMPLETE',
+          'Completed onboarding cannot be resubmitted as initial setup.',
+        );
+      }
       if (
         (!existing && body.expectedVersion !== 0) ||
         (existing && existing.version !== body.expectedVersion)
@@ -230,6 +290,13 @@ export function registerOnboardingRoutes(
         const state = await tx.patientOnboardingState.findUnique({
           where: { patientId: actor.userId },
         });
+        if (state?.completionStatus === 'COMPLETE') {
+          throw new DomainError(
+            409,
+            'ONBOARDING_ALREADY_COMPLETE',
+            'Completed onboarding cannot be resubmitted as initial setup.',
+          );
+        }
         if (!state || state.version !== body.expectedVersion) {
           throw new DomainError(
             409,
@@ -305,6 +372,46 @@ export function registerOnboardingRoutes(
           setupState: 'INCOMPLETE',
         });
       },
+    );
+    return result.value;
+  });
+
+  app.post('/api/v1/patient/onboarding/complete', async (request) => {
+    const actor = await requirePermission(
+      request,
+      auth,
+      prisma,
+      config,
+      'PATIENT_ONBOARDING_UPDATE',
+    );
+    if (!actor.access.scopeKinds.includes('OWN_PATIENT')) {
+      throw new DomainError(
+        403,
+        'PERMISSION_DENIED',
+        'The action is not permitted.',
+      );
+    }
+    const body = CompleteOnboardingRequestSchema.parse(request.body);
+    const key = requireIdempotencyKey(request.headers['idempotency-key']);
+    const result = await executeIdempotently(
+      prisma,
+      actor.userId,
+      'PATIENT_ONBOARDING_COMPLETE',
+      key,
+      body,
+      (tx) =>
+        completePatientOnboarding({
+          tx,
+          config,
+          clock,
+          patientId: actor.userId,
+          actorId: actor.userId,
+          requestId: request.id,
+          authoritativeOnboardingRevisionId:
+            body.authoritativeOnboardingRevisionId,
+          expectedReductionSetupVersion:
+            body.expectedReductionSetupVersion,
+        }),
     );
     return result.value;
   });

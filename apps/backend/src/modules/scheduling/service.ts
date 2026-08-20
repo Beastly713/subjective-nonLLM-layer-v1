@@ -10,8 +10,6 @@ import {
   weeklyPeriodWindow,
 } from './schedule-math.js';
 
-type ScheduleStore = PrismaClient | Prisma.TransactionClient;
-
 export const lockSchedulePatient = lockPatientForProcessing;
 
 function periodData(patientId: string, timezone: string, startAt: Date) {
@@ -24,107 +22,172 @@ function periodData(patientId: string, timezone: string, startAt: Date) {
   };
 }
 
+export async function createInitialScheduleInTransaction(
+  tx: Prisma.TransactionClient,
+  clock: Clock,
+  input: { patientId: string; actorUserId: string; provenance: string },
+) {
+  await lockSchedulePatient(tx, input.patientId);
+  const existing = await tx.monitoringScheduleVersion.findFirst({
+    where: { patientId: input.patientId, lifecycle: 'ACTIVE' },
+    include: { periods: { orderBy: { periodStartAt: 'asc' } } },
+  });
+  if (existing) return existing;
+  const profile = await tx.patientProfile.findUniqueOrThrow({
+    where: { patientId: input.patientId },
+  });
+  const timezone = normalizeMonitoringTimezone(profile.monitoringTimezone);
+  const startAt = firstCompletePeriodStart(clock.now(), timezone);
+  return tx.monitoringScheduleVersion.create({
+    data: {
+      patientId: input.patientId,
+      version: 1,
+      monitoringTimezone: timezone,
+      effectiveBoundary: startAt,
+      createdAt: clock.now(),
+      createdByUserId: input.actorUserId,
+      provenance: input.provenance,
+      periods: {
+        create: {
+          ...periodData(input.patientId, timezone, startAt),
+          createdAt: clock.now(),
+        },
+      },
+    },
+    include: { periods: true },
+  });
+}
+
 export async function createInitialSchedule(
   prisma: PrismaClient,
   clock: Clock,
   input: { patientId: string; actorUserId: string; provenance: string },
 ) {
-  return prisma.$transaction(async (tx) => {
-    await lockSchedulePatient(tx, input.patientId);
-    const existing = await tx.monitoringScheduleVersion.findFirst({
-      where: { patientId: input.patientId, lifecycle: 'ACTIVE' },
-      include: { periods: { orderBy: { periodStartAt: 'asc' } } },
-    });
-    if (existing) return existing;
-    const profile = await tx.patientProfile.findUniqueOrThrow({
-      where: { patientId: input.patientId },
-    });
-    const timezone = normalizeMonitoringTimezone(profile.monitoringTimezone);
-    const startAt = firstCompletePeriodStart(clock.now(), timezone);
-    return tx.monitoringScheduleVersion.create({
-      data: {
-        patientId: input.patientId,
-        version: 1,
-        monitoringTimezone: timezone,
-        effectiveBoundary: startAt,
-        createdAt: clock.now(),
-        createdByUserId: input.actorUserId,
-        provenance: input.provenance,
-        periods: {
-          create: {
-            ...periodData(input.patientId, timezone, startAt),
-            createdAt: clock.now(),
-          },
-        },
-      },
-      include: { periods: true },
-    });
-  });
+  return prisma.$transaction((tx) =>
+    createInitialScheduleInTransaction(tx, clock, input),
+  );
 }
 
 /** The next boundary is derived from persisted history; callers cannot choose it. */
+export async function provisionNextPeriodInTransaction(
+  tx: Prisma.TransactionClient,
+  clock: Clock,
+  patientId: string,
+) {
+  await lockSchedulePatient(tx, patientId);
+  const latest = await tx.scheduledPeriod.findFirst({
+    where: { patientId },
+    orderBy: { periodEndAt: 'desc' },
+  });
+  if (!latest)
+    throw new DomainError(
+      409,
+      'VERSION_CONFLICT',
+      'Monitoring is not activated.',
+    );
+  const active = await tx.monitoringScheduleVersion.findFirstOrThrow({
+    where: { patientId, lifecycle: 'ACTIVE' },
+  });
+  const pending = await tx.monitoringScheduleVersion.findFirst({
+    where: { patientId, lifecycle: 'PENDING' },
+  });
+  const now = clock.now();
+  let schedule = active;
+  let startAt: Date;
+
+  if (pending) {
+    if (now < pending.effectiveBoundary) return latest;
+    if (latest.periodEndAt > pending.effectiveBoundary)
+      throw new DomainError(
+        500,
+        'INTERNAL_ERROR',
+        'Persisted schedule history overlaps a pending transition boundary.',
+      );
+    schedule = pending;
+    await tx.monitoringScheduleVersion.updateMany({
+      where: { patientId, lifecycle: 'ACTIVE' },
+      data: { lifecycle: 'SUPERSEDED', supersededAt: now },
+    });
+    await tx.monitoringScheduleVersion.update({
+      where: { id: schedule.id },
+      data: { lifecycle: 'ACTIVE' },
+    });
+    startAt = pending.effectiveBoundary;
+  } else {
+    if (
+      latest.periodStartAt >=
+      firstCompletePeriodStart(now, active.monitoringTimezone)
+    )
+      return latest;
+    startAt = latest.periodEndAt;
+  }
+  return tx.scheduledPeriod.create({
+    data: {
+      ...periodData(patientId, schedule.monitoringTimezone, startAt),
+      scheduleVersionId: schedule.id,
+      createdAt: now,
+    },
+  });
+}
+
 export async function provisionNextPeriod(
   prisma: PrismaClient,
   clock: Clock,
   patientId: string,
 ) {
-  return prisma.$transaction(async (tx) => {
-    await lockSchedulePatient(tx, patientId);
-    const latest = await tx.scheduledPeriod.findFirst({
-      where: { patientId },
-      orderBy: { periodEndAt: 'desc' },
-    });
-    if (!latest)
+  return prisma.$transaction((tx) =>
+    provisionNextPeriodInTransaction(tx, clock, patientId),
+  );
+}
+
+export async function ensureGoalActivationPeriodInTransaction(
+  tx: Prisma.TransactionClient,
+  clock: Clock,
+  input: { patientId: string; actorUserId: string; provenance: string },
+) {
+  const schedule = await createInitialScheduleInTransaction(tx, clock, input);
+  const targetStart = firstCompletePeriodStart(
+    clock.now(),
+    schedule.monitoringTimezone,
+  );
+
+  let period = await tx.scheduledPeriod.findFirst({
+    where: {
+      patientId: input.patientId,
+      periodStartAt: { gte: targetStart },
+    },
+    orderBy: { periodStartAt: 'asc' },
+  });
+  let latest = await tx.scheduledPeriod.findFirst({
+    where: { patientId: input.patientId },
+    orderBy: { periodEndAt: 'desc' },
+  });
+
+  while (!period) {
+    const previousId = latest?.id;
+    const next = await provisionNextPeriodInTransaction(
+      tx,
+      clock,
+      input.patientId,
+    );
+    if (next.id === previousId) {
       throw new DomainError(
         409,
         'VERSION_CONFLICT',
-        'Monitoring is not activated.',
+        'A valid monitoring activation period is not yet available.',
       );
-    const active = await tx.monitoringScheduleVersion.findFirstOrThrow({
-      where: { patientId, lifecycle: 'ACTIVE' },
-    });
-    const pending = await tx.monitoringScheduleVersion.findFirst({
-      where: { patientId, lifecycle: 'PENDING' },
-    });
-    const now = clock.now();
-    let schedule = active;
-    let startAt: Date;
-
-    if (pending) {
-      if (now < pending.effectiveBoundary) return latest;
-      if (latest.periodEndAt > pending.effectiveBoundary)
-        throw new DomainError(
-          500,
-          'INTERNAL_ERROR',
-          'Persisted schedule history overlaps a pending transition boundary.',
-        );
-      schedule = pending;
-      await tx.monitoringScheduleVersion.updateMany({
-        where: { patientId, lifecycle: 'ACTIVE' },
-        data: { lifecycle: 'SUPERSEDED', supersededAt: now },
-      });
-      await tx.monitoringScheduleVersion.update({
-        where: { id: schedule.id },
-        data: { lifecycle: 'ACTIVE' },
-      });
-      startAt = pending.effectiveBoundary;
-    } else {
-      if (
-        latest.periodStartAt >=
-        firstCompletePeriodStart(now, active.monitoringTimezone)
-      )
-        return latest;
-      startAt = latest.periodEndAt;
     }
-    const period = await tx.scheduledPeriod.create({
-      data: {
-        ...periodData(patientId, schedule.monitoringTimezone, startAt),
-        scheduleVersionId: schedule.id,
-        createdAt: now,
+    latest = next;
+    period = await tx.scheduledPeriod.findFirst({
+      where: {
+        patientId: input.patientId,
+        periodStartAt: { gte: targetStart },
       },
+      orderBy: { periodStartAt: 'asc' },
     });
-    return period;
-  });
+  }
+
+  return period;
 }
 
 /** A changed timezone starts at the first new-zone Monday not before materialized history ends. */

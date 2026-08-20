@@ -17,6 +17,13 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { apiGet } from '@/lib/api/client';
 
+const onboardingStatusLabels = {
+  INCOMPLETE: 'Setup incomplete',
+  PENDING_SAFETY_REVIEW: 'Safety review pending',
+  SAFETY_HANDOFF: 'Safety handoff active',
+  COMPLETE: 'Setup complete',
+} as const;
+
 export function ClinicianPatientsPage() {
   const [search, setSearch] = useState('');
   const patients = useQuery({
@@ -82,7 +89,9 @@ export function ClinicianPatientsPage() {
                         <td className="px-4 py-4">
                           {patient.monitoringTimezone}
                         </td>
-                        <td className="px-4 py-4">Incomplete</td>
+                        <td className="px-4 py-4">
+                          {onboardingStatusLabels[patient.onboardingStatus]}
+                        </td>
                         <td className="px-4 py-4 text-muted-foreground">
                           {patient.preferences.mutualHelpPreference ??
                             'Not supplied'}{' '}

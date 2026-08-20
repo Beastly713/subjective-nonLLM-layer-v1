@@ -21,6 +21,16 @@ import {
 } from '@/features/patient/safety/patient-safety-boundary';
 import { PatientSafetyStatus } from '@/features/patient/safety/patient-safety-status';
 
+const onboardingStatusLabels: Record<
+  PatientProfileResponse['onboardingStatus'],
+  string
+> = {
+  INCOMPLETE: 'Setup incomplete',
+  PENDING_SAFETY_REVIEW: 'Safety review pending',
+  SAFETY_HANDOFF: 'Safety handoff active',
+  COMPLETE: 'Setup complete',
+};
+
 export function PatientProfilePage() {
   return (
     <PatientSafetyBoundary>
@@ -102,7 +112,7 @@ function PatientProfileContent() {
     <PatientShell>
       <div className="mb-8">
         <p className="m-0 text-sm font-semibold text-success">
-          Setup incomplete
+          {onboardingStatusLabels[data.onboardingStatus]}
         </p>
         <h1 className="mb-0 mt-2 text-3xl font-semibold">
           Profile preferences
@@ -135,7 +145,9 @@ function PatientProfileContent() {
             </div>
             <div>
               <p className="m-0 text-xs text-muted-foreground">Onboarding</p>
-              <p className="m-0 font-medium">Incomplete</p>
+              <p className="m-0 font-medium">
+                {onboardingStatusLabels[data.onboardingStatus]}
+              </p>
             </div>
           </CardContent>
         </Card>

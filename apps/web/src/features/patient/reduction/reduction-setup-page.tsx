@@ -1,4 +1,6 @@
 import {
+  CompleteOnboardingRequestSchema,
+  CompleteOnboardingResponseSchema,
   ConfirmReductionBaselineRequestSchema,
   ProposeReductionTargetRequestSchema,
   ReductionSetupResponseSchema,
@@ -60,6 +62,12 @@ function errorMessage(error: unknown, fallback: string) {
       return 'Reduction setup is unavailable while a safety handoff is required.';
     case 'GOAL_CHANGE_RESTRICTED':
       return 'Target changes are unavailable during the current safety review.';
+    case 'SAFETY_ASSESSMENT_REQUIRED':
+      return 'Complete the safety assessment before finishing setup.';
+    case 'REDUCTION_SETUP_INCOMPLETE':
+      return 'Complete the baseline and target proposal before finishing setup.';
+    case 'ONBOARDING_ALREADY_COMPLETE':
+      return 'Setup is already complete.';
     case 'REDUCTION_TARGET_NOT_BELOW_BASELINE':
       return 'A positive target must be below the baseline weekly average.';
     case 'REDUCTION_TARGET_BASELINE_ZERO':
@@ -263,6 +271,53 @@ function PatientReductionSetupContent() {
     );
   };
 
+  const finishSetup = async () => {
+    if (
+      !data.sourceOnboardingRevisionId ||
+      !data.authoritativeBaseline ||
+      !data.proposal
+    ) {
+      return;
+    }
+    setPending(true);
+    setFormError(undefined);
+    setNotice(undefined);
+    try {
+      const body = CompleteOnboardingRequestSchema.parse({
+        authoritativeOnboardingRevisionId: data.sourceOnboardingRevisionId,
+        expectedReductionSetupVersion: data.version,
+      });
+      const response = await apiMutate(
+        '/api/v1/patient/onboarding/complete',
+        'POST',
+        body,
+        {
+          schema: CompleteOnboardingResponseSchema,
+          headers: { 'Idempotency-Key': crypto.randomUUID() },
+        },
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['patient', 'onboarding'] }),
+        queryClient.invalidateQueries({ queryKey: ['patient', 'reduction-setup'] }),
+        queryClient.invalidateQueries({ queryKey: ['patient', 'safety'] }),
+        queryClient.invalidateQueries({ queryKey: ['patient', 'profile'] }),
+        queryClient.invalidateQueries({ queryKey: ['patient', 'schedule'] }),
+      ]);
+      setNotice(
+        response.completionStatus === 'PENDING_SAFETY_REVIEW'
+          ? 'Your plan is saved and is waiting for safety review.'
+          : response.completionStatus === 'SAFETY_HANDOFF'
+            ? 'Your setup is paused while the safety handoff is active.'
+            : 'Setup complete.',
+      );
+      await query.refetch();
+    } catch (error) {
+      setFormError(errorMessage(error, 'Setup could not be completed.'));
+    } finally {
+      setPending(false);
+    }
+  };
+
   const knownDays = days.filter((day) => day.status !== 'UNKNOWN').length;
   const hasUnknownDays = knownDays !== 28;
   const canConfirm =
@@ -277,6 +332,15 @@ function PatientReductionSetupContent() {
     );
   const safetyNotAssessed = safety.safetyState === 'NOT_ASSESSED';
   const baseline = data.authoritativeBaseline;
+  const setupComplete = data.recoveryGoal?.status === 'ACTIVE';
+  const pendingSafetyReview =
+    data.recoveryGoal?.status === 'PENDING_CLINICAL_SAFETY_REVIEW';
+  const canFinishSetup = Boolean(
+    data.sourceOnboardingRevisionId &&
+      data.authoritativeBaseline &&
+      data.proposal &&
+      !setupComplete,
+  );
 
   return (
     <PatientShell>
@@ -477,13 +541,60 @@ function PatientReductionSetupContent() {
 
             <ReductionTargetCard
               baseline={baseline}
-              disabled={!safety.goalChangeAllowed || safetyNotAssessed}
+              disabled={
+                !safety.goalChangeAllowed ||
+                safetyNotAssessed ||
+                setupComplete
+              }
               onChange={setTarget}
               onSubmit={() => void saveTarget()}
               pending={pending}
               proposal={data.proposal}
               value={target}
             />
+
+            {pendingSafetyReview ? (
+              <Card>
+                <CardContent>
+                  <p className="m-0 text-sm text-muted-foreground">
+                    Your plan is saved and is waiting for safety review.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {setupComplete ? (
+              <Card className="border-success-border bg-success-surface/40">
+                <CardContent>
+                  <p className="m-0 font-semibold text-success">Setup complete</p>
+                  <p className="mb-0 mt-2 text-sm text-muted-foreground">
+                    Your recovery goal is active and the monitoring schedule is
+                    ready.
+                  </p>
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {canFinishSetup ? (
+              <Card>
+                <CardHeader>
+                  <h2 className="m-0 text-lg font-semibold">Finish setup</h2>
+                </CardHeader>
+                <CardContent className="grid gap-3">
+                  <p className="m-0 text-sm leading-6 text-muted-foreground">
+                    Review your saved proposal, then finish setup when you are
+                    ready to activate it.
+                  </p>
+                  <Button
+                    className="sm:w-fit"
+                    disabled={pending}
+                    onClick={() => void finishSetup()}
+                  >
+                    Finish setup
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : null}
           </>
         ) : null}
       </div>

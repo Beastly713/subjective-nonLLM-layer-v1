@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { OnboardingCompletionStatusSchema } from '../onboarding/onboarding.js';
+
 export const MutualHelpPreferenceSchema = z.enum([
   'NONE',
   'AA_12_STEP',
@@ -18,7 +20,7 @@ export const PatientProfileResponseSchema = z.object({
   name: z.string(),
   email: z.email(),
   accountState: z.enum(['PENDING', 'ACTIVE', 'DISABLED']),
-  onboardingStatus: z.literal('INCOMPLETE'),
+  onboardingStatus: OnboardingCompletionStatusSchema,
   monitoringTimezone: z.string(),
   version: z.number().int().positive(),
   preferences: z.object({

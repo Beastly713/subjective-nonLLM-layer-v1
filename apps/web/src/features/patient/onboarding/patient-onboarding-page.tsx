@@ -1,4 +1,6 @@
 import {
+  CompleteOnboardingRequestSchema,
+  CompleteOnboardingResponseSchema,
   OnboardingStateResponseSchema,
   SaveOnboardingDraftRequestSchema,
   SaveOnboardingDraftResponseSchema,
@@ -196,6 +198,14 @@ function PatientOnboardingContent() {
       return 'This setup is not available for the current account.';
     }
 
+    if (errorCode(error) === 'SAFETY_ASSESSMENT_REQUIRED') {
+      return 'Complete the safety assessment before finishing setup.';
+    }
+
+    if (errorCode(error) === 'ONBOARDING_ALREADY_COMPLETE') {
+      return 'Setup is already complete.';
+    }
+
     return fallback;
   };
 
@@ -318,6 +328,47 @@ function PatientOnboardingContent() {
     }
   };
 
+  const finishSetup = async () => {
+    if (!data.authoritativeRevision) return;
+    setSaving(true);
+    setFormError(undefined);
+    setNotice(undefined);
+    try {
+      const body = CompleteOnboardingRequestSchema.parse({
+        authoritativeOnboardingRevisionId: data.authoritativeRevision.id,
+      });
+      const response = await apiMutate(
+        '/api/v1/patient/onboarding/complete',
+        'POST',
+        body,
+        {
+          schema: CompleteOnboardingResponseSchema,
+          headers: { 'Idempotency-Key': crypto.randomUUID() },
+        },
+      );
+      queryClient.setQueryData(['patient', 'safety'], response.safety);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['patient', 'onboarding'] }),
+        queryClient.invalidateQueries({ queryKey: ['patient', 'reduction-setup'] }),
+        queryClient.invalidateQueries({ queryKey: ['patient', 'safety'] }),
+        queryClient.invalidateQueries({ queryKey: ['patient', 'profile'] }),
+        queryClient.invalidateQueries({ queryKey: ['patient', 'schedule'] }),
+      ]);
+      setNotice(
+        response.completionStatus === 'PENDING_SAFETY_REVIEW'
+          ? 'Your plan is saved and is waiting for safety review.'
+          : response.completionStatus === 'SAFETY_HANDOFF'
+            ? 'Your setup is paused while the safety handoff is active.'
+            : 'Setup complete.',
+      );
+      await query.refetch();
+    } catch (error) {
+      setFormError(errorMessage(error, 'Setup could not be completed.'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const continueStep = async () => {
     if (current.step === 'SAFETY') {
       await submitSafety();
@@ -339,6 +390,9 @@ function PatientOnboardingContent() {
     updateCssrs,
     recoveryDirectionLocked: !safetyProjection.goalChangeAllowed,
   };
+  const reductionDirection =
+    current.draft.recoveryDirection.state === 'ANSWERED' &&
+    current.draft.recoveryDirection.value === 'REDUCTION';
 
   return (
     <div className="grid gap-6">
@@ -406,6 +460,8 @@ function PatientOnboardingContent() {
             draft: current.draft,
             currentStep: current.step,
           }}
+          finishing={saving}
+          onFinishSetup={!reductionDirection ? () => void finishSetup() : undefined}
         />
       ) : null}
 

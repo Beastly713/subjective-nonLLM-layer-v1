@@ -4,6 +4,7 @@ import {
   PatientSafetyProjectionSchema,
   SafetyDraftInputSchema,
 } from '../safety/safety.js';
+import { RecoveryGoalProjectionSchema } from '../recovery/recovery.js';
 
 export const RecoveryDirectionSchema = z.enum([
   'ABSTINENCE',
@@ -19,6 +20,13 @@ export const OnboardingStepSchema = z.enum([
   'PREFERENCES',
   'SAFETY',
   'RESULT',
+]);
+
+export const OnboardingCompletionStatusSchema = z.enum([
+  'INCOMPLETE',
+  'PENDING_SAFETY_REVIEW',
+  'SAFETY_HANDOFF',
+  'COMPLETE',
 ]);
 
 export const LastDrinkStateSchema = z.enum([
@@ -99,6 +107,18 @@ export const SubmitOnboardingResponseSchema = z.object({
   setupState: z.literal('INCOMPLETE'),
 });
 
+export const CompleteOnboardingRequestSchema = z.object({
+  authoritativeOnboardingRevisionId: z.uuid(),
+  expectedReductionSetupVersion: z.number().int().nonnegative().nullable().optional(),
+});
+
+export const CompleteOnboardingResponseSchema = z.object({
+  completionStatus: OnboardingCompletionStatusSchema,
+  recoveryGoal: RecoveryGoalProjectionSchema.nullable(),
+  scheduleState: z.enum(['ACTIVATED', 'NOT_ACTIVATED']),
+  safety: PatientSafetyProjectionSchema,
+});
+
 export const OnboardingStateResponseSchema = z.object({
   draft: OnboardingDraftSchema.nullable(),
   currentStep: OnboardingStepSchema,
@@ -110,16 +130,29 @@ export const OnboardingStateResponseSchema = z.object({
       submittedAt: z.iso.datetime(),
     })
     .nullable(),
+  completionStatus: OnboardingCompletionStatusSchema,
+  recoveryGoal: RecoveryGoalProjectionSchema.nullable(),
   safety: PatientSafetyProjectionSchema,
   dependencyState: z.enum([
     'SETUP_INCOMPLETE',
     'REDUCTION_SETUP_REQUIRED',
     'SAFETY_REVIEW_REQUIRED',
+    'READY_TO_COMPLETE',
+    'SETUP_COMPLETE',
   ]),
 });
 
 export type OnboardingDraft = z.infer<typeof OnboardingDraftSchema>;
 export type OnboardingStep = z.infer<typeof OnboardingStepSchema>;
+export type OnboardingCompletionStatus = z.infer<
+  typeof OnboardingCompletionStatusSchema
+>;
+export type CompleteOnboardingRequest = z.infer<
+  typeof CompleteOnboardingRequestSchema
+>;
+export type CompleteOnboardingResponse = z.infer<
+  typeof CompleteOnboardingResponseSchema
+>;
 
 export const auditCScore = (auditC: OnboardingDraft['auditC']) => {
   if (

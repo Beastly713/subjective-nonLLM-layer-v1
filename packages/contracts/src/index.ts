@@ -8,5 +8,6 @@ export * from './patient/patient.js';
 export * from './routing/routing.js';
 export * from './schedule/schedule.js';
 export * from './onboarding/onboarding.js';
+export * from './recovery/recovery.js';
 export * from './reduction/reduction.js';
 export * from './safety/safety.js';

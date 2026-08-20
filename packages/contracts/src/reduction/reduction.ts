@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { RecoveryGoalProjectionSchema } from '../recovery/recovery.js';
+
 export const AlcoholDayStatusSchema = z.enum([
   'KNOWN_ZERO',
   'KNOWN_QUANTITY',
@@ -144,10 +146,12 @@ export const ReductionSetupResponseSchema = z.object({
     patientInputDecimalPlaces: z.number().int().nonnegative(),
   }),
   thresholdProfile: AlcoholThresholdProfileSchema,
+  sourceOnboardingRevisionId: z.uuid().nullable(),
   draftBaseline: ReductionBaselineDraftProjectionSchema.nullable(),
   authoritativeBaseline:
     ReductionBaselineAuthoritativeProjectionSchema.nullable(),
   proposal: ReductionProposalProjectionSchema.nullable(),
+  recoveryGoal: RecoveryGoalProjectionSchema.nullable(),
 });
 
 const ExpectedVersionSchema = z.object({

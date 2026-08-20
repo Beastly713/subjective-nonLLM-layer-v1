@@ -242,6 +242,7 @@ model PatientProfile {
   onboardingRevisions OnboardingRevision[]
   reductionSetupState ReductionSetupState?
   reductionBaselineRevisions ReductionBaselineRevision[]
+  recoveryGoalVersions RecoveryGoalVersion[]
   safetyInputRevisions SafetyInputRevision[]
   safetyEvaluationResults SafetyEvaluationResult[]
   safetyCases SafetyCase[]
@@ -255,6 +256,10 @@ model PatientOnboardingState {
   currentStep                  String              @map("current_step") @db.VarChar(64)
   draftResponses               Json                @map("draft_responses")
   authoritativeRevisionId      String?             @map("authoritative_revision_id") @db.Uuid
+  completionStatus             OnboardingCompletionStatus @default(INCOMPLETE) @map("completion_status")
+  completionSafetyEvaluationResultId String?       @map("completion_safety_evaluation_result_id") @db.Uuid
+  completedAt                  DateTime?           @map("completed_at") @db.Timestamptz(6)
+  completedByUserId            String?             @map("completed_by_user_id") @db.Uuid
   createdAt                    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   createdByUserId              String              @map("created_by_user_id") @db.Uuid
   updatedAt                    DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -262,7 +267,15 @@ model PatientOnboardingState {
   @@unique([authoritativeRevisionId], map: "patient_onboarding_states_authoritative_revision_key")
   profile                      PatientProfile      @relation(fields: [patientId], references: [patientId], onDelete: Restrict, map: "patient_onboarding_states_patient_fk")
   authoritativeRevision        OnboardingRevision? @relation(fields: [authoritativeRevisionId], references: [id], onDelete: Restrict, map: "patient_onboarding_states_revision_fk")
+  completionSafetyEvaluationResult SafetyEvaluationResult? @relation("OnboardingCompletionSafetyEvaluation", fields: [completionSafetyEvaluationResultId], references: [id], onDelete: Restrict, map: "patient_onboarding_states_completion_safety_fk")
   @@map("patient_onboarding_states")
+}
+
+enum OnboardingCompletionStatus {
+  INCOMPLETE
+  PENDING_SAFETY_REVIEW
+  SAFETY_HANDOFF
+  COMPLETE
 }
 
 model OnboardingRevision {
@@ -281,6 +294,7 @@ model OnboardingRevision {
   profile               PatientProfile         @relation(fields: [patientId], references: [patientId], onDelete: Restrict, map: "onboarding_revisions_patient_fk")
   state                 PatientOnboardingState?
   safetyInputs          SafetyInputRevision[]
+  recoveryGoalVersions  RecoveryGoalVersion[]
   @@unique([patientId, revision], map: "onboarding_revisions_patient_revision_key")
   @@map("onboarding_revisions")
 }
@@ -354,6 +368,7 @@ model ReductionBaselineRevision {
   confirmedByUserId                String?                    @map("confirmed_by_user_id") @db.Uuid
   provenance                       Json?
   profile                          PatientProfile             @relation(fields: [patientId], references: [patientId], onDelete: Restrict, map: "reduction_baseline_revisions_patient_fk")
+  recoveryGoalVersions             RecoveryGoalVersion[]
   setupStateDraft                  ReductionSetupState[]       @relation("ReductionSetupDraftBaseline")
   setupStateAuthoritative          ReductionSetupState[]       @relation("ReductionSetupAuthoritativeBaseline")
   setupStateProposal               ReductionSetupState[]       @relation("ReductionSetupProposalBaseline")
@@ -424,6 +439,8 @@ model SafetyEvaluationResult {
   contextSnapshot       Json?                @map("evaluation_context_snapshot")
   profile               PatientProfile       @relation(fields: [patientId], references: [patientId], onDelete: Restrict, map: "safety_evaluation_results_patient_fk")
   safetyInputRevision   SafetyInputRevision  @relation(fields: [safetyInputRevisionId], references: [id], onDelete: Restrict, map: "safety_evaluation_results_input_fk")
+  onboardingCompletionStates PatientOnboardingState[] @relation("OnboardingCompletionSafetyEvaluation")
+  recoveryGoalVersions  RecoveryGoalVersion[]
   safetyCases           SafetyCase[]
   @@map("safety_evaluation_results")
 }
@@ -562,6 +579,7 @@ model ScheduledPeriod {
   createdAt          DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
   profile            PatientProfile            @relation(fields: [patientId], references: [patientId], onDelete: Restrict)
   scheduleVersion    MonitoringScheduleVersion @relation(fields: [scheduleVersionId], references: [id], onDelete: Restrict)
+  recoveryGoalVersions RecoveryGoalVersion[]
   rescheduleAudits   PeriodRescheduleAudit[]
 
   @@unique([patientId, periodStartAt], map: "scheduled_periods_patient_start_key")
@@ -596,6 +614,56 @@ model ProfilePreferenceVersion {
   @@unique([patientId, version], map: "profile_preference_versions_patient_version_key")
   @@index([patientId, version(sort: Desc)], map: "profile_preference_versions_latest_idx")
   @@map("profile_preference_versions")
+}
+
+enum RecoveryGoal {
+  ABSTINENCE
+  REDUCTION
+  UNSURE
+}
+
+enum RecoveryGoalStatus {
+  PENDING_CLINICAL_SAFETY_REVIEW
+  ACTIVE
+  SUSPENDED_SAFETY_HANDOFF
+  SUPERSEDED
+  ENDED
+}
+
+enum RecoveryGoalSetBy {
+  PATIENT
+  CLINICIAN
+  SHARED
+}
+
+model RecoveryGoalVersion {
+  id                          String             @id @default(uuid()) @db.Uuid
+  patientId                   String             @map("patient_id") @db.Uuid
+  goalVersion                 Int                @map("goal_version")
+  goal                        RecoveryGoal
+  status                      RecoveryGoalStatus
+  baselineRevisionId          String?            @map("baseline_revision_id") @db.Uuid
+  baselineStart               DateTime?          @map("baseline_start") @db.Date
+  baselineEnd                 DateTime?          @map("baseline_end") @db.Date
+  baselineAverageWeeklyDrinks Decimal?           @map("baseline_average_weekly_drinks") @db.Decimal(12, 4)
+  targetWeeklyStandardDrinks  Decimal?           @map("target_weekly_standard_drinks") @db.Decimal(12, 4)
+  effectiveFromPeriodId       String?            @map("effective_from_period_id") @db.Uuid
+  setBy                       RecoveryGoalSetBy  @map("set_by")
+  sourceOnboardingRevisionId  String             @map("source_onboarding_revision_id") @db.Uuid
+  sourceSafetyEvaluationResultId String          @map("source_safety_evaluation_result_id") @db.Uuid
+  createdAt                   DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdByUserId             String             @map("created_by_user_id") @db.Uuid
+  updatedAt                   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedByUserId             String             @map("updated_by_user_id") @db.Uuid
+  provenance                  Json?
+  profile                     PatientProfile    @relation(fields: [patientId], references: [patientId], onDelete: Restrict, map: "recovery_goal_versions_patient_fk")
+  baselineRevision            ReductionBaselineRevision? @relation(fields: [baselineRevisionId], references: [id], onDelete: Restrict, map: "recovery_goal_versions_baseline_fk")
+  effectiveFromPeriod         ScheduledPeriod?  @relation(fields: [effectiveFromPeriodId], references: [id], onDelete: Restrict, map: "recovery_goal_versions_period_fk")
+  sourceOnboardingRevision    OnboardingRevision @relation(fields: [sourceOnboardingRevisionId], references: [id], onDelete: Restrict, map: "recovery_goal_versions_onboarding_fk")
+  sourceSafetyEvaluationResult SafetyEvaluationResult @relation(fields: [sourceSafetyEvaluationResultId], references: [id], onDelete: Restrict, map: "recovery_goal_versions_safety_fk")
+
+  @@unique([patientId, goalVersion], map: "recovery_goal_versions_patient_version_key")
+  @@map("recovery_goal_versions")
 }
 
 model ClinicianPatientAssignment {
