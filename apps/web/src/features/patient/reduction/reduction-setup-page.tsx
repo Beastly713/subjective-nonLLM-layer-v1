@@ -116,7 +116,11 @@ function PatientReductionSetupContent() {
   if (query.isError) {
     return (
       <PatientShell>
-        <ErrorState action={<Button onClick={() => void query.refetch()}>Try again</Button>} />
+        <ErrorState
+          action={
+            <Button onClick={() => void query.refetch()}>Try again</Button>
+          }
+        />
       </PatientShell>
     );
   }
@@ -145,7 +149,9 @@ function PatientReductionSetupContent() {
       applyResponse(response);
       if (successNotice) setNotice(successNotice);
     } catch (error) {
-      setFormError(errorMessage(error, 'The reduction setup could not be saved.'));
+      setFormError(
+        errorMessage(error, 'The reduction setup could not be saved.'),
+      );
       if (errorCode(error) === 'VERSION_CONFLICT') {
         setLocalDays(null);
         await query.refetch();
@@ -187,17 +193,18 @@ function PatientReductionSetupContent() {
       );
       return;
     }
-    return runMutation(() =>
-      apiMutate(
-        '/api/v1/patient/reduction-setup/baseline-draft',
-        'PUT',
-        parsed.data,
-        {
-          schema: ReductionSetupResponseSchema,
-          headers: { 'Idempotency-Key': crypto.randomUUID() },
-        },
-      ),
-    'Baseline progress saved.',
+    return runMutation(
+      () =>
+        apiMutate(
+          '/api/v1/patient/reduction-setup/baseline-draft',
+          'PUT',
+          parsed.data,
+          {
+            schema: ReductionSetupResponseSchema,
+            headers: { 'Idempotency-Key': crypto.randomUUID() },
+          },
+        ),
+      'Baseline progress saved.',
     );
   };
 
@@ -298,7 +305,9 @@ function PatientReductionSetupContent() {
       );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['patient', 'onboarding'] }),
-        queryClient.invalidateQueries({ queryKey: ['patient', 'reduction-setup'] }),
+        queryClient.invalidateQueries({
+          queryKey: ['patient', 'reduction-setup'],
+        }),
         queryClient.invalidateQueries({ queryKey: ['patient', 'safety'] }),
         queryClient.invalidateQueries({ queryKey: ['patient', 'profile'] }),
         queryClient.invalidateQueries({ queryKey: ['patient', 'schedule'] }),
@@ -337,9 +346,9 @@ function PatientReductionSetupContent() {
     data.recoveryGoal?.status === 'PENDING_CLINICAL_SAFETY_REVIEW';
   const canFinishSetup = Boolean(
     data.sourceOnboardingRevisionId &&
-      data.authoritativeBaseline &&
-      data.proposal &&
-      !setupComplete,
+    data.authoritativeBaseline &&
+    data.proposal &&
+    !setupComplete,
   );
 
   return (
@@ -363,14 +372,22 @@ function PatientReductionSetupContent() {
         <PatientSafetyStatus projection={safety} />
 
         {formError ? (
-          <Card className="border-danger-border bg-danger-surface/40" role="alert">
+          <Card
+            className="border-danger-border bg-danger-surface/40"
+            role="alert"
+          >
             <CardContent>
-              <p className="m-0 text-sm font-semibold text-danger">{formError}</p>
+              <p className="m-0 text-sm font-semibold text-danger">
+                {formError}
+              </p>
             </CardContent>
           </Card>
         ) : null}
         {notice ? (
-          <p className="m-0 rounded-lg border border-success-border bg-success-surface p-4 text-sm text-success" role="status">
+          <p
+            className="m-0 rounded-lg border border-success-border bg-success-surface p-4 text-sm text-success"
+            role="status"
+          >
             {notice}
           </p>
         ) : null}
@@ -432,8 +449,8 @@ function PatientReductionSetupContent() {
             </CardHeader>
             <CardContent className="grid gap-5">
               <p className="m-0 rounded-lg border bg-surface-subtle p-4 text-sm leading-6 text-muted-foreground">
-                1 standard drink = {data.unitPolicy.standardDrinkGramsEthanol}{' '}
-                g ethanol. The server derives ethanol grams from your
+                1 standard drink = {data.unitPolicy.standardDrinkGramsEthanol} g
+                ethanol. The server derives ethanol grams from your
                 standard-drink entries.
               </p>
               <ReductionBaselineGrid
@@ -443,9 +460,7 @@ function PatientReductionSetupContent() {
                   setLocalDays({
                     version: data.version,
                     days: days.map((current, currentIndex) =>
-                      currentIndex === index
-                        ? day
-                        : current,
+                      currentIndex === index ? day : current,
                     ),
                   });
                   setFormError(undefined);
@@ -476,7 +491,9 @@ function PatientReductionSetupContent() {
               <CardHeader>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h2 className="m-0 text-lg font-semibold">Confirmed baseline</h2>
+                    <h2 className="m-0 text-lg font-semibold">
+                      Confirmed baseline
+                    </h2>
                     <p className="mb-0 mt-1 text-sm text-muted-foreground">
                       Revision {baseline.revision} · {baseline.baselineStart} –{' '}
                       {baseline.baselineEnd}
@@ -486,32 +503,60 @@ function PatientReductionSetupContent() {
                 </div>
               </CardHeader>
               <CardContent className="grid gap-3 sm:grid-cols-2">
-                <Metric label="28-day total" value={`${baseline.metrics.baselineTotalStandardDrinks28d} drinks`} />
-                <Metric label="28-day ethanol" value={`${baseline.metrics.baselineTotalEthanolGrams28d} g`} />
-                <Metric label="Drinking days" value={String(baseline.metrics.baselineDrinkingDays28d)} />
-                <Metric label="Heavy drinking days" value={String(baseline.metrics.baselineHeavyDrinkingDays28d)} />
-                <Metric label="Maximum day" value={`${baseline.metrics.baselineMaxStandardDrinksDay} drinks`} />
-                <Metric label="Average per drinking day" value={`${baseline.metrics.baselineAverageDrinksPerDrinkingDay} drinks`} />
-                <Metric label="Average weekly drinks" value={`${baseline.metrics.baselineAverageWeeklyDrinks} drinks`} />
+                <Metric
+                  label="28-day total"
+                  value={`${baseline.metrics.baselineTotalStandardDrinks28d} drinks`}
+                />
+                <Metric
+                  label="28-day ethanol"
+                  value={`${baseline.metrics.baselineTotalEthanolGrams28d} g`}
+                />
+                <Metric
+                  label="Drinking days"
+                  value={String(baseline.metrics.baselineDrinkingDays28d)}
+                />
+                <Metric
+                  label="Heavy drinking days"
+                  value={String(baseline.metrics.baselineHeavyDrinkingDays28d)}
+                />
+                <Metric
+                  label="Maximum day"
+                  value={`${baseline.metrics.baselineMaxStandardDrinksDay} drinks`}
+                />
+                <Metric
+                  label="Average per drinking day"
+                  value={`${baseline.metrics.baselineAverageDrinksPerDrinkingDay} drinks`}
+                />
+                <Metric
+                  label="Average weekly drinks"
+                  value={`${baseline.metrics.baselineAverageWeeklyDrinks} drinks`}
+                />
               </CardContent>
             </Card>
 
             {!data.draftBaseline ? (
               <Card>
                 <CardHeader>
-                  <h2 className="m-0 text-lg font-semibold">Correct baseline</h2>
+                  <h2 className="m-0 text-lg font-semibold">
+                    Correct baseline
+                  </h2>
                 </CardHeader>
                 <CardContent>
                   <form
                     className="grid gap-3"
                     onSubmit={(event) => {
                       event.preventDefault();
-                      const parsed = StartReductionBaselineCorrectionRequestSchema.safeParse({
-                        expectedVersion: data.version,
-                        reason,
-                      });
+                      const parsed =
+                        StartReductionBaselineCorrectionRequestSchema.safeParse(
+                          {
+                            expectedVersion: data.version,
+                            reason,
+                          },
+                        );
                       if (!parsed.success) {
-                        setFormError('Provide a short reason for the correction.');
+                        setFormError(
+                          'Provide a short reason for the correction.',
+                        );
                         return;
                       }
                       void startCorrection();
@@ -542,9 +587,7 @@ function PatientReductionSetupContent() {
             <ReductionTargetCard
               baseline={baseline}
               disabled={
-                !safety.goalChangeAllowed ||
-                safetyNotAssessed ||
-                setupComplete
+                !safety.goalChangeAllowed || safetyNotAssessed || setupComplete
               }
               onChange={setTarget}
               onSubmit={() => void saveTarget()}
@@ -566,7 +609,9 @@ function PatientReductionSetupContent() {
             {setupComplete ? (
               <Card className="border-success-border bg-success-surface/40">
                 <CardContent>
-                  <p className="m-0 font-semibold text-success">Setup complete</p>
+                  <p className="m-0 font-semibold text-success">
+                    Setup complete
+                  </p>
                   <p className="mb-0 mt-2 text-sm text-muted-foreground">
                     Your recovery goal is active and the monitoring schedule is
                     ready.

@@ -15,9 +15,7 @@ export function ReductionTargetCard({
   onChange,
   onSubmit,
 }: {
-  baseline: NonNullable<
-    ReductionSetupResponse['authoritativeBaseline']
-  >;
+  baseline: NonNullable<ReductionSetupResponse['authoritativeBaseline']>;
   proposal: ReductionSetupResponse['proposal'];
   value: string;
   disabled: boolean;
@@ -30,7 +28,9 @@ export function ReductionTargetCard({
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="m-0 text-lg font-semibold">Reduction target proposal</h2>
+            <h2 className="m-0 text-lg font-semibold">
+              Reduction target proposal
+            </h2>
             <p className="mb-0 mt-1 text-sm text-muted-foreground">
               A positive target must be below the baseline weekly average of{' '}
               {baseline.metrics.baselineAverageWeeklyDrinks} drinks. Enter 0 to

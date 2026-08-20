@@ -9,15 +9,10 @@ export function projectPatientProfile(profile: {
     email: string;
     applicationAccount: { state: 'PENDING' | 'ACTIVE' | 'DISABLED' } | null;
   };
-  onboardingState?:
-    | {
-        completionStatus:
-          | 'INCOMPLETE'
-          | 'PENDING_SAFETY_REVIEW'
-          | 'SAFETY_HANDOFF'
-          | 'COMPLETE';
-      }
-    | null;
+  onboardingState?: {
+    completionStatus:
+      'INCOMPLETE' | 'PENDING_SAFETY_REVIEW' | 'SAFETY_HANDOFF' | 'COMPLETE';
+  } | null;
   preferences: Array<{
     version: number;
     mutualHelpPreference:

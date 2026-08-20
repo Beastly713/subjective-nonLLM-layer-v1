@@ -63,9 +63,7 @@ describe('workspace shells', () => {
       expect(screen.getByText(identity)).toBeVisible();
 
       for (const destination of destinations) {
-        expect(
-          screen.getByRole('link', { name: destination }),
-        ).toBeVisible();
+        expect(screen.getByRole('link', { name: destination })).toBeVisible();
       }
 
       const implementedDestinations = new Set<string>(destinations);

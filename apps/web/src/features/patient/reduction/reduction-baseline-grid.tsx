@@ -38,7 +38,8 @@ export function ReductionBaselineGrid({
               disabled={disabled}
               value={day.status}
               onChange={(event) => {
-                const status = event.target.value as ReductionBaselineDayInput['status'];
+                const status = event.target
+                  .value as ReductionBaselineDayInput['status'];
                 onChange(index, {
                   localDate: day.localDate,
                   status,

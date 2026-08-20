@@ -148,10 +148,7 @@ async function loadReductionState(
   });
 }
 
-async function loadEligibility(
-  db: ReductionDatabase,
-  patientId: string,
-) {
+async function loadEligibility(db: ReductionDatabase, patientId: string) {
   const state = await db.patientOnboardingState.findUnique({
     where: { patientId },
     select: { authoritativeRevisionId: true },
@@ -232,10 +229,7 @@ async function requireMutationSafety(
       'Complete the safety assessment before starting reduction setup.',
     );
   }
-  if (
-    safety.safetyState === 'HANDOFF_REQUIRED' ||
-    safety.requiresSafetyShell
-  ) {
+  if (safety.safetyState === 'HANDOFF_REQUIRED' || safety.requiresSafetyShell) {
     throw new DomainError(
       409,
       'SAFETY_HANDOFF_REQUIRED',
@@ -314,8 +308,7 @@ function serializeAuthoritative(
         revision.baselineTotalEthanolGrams28d,
       ),
       baselineDrinkingDays28d: revision.baselineDrinkingDays28d ?? 0,
-      baselineHeavyDrinkingDays28d:
-        revision.baselineHeavyDrinkingDays28d ?? 0,
+      baselineHeavyDrinkingDays28d: revision.baselineHeavyDrinkingDays28d ?? 0,
       baselineMaxStandardDrinksDay: requiredMetric(
         revision.baselineMaxStandardDrinksDay,
       ),
@@ -452,8 +445,7 @@ export async function loadReductionSetupProjection(
       patientInputDecimalPlaces: PATIENT_INPUT_DECIMAL_PLACES,
     },
     thresholdProfile,
-    sourceOnboardingRevisionId:
-      eligibility.sourceOnboardingRevisionId ?? null,
+    sourceOnboardingRevisionId: eligibility.sourceOnboardingRevisionId ?? null,
     draftBaseline,
     authoritativeBaseline,
     proposal: state ? proposalProjection(state) : null,
@@ -469,7 +461,10 @@ function assertStoredDraftWindow(revision: ReductionDraftRevision) {
       'The baseline draft does not contain exactly 28 days.',
     );
   }
-  const expectedDates = dateWindow(revision.baselineStart, revision.baselineEnd);
+  const expectedDates = dateWindow(
+    revision.baselineStart,
+    revision.baselineEnd,
+  );
   const storedDates = revision.days.map((day) => dateKey(day.localDate));
   if (
     expectedDates.length !== 28 ||
@@ -488,7 +483,10 @@ function assertInputMatchesWindow(
   days: readonly ReductionBaselineDayInput[],
 ) {
   assertStoredDraftWindow(revision);
-  const expectedDates = dateWindow(revision.baselineStart, revision.baselineEnd);
+  const expectedDates = dateWindow(
+    revision.baselineStart,
+    revision.baselineEnd,
+  );
   const submittedDates = days.map((day) => day.localDate).sort();
   const sortedExpected = [...expectedDates].sort();
   if (
@@ -519,14 +517,16 @@ async function audit(
       entityType,
       entityId,
       patientId: context.patientId,
-      reason,
-      metadata,
+      ...(reason !== undefined ? { reason } : {}),
+      ...(metadata !== undefined ? { metadata } : {}),
       requestId: context.requestId,
     },
   });
 }
 
-function baselineMetricData(metrics: ReturnType<typeof calculateReductionBaselineMetrics>) {
+function baselineMetricData(
+  metrics: ReturnType<typeof calculateReductionBaselineMetrics>,
+) {
   return {
     baselineTotalStandardDrinks28d:
       metrics.baselineTotalStandardDrinks28d.toFixed(4),
@@ -538,14 +538,11 @@ function baselineMetricData(metrics: ReturnType<typeof calculateReductionBaselin
       metrics.baselineMaxStandardDrinksDay.toFixed(4),
     baselineAverageDrinksPerDrinkingDay:
       metrics.baselineAverageDrinksPerDrinkingDay.toFixed(4),
-    baselineAverageWeeklyDrinks:
-      metrics.baselineAverageWeeklyDrinks.toFixed(4),
+    baselineAverageWeeklyDrinks: metrics.baselineAverageWeeklyDrinks.toFixed(4),
   };
 }
 
-function storedDayInput(
-  day: ReductionDay,
-) {
+function storedDayInput(day: ReductionDay) {
   const quantity = decimalToNumber(day.standardDrinks);
   return {
     status: day.status,
@@ -662,7 +659,11 @@ export async function startReductionBaseline(
     'REDUCTION_BASELINE_DRAFT_STARTED',
     'REDUCTION_BASELINE_REVISION',
     revision.id,
-    { revision: revisionNumber, baselineStart: window.baselineStart, baselineEnd: window.baselineEnd },
+    {
+      revision: revisionNumber,
+      baselineStart: window.baselineStart,
+      baselineEnd: window.baselineEnd,
+    },
   );
 
   return loadReductionSetupProjection(context.tx, context.patientId);

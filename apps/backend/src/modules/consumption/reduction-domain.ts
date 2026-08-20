@@ -37,9 +37,7 @@ export function heavyDayThresholdTenths(
   return thresholdProfile === 'HIGHER_THRESHOLD' ? 50 : 40;
 }
 
-export function heavyWeekThreshold(
-  thresholdProfile: AlcoholThresholdProfile,
-) {
+export function heavyWeekThreshold(thresholdProfile: AlcoholThresholdProfile) {
   return thresholdProfile === 'HIGHER_THRESHOLD' ? 15 : 8;
 }
 

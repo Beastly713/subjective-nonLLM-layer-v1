@@ -69,9 +69,7 @@ function recoveryDirection(draft: OnboardingDraft) {
     : 'UNSURE';
 }
 
-function preferenceValue(
-  value: OnboardingDraft['mutualHelpPreference'],
-) {
+function preferenceValue(value: OnboardingDraft['mutualHelpPreference']) {
   if (value.state === 'ANSWERED') return value.value;
   if (value.state === 'UNSURE') return 'UNSURE' as const;
   if (value.state === 'PREFER_NOT_TO_SAY') return 'PREFER_NOT_TO_SAY' as const;
@@ -128,8 +126,7 @@ function samePlan(
   desired: DesiredPlan,
 ) {
   return (
-    current.sourceOnboardingRevisionId ===
-      desired.sourceOnboardingRevisionId &&
+    current.sourceOnboardingRevisionId === desired.sourceOnboardingRevisionId &&
     current.goal === desired.goal &&
     current.baselineRevisionId === desired.baselineRevisionId &&
     decimalToNumber(current.targetWeeklyStandardDrinks) ===
@@ -370,8 +367,7 @@ export async function completePatientOnboarding(input: CompletionInput) {
     );
   }
   if (
-    state.authoritativeRevisionId !==
-    input.authoritativeOnboardingRevisionId
+    state.authoritativeRevisionId !== input.authoritativeOnboardingRevisionId
   ) {
     throw new DomainError(
       409,
@@ -394,14 +390,8 @@ export async function completePatientOnboarding(input: CompletionInput) {
   const currentGoal = await loadCurrentGoal(tx, input.patientId);
 
   if (state.completionStatus === 'COMPLETE') {
-    if (
-      currentGoal?.status === 'ACTIVE' &&
-      samePlan(currentGoal, desired)
-    ) {
-      const safety = await loadPatientSafetyProjection(
-        tx,
-        input.patientId,
-      );
+    if (currentGoal?.status === 'ACTIVE' && samePlan(currentGoal, desired)) {
+      const safety = await loadPatientSafetyProjection(tx, input.patientId);
       return CompleteOnboardingResponseSchema.parse({
         completionStatus: state.completionStatus,
         recoveryGoal: projectRecoveryGoal(currentGoal),
@@ -466,8 +456,7 @@ export async function completePatientOnboarding(input: CompletionInput) {
           goal: currentGoal.goal,
           previousStatus: currentGoal.status,
           goalStatus: 'SUPERSEDED',
-          safetyEvaluationResultId:
-            currentGoal.sourceSafetyEvaluationResultId,
+          safetyEvaluationResultId: currentGoal.sourceSafetyEvaluationResultId,
           effectiveFromPeriodId: currentGoal.effectiveFromPeriodId,
           baselineRevisionId: currentGoal.baselineRevisionId,
         } as Prisma.InputJsonValue,
@@ -483,7 +472,6 @@ export async function completePatientOnboarding(input: CompletionInput) {
       state.completionStatus === 'SAFETY_HANDOFF') &&
     state.completionSafetyEvaluationResultId !== null &&
     currentGoal !== null &&
-    currentGoal.status !== 'ACTIVE' &&
     samePlan(currentGoal, desired);
 
   let safety: PatientSafetyProjection;
@@ -496,8 +484,12 @@ export async function completePatientOnboarding(input: CompletionInput) {
       (desired.goal === 'ABSTINENCE' && desired.baselineRevisionId)
         ? {
             plannedDirection: desired.goal,
-            baselineAverageWeeklyDrinks:
-              desired.baselineAverageWeeklyDrinks ?? undefined,
+            ...(desired.baselineAverageWeeklyDrinks !== null
+              ? {
+                  baselineAverageWeeklyDrinks:
+                    desired.baselineAverageWeeklyDrinks,
+                }
+              : {}),
             ...(desired.goal === 'REDUCTION' &&
             desired.targetWeeklyStandardDrinks !== null
               ? {
@@ -546,9 +538,7 @@ export async function completePatientOnboarding(input: CompletionInput) {
   }
 
   let goalStatus:
-    | 'PENDING_CLINICAL_SAFETY_REVIEW'
-    | 'ACTIVE'
-    | 'SUSPENDED_SAFETY_HANDOFF';
+    'PENDING_CLINICAL_SAFETY_REVIEW' | 'ACTIVE' | 'SUSPENDED_SAFETY_HANDOFF';
   let effectivePeriod: { id: string; scheduleVersionId: string } | null = null;
   const scheduleInput = {
     patientId: input.patientId,
@@ -578,11 +568,7 @@ export async function completePatientOnboarding(input: CompletionInput) {
   }
 
   let persistedGoal;
-  if (
-    currentGoal &&
-    currentGoal.status !== 'ACTIVE' &&
-    samePlan(currentGoal, desired)
-  ) {
+  if (currentGoal && samePlan(currentGoal, desired)) {
     persistedGoal = await tx.recoveryGoalVersion.update({
       where: { id: currentGoal.id },
       data: {
@@ -649,12 +635,7 @@ export async function completePatientOnboarding(input: CompletionInput) {
     });
   }
 
-  await auditGoalStatusChange(
-    tx,
-    input,
-    persistedGoal,
-    previousStatus,
-  );
+  await auditGoalStatusChange(tx, input, persistedGoal, previousStatus);
 
   const nextCompletionStatus =
     goalStatus === 'ACTIVE'
@@ -664,9 +645,7 @@ export async function completePatientOnboarding(input: CompletionInput) {
         : ('PENDING_SAFETY_REVIEW' as const);
   const completionChanged =
     state.completionStatus !== nextCompletionStatus ||
-    state.completionSafetyEvaluationResultId !== safetyEvaluationResultId ||
-    (nextCompletionStatus === 'COMPLETE' &&
-      (state.completedAt === null || state.completedByUserId !== input.actorId));
+    state.completionSafetyEvaluationResultId !== safetyEvaluationResultId;
 
   await tx.patientOnboardingState.update({
     where: { patientId: input.patientId },

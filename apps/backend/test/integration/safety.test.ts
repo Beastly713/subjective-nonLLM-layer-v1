@@ -394,22 +394,22 @@ beforeAll(async () => {
     })),
   });
 
-await app.ready();
-await noRouteApp.ready();
+  await app.ready();
+  await noRouteApp.ready();
 
-cookies.admin = await signIn(app, 'admin');
+  cookies.admin = await signIn(app, 'admin');
 
-await createActiveSafetyRoutingFixture();
+  await createActiveSafetyRoutingFixture();
 
-cookies.clinician = await signIn(app, 'clinician');
-cookies.emergency = await signIn(app, 'emergency');
-cookies.priority = await signIn(app, 'priority');
-cookies.safe = await signIn(app, 'safe');
-cookies.unassigned = await signIn(noRouteApp, 'unassigned');
+  cookies.clinician = await signIn(app, 'clinician');
+  cookies.emergency = await signIn(app, 'emergency');
+  cookies.priority = await signIn(app, 'priority');
+  cookies.safe = await signIn(app, 'safe');
+  cookies.unassigned = await signIn(noRouteApp, 'unassigned');
 
-await saveAndSubmitOnboarding(app, 'priority');
-await saveAndSubmitOnboarding(app, 'safe');
-await saveAndSubmitOnboarding(noRouteApp, 'unassigned');
+  await saveAndSubmitOnboarding(app, 'priority');
+  await saveAndSubmitOnboarding(app, 'safe');
+  await saveAndSubmitOnboarding(noRouteApp, 'unassigned');
 }, 30_000);
 
 afterAll(async () => {

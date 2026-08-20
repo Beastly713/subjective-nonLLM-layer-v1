@@ -277,25 +277,25 @@ export function SafetyStep({
         title="Emergency and current symptoms"
       >
         {yesNoFields.map(([key, label]) => {
-  const hallucinationDisorientationDisabled =
-    key === 'hallucinationDisorientation' && hallucinations === false;
+          const hallucinationDisorientationDisabled =
+            key === 'hallucinationDisorientation' && hallucinations === false;
 
-  return (
-    <BooleanChoice
-      key={key}
-      label={label}
-      onChange={(value) => updateBoolean(key, value)}
-      value={safety[key]}
-      disabled={hallucinationDisorientationDisabled}
-      {...(hallucinationDisorientationDisabled
-        ? {
-            helpText:
-              'Not applicable when hallucinations are reported as no.',
-          }
-        : {})}
-    />
-  );
-})}
+          return (
+            <BooleanChoice
+              key={key}
+              label={label}
+              onChange={(value) => updateBoolean(key, value)}
+              value={safety[key]}
+              disabled={hallucinationDisorientationDisabled}
+              {...(hallucinationDisorientationDisabled
+                ? {
+                    helpText:
+                      'Not applicable when hallucinations are reported as no.',
+                  }
+                : {})}
+            />
+          );
+        })}
       </SectionCard>
 
       <SectionCard

@@ -13,10 +13,7 @@ export const AlcoholThresholdProfileSchema = z.enum([
   'HIGHER_THRESHOLD',
 ]);
 
-export const ReductionProposalKindSchema = z.enum([
-  'REDUCTION',
-  'ABSTINENCE',
-]);
+export const ReductionProposalKindSchema = z.enum(['REDUCTION', 'ABSTINENCE']);
 
 export const ReductionSetupStateSchema = z.enum([
   'NOT_REQUIRED',
@@ -160,20 +157,19 @@ const ExpectedVersionSchema = z.object({
 
 export const StartReductionBaselineRequestSchema = ExpectedVersionSchema;
 
-export const SaveReductionBaselineDraftRequestSchema = ExpectedVersionSchema.extend(
-  {
+export const SaveReductionBaselineDraftRequestSchema =
+  ExpectedVersionSchema.extend({
     days: z.array(ReductionBaselineDayInputSchema).length(28),
-  },
-).superRefine((request, ctx) => {
-  const dates = new Set(request.days.map((day) => day.localDate));
-  if (dates.size !== request.days.length) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['days'],
-      message: 'Baseline days must contain 28 unique local dates.',
-    });
-  }
-});
+  }).superRefine((request, ctx) => {
+    const dates = new Set(request.days.map((day) => day.localDate));
+    if (dates.size !== request.days.length) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['days'],
+        message: 'Baseline days must contain 28 unique local dates.',
+      });
+    }
+  });
 
 export const ConfirmReductionBaselineRequestSchema = ExpectedVersionSchema;
 
@@ -198,9 +194,7 @@ export type AlcoholDayStatus = z.infer<typeof AlcoholDayStatusSchema>;
 export type AlcoholThresholdProfile = z.infer<
   typeof AlcoholThresholdProfileSchema
 >;
-export type ReductionProposalKind = z.infer<
-  typeof ReductionProposalKindSchema
->;
+export type ReductionProposalKind = z.infer<typeof ReductionProposalKindSchema>;
 export type ReductionBaselineDayInput = z.infer<
   typeof ReductionBaselineDayInputSchema
 >;

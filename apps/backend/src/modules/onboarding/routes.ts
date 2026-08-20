@@ -123,11 +123,11 @@ export function registerOnboardingRoutes(
         : 'UNSURE';
     const reductionSetupComplete = Boolean(
       reductionSetup?.authoritativeBaselineRevision &&
-        reductionSetup.authoritativeBaselineRevision.lifecycle === 'CONFIRMED' &&
-        reductionSetup.proposalKind &&
-        reductionSetup.targetWeeklyStandardDrinks !== null &&
-        reductionSetup.proposalBaselineRevisionId ===
-          reductionSetup.authoritativeBaselineRevisionId,
+      reductionSetup.authoritativeBaselineRevision.lifecycle === 'CONFIRMED' &&
+      reductionSetup.proposalKind &&
+      reductionSetup.targetWeeklyStandardDrinks !== null &&
+      reductionSetup.proposalBaselineRevisionId ===
+        reductionSetup.authoritativeBaselineRevisionId,
     );
     const dependencyState =
       state?.completionStatus === 'COMPLETE'
@@ -167,7 +167,7 @@ export function registerOnboardingRoutes(
         ? {
             ...state.authoritativeRevision,
             submittedAt: state.authoritativeRevision.submittedAt.toISOString(),
-        }
+          }
         : null,
       completionStatus: state?.completionStatus ?? 'INCOMPLETE',
       recoveryGoal,
@@ -409,8 +409,12 @@ export function registerOnboardingRoutes(
           requestId: request.id,
           authoritativeOnboardingRevisionId:
             body.authoritativeOnboardingRevisionId,
-          expectedReductionSetupVersion:
-            body.expectedReductionSetupVersion,
+          ...(body.expectedReductionSetupVersion !== undefined
+            ? {
+                expectedReductionSetupVersion:
+                  body.expectedReductionSetupVersion,
+              }
+            : {}),
         }),
     );
     return result.value;

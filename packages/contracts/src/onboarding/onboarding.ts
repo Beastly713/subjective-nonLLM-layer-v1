@@ -109,7 +109,12 @@ export const SubmitOnboardingResponseSchema = z.object({
 
 export const CompleteOnboardingRequestSchema = z.object({
   authoritativeOnboardingRevisionId: z.uuid(),
-  expectedReductionSetupVersion: z.number().int().nonnegative().nullable().optional(),
+  expectedReductionSetupVersion: z
+    .number()
+    .int()
+    .nonnegative()
+    .nullable()
+    .optional(),
 });
 
 export const CompleteOnboardingResponseSchema = z.object({

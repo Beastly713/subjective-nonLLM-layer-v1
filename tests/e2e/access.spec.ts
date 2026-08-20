@@ -145,7 +145,7 @@ test('renders the patient profile and explicit unknown preferences', async ({
 
   await expect(page.getByLabel('Mutual-help preference')).toHaveValue('');
 
-  await expect(page.getByText('Setup incomplete')).toBeVisible();
+  await expect(page.getByText('Setup incomplete').first()).toBeVisible();
 
   await expect(
     page.getByText(/weekly monitoring is not yet activated/i),
@@ -189,10 +189,7 @@ test('drives the regional routing draft, evidence, and activation lifecycle', as
       });
     }
 
-    if (
-      method === 'GET' &&
-      pathname.endsWith('regional-routing')
-    ) {
+    if (method === 'GET' && pathname.endsWith('regional-routing')) {
       return route.fulfill({
         contentType: 'application/json',
         body: JSON.stringify({
@@ -216,8 +213,7 @@ test('drives the regional routing draft, evidence, and activation lifecycle', as
       });
     }
 
-    const body =
-      route.request().postDataJSON() as Record<string, unknown>;
+    const body = route.request().postDataJSON() as Record<string, unknown>;
 
     if (pathname.endsWith('/drafts')) {
       Object.assign(profile, {
@@ -229,28 +225,28 @@ test('drives the regional routing draft, evidence, and activation lifecycle', as
 
     if (pathname.endsWith('/edit')) {
       Object.assign(profile, {
-        targets: (
-          body.targets as Array<Record<string, unknown>>
-        ).map((target, index) => ({
-          ...target,
-          id: `00000000-0000-4000-8000-${String(
-            index + 300,
-          ).padStart(12, '0')}`,
-        })),
+        targets: (body.targets as Array<Record<string, unknown>>).map(
+          (target, index) => ({
+            ...target,
+            id: `00000000-0000-4000-8000-${String(index + 300).padStart(
+              12,
+              '0',
+            )}`,
+          }),
+        ),
         rowVersion: Number(profile.rowVersion) + 1,
-        configurationRevision:
-          Number(profile.configurationRevision) + 1,
+        configurationRevision: Number(profile.configurationRevision) + 1,
       });
     }
 
     if (pathname.endsWith('/test-evidence')) {
-      const evidence =
-        profile.testEvidence as Array<Record<string, unknown>>;
+      const evidence = profile.testEvidence as Array<Record<string, unknown>>;
 
       evidence.push({
-        id: `00000000-0000-4000-8000-${String(
-          evidence.length + 200,
-        ).padStart(12, '0')}`,
+        id: `00000000-0000-4000-8000-${String(evidence.length + 200).padStart(
+          12,
+          '0',
+        )}`,
         targetKind: body.targetKind,
         configurationRevision: profile.configurationRevision,
         result: body.result,
@@ -285,9 +281,7 @@ test('drives the regional routing draft, evidence, and activation lifecycle', as
   await page.getByLabel('Country code').fill('XZ');
   await page.getByLabel('Region code (optional)').fill('TEST');
 
-  await page
-    .getByRole('button', { name: 'Create draft' })
-    .click();
+  await page.getByRole('button', { name: 'Create draft' }).click();
 
   await page
     .getByRole('button', {
@@ -310,19 +304,12 @@ test('drives the regional routing draft, evidence, and activation lifecycle', as
       .nth(index)
       .fill(`Target ${index + 1}`);
 
-    await page
-      .getByLabel('Deployment target')
-      .nth(index)
-      .fill(values[index]!);
+    await page.getByLabel('Deployment target').nth(index).fill(values[index]!);
   }
 
-  await page
-    .getByRole('button', { name: 'Save exact targets' })
-    .click();
+  await page.getByRole('button', { name: 'Save exact targets' }).click();
 
-  await page
-    .getByRole('button', { name: 'Save targets' })
-    .click();
+  await page.getByRole('button', { name: 'Save targets' }).click();
 
   const targetGroupNames = [
     'EMERGENCY SERVICE',
@@ -331,11 +318,7 @@ test('drives the regional routing draft, evidence, and activation lifecycle', as
     'ON CALL CLINICIAN QUEUE',
   ] as const;
 
-  for (
-    let index = 0;
-    index < targetGroupNames.length;
-    index += 1
-  ) {
+  for (let index = 0; index < targetGroupNames.length; index += 1) {
     const reference = `deployment-test-${index + 1}`;
 
     const group = page.getByRole('group', {
@@ -346,9 +329,7 @@ test('drives the regional routing draft, evidence, and activation lifecycle', as
       .getByLabel('Deployment test reference / evidence')
       .fill(reference);
 
-    await group
-      .getByRole('button', { name: 'Record PASS' })
-      .click();
+    await group.getByRole('button', { name: 'Record PASS' }).click();
 
     await page
       .getByRole('dialog')
@@ -356,9 +337,7 @@ test('drives the regional routing draft, evidence, and activation lifecycle', as
       .click();
 
     await expect(
-      group.getByText(
-        new RegExp(`PASS.*${reference}`),
-      ),
+      group.getByText(new RegExp(`PASS.*${reference}`)),
     ).toBeVisible();
   }
 
@@ -375,14 +354,10 @@ test('drives the regional routing draft, evidence, and activation lifecycle', as
     })
     .click();
 
-  await expect(
-    page.getByText('ACTIVE', { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByText('ACTIVE', { exact: true })).toBeVisible();
 
   await expect(
-    page.getByText(
-      /active and read-only.*new draft version/i,
-    ),
+    page.getByText(/active and read-only.*new draft version/i),
   ).toBeVisible();
 });
 
@@ -406,17 +381,11 @@ test('renders only assigned clinician patients, including an empty unassigned pa
 
   await page.goto('/clinician/patients');
 
-  await expect(
-    page.getByRole('heading', { name: 'Patients' }),
-  ).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Patients' })).toBeVisible();
 
-  await expect(
-    page.getByText('Direct assignments only'),
-  ).toBeVisible();
+  await expect(page.getByText('Direct assignments only')).toBeVisible();
 
-  await expect(
-    page.getByText(/Nothing to show yet/i),
-  ).toBeVisible();
+  await expect(page.getByText(/Nothing to show yet/i)).toBeVisible();
 });
 
 test('renders the administrative users and access console', async ({
@@ -458,13 +427,9 @@ test('renders the administrative users and access console', async ({
     }),
   ).toBeVisible();
 
-  await expect(
-    page.getByText('Synthetic Patient'),
-  ).toBeVisible();
+  await expect(page.getByText('Synthetic Patient')).toBeVisible();
 
-  await expect(
-    page.getByRole('button', { name: 'Disable' }),
-  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Disable' })).toBeVisible();
 });
 
 test('renders a backend-restricted account without guessing a workspace', async ({
@@ -480,7 +445,5 @@ test('renders a backend-restricted account without guessing a workspace', async 
     }),
   ).toBeVisible();
 
-  await expect(
-    page.getByText(/reason: account pending/i),
-  ).toBeVisible();
+  await expect(page.getByText(/reason: account pending/i)).toBeVisible();
 });

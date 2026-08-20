@@ -349,7 +349,9 @@ function PatientOnboardingContent() {
       queryClient.setQueryData(['patient', 'safety'], response.safety);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['patient', 'onboarding'] }),
-        queryClient.invalidateQueries({ queryKey: ['patient', 'reduction-setup'] }),
+        queryClient.invalidateQueries({
+          queryKey: ['patient', 'reduction-setup'],
+        }),
         queryClient.invalidateQueries({ queryKey: ['patient', 'safety'] }),
         queryClient.invalidateQueries({ queryKey: ['patient', 'profile'] }),
         queryClient.invalidateQueries({ queryKey: ['patient', 'schedule'] }),
@@ -461,7 +463,9 @@ function PatientOnboardingContent() {
             currentStep: current.step,
           }}
           finishing={saving}
-          onFinishSetup={!reductionDirection ? () => void finishSetup() : undefined}
+          {...(!reductionDirection
+            ? { onFinishSetup: () => void finishSetup() }
+            : {})}
         />
       ) : null}
 

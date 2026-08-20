@@ -1,10 +1,6 @@
 import { z } from 'zod';
 
-export const RecoveryGoalSchema = z.enum([
-  'ABSTINENCE',
-  'REDUCTION',
-  'UNSURE',
-]);
+export const RecoveryGoalSchema = z.enum(['ABSTINENCE', 'REDUCTION', 'UNSURE']);
 
 export const RecoveryGoalStatusSchema = z.enum([
   'PENDING_CLINICAL_SAFETY_REVIEW',

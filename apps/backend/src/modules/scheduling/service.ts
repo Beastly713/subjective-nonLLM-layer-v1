@@ -10,6 +10,11 @@ import {
   weeklyPeriodWindow,
 } from './schedule-math.js';
 
+type ScheduleStore = Pick<
+  PrismaClient,
+  'monitoringScheduleVersion' | 'scheduledPeriod'
+>;
+
 export const lockSchedulePatient = lockPatientForProcessing;
 
 function periodData(patientId: string, timezone: string, startAt: Date) {
