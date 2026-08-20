@@ -1,8 +1,10 @@
 import { OnboardingStateResponseSchema } from '@aud-subjective/contracts';
 import { CheckCircle2, ShieldAlert } from 'lucide-react';
 import { z } from 'zod';
+import { Link } from 'react-router';
 
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { stateLabels } from '@/features/patient/safety/patient-safety-status';
 
@@ -46,11 +48,16 @@ export function ResultStep({ data }: { data: OnboardingState }) {
           </Badge>
           <p className="mb-0 mt-3 text-sm leading-6 text-muted-foreground">
             {data.dependencyState === 'REDUCTION_SETUP_REQUIRED'
-              ? 'Reduction baseline setup is the next step. That future setup is intentionally not part of this release.'
+              ? 'Your onboarding is saved. Continue to build the reduction baseline before proposing a target.'
               : data.dependencyState === 'SAFETY_REVIEW_REQUIRED'
                 ? `The current safety state is ${stateLabels[data.safety.safetyState].toLowerCase()}. Follow the configured handoff actions in the safety-controlled workspace.`
                 : 'The onboarding information is available to the next setup stage. No schedule or goal has been activated.'}
           </p>
+          {data.dependencyState === 'REDUCTION_SETUP_REQUIRED' ? (
+            <Link className="mt-4 inline-flex" to="/patient/reduction-setup">
+              <Button>Continue reduction setup</Button>
+            </Link>
+          ) : null}
         </div>
         <div className="grid gap-2 text-sm sm:grid-cols-2">
           <p className="m-0">

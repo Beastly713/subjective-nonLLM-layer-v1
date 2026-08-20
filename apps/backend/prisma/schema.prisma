@@ -240,6 +240,8 @@ model PatientProfile {
   scheduledPeriods   ScheduledPeriod[]
   onboardingState    PatientOnboardingState?
   onboardingRevisions OnboardingRevision[]
+  reductionSetupState ReductionSetupState?
+  reductionBaselineRevisions ReductionBaselineRevision[]
   safetyInputRevisions SafetyInputRevision[]
   safetyEvaluationResults SafetyEvaluationResult[]
   safetyCases SafetyCase[]
@@ -281,6 +283,104 @@ model OnboardingRevision {
   safetyInputs          SafetyInputRevision[]
   @@unique([patientId, revision], map: "onboarding_revisions_patient_revision_key")
   @@map("onboarding_revisions")
+}
+
+enum AlcoholDayStatus {
+  KNOWN_ZERO
+  KNOWN_QUANTITY
+  UNKNOWN
+}
+
+enum AlcoholThresholdProfile {
+  LOWER_THRESHOLD
+  HIGHER_THRESHOLD
+}
+
+enum ReductionBaselineLifecycle {
+  DRAFT
+  CONFIRMED
+}
+
+enum ReductionProposalKind {
+  REDUCTION
+  ABSTINENCE
+}
+
+model ReductionSetupState {
+  patientId                         String                    @id @map("patient_id") @db.Uuid
+  version                           Int                       @default(1)
+  draftBaselineRevisionId           String?                   @map("draft_baseline_revision_id") @db.Uuid
+  authoritativeBaselineRevisionId  String?                   @map("authoritative_baseline_revision_id") @db.Uuid
+  proposalKind                      ReductionProposalKind?   @map("proposal_kind")
+  targetWeeklyStandardDrinks        Decimal?                  @map("target_weekly_standard_drinks") @db.Decimal(12, 4)
+  proposalBaselineRevisionId        String?                   @map("proposal_baseline_revision_id") @db.Uuid
+  proposalUpdatedAt                 DateTime?                 @map("proposal_updated_at") @db.Timestamptz(6)
+  proposalUpdatedByUserId           String?                   @map("proposal_updated_by_user_id") @db.Uuid
+  createdAt                         DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdByUserId                   String                    @map("created_by_user_id") @db.Uuid
+  updatedAt                         DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedByUserId                   String                    @map("updated_by_user_id") @db.Uuid
+  profile                           PatientProfile            @relation(fields: [patientId], references: [patientId], onDelete: Restrict, map: "reduction_setup_states_patient_fk")
+  draftBaselineRevision             ReductionBaselineRevision? @relation("ReductionSetupDraftBaseline", fields: [draftBaselineRevisionId], references: [id], onDelete: Restrict, map: "reduction_setup_states_draft_baseline_fk")
+  authoritativeBaselineRevision    ReductionBaselineRevision? @relation("ReductionSetupAuthoritativeBaseline", fields: [authoritativeBaselineRevisionId], references: [id], onDelete: Restrict, map: "reduction_setup_states_authoritative_baseline_fk")
+  proposalBaselineRevision          ReductionBaselineRevision? @relation("ReductionSetupProposalBaseline", fields: [proposalBaselineRevisionId], references: [id], onDelete: Restrict, map: "reduction_setup_states_proposal_baseline_fk")
+
+  @@map("reduction_setup_states")
+}
+
+model ReductionBaselineRevision {
+  id                              String                     @id @default(uuid()) @db.Uuid
+  patientId                       String                     @map("patient_id") @db.Uuid
+  revision                        Int
+  lifecycle                       ReductionBaselineLifecycle @default(DRAFT)
+  baselineStart                   DateTime                   @map("baseline_start") @db.Date
+  baselineEnd                     DateTime                   @map("baseline_end") @db.Date
+  monitoringTimezone              String                     @map("monitoring_timezone") @db.VarChar(255)
+  thresholdProfile                AlcoholThresholdProfile   @map("threshold_profile")
+  thresholdProfileSource          String                     @map("threshold_profile_source") @db.VarChar(128)
+  unitPolicyVersion               String                     @map("unit_policy_version") @db.VarChar(64)
+  baselineTotalStandardDrinks28d  Decimal?                   @map("baseline_total_standard_drinks_28d") @db.Decimal(12, 4)
+  baselineTotalEthanolGrams28d    Decimal?                   @map("baseline_total_ethanol_grams_28d") @db.Decimal(12, 4)
+  baselineDrinkingDays28d         Int?                       @map("baseline_drinking_days_28d")
+  baselineHeavyDrinkingDays28d    Int?                       @map("baseline_heavy_drinking_days_28d")
+  baselineMaxStandardDrinksDay    Decimal?                   @map("baseline_max_standard_drinks_day") @db.Decimal(12, 4)
+  baselineAverageDrinksPerDrinkingDay Decimal?                @map("baseline_average_drinks_per_drinking_day") @db.Decimal(12, 4)
+  baselineAverageWeeklyDrinks     Decimal?                   @map("baseline_average_weekly_drinks") @db.Decimal(12, 4)
+  correctionOfRevisionId           String?                    @map("correction_of_revision_id") @db.Uuid
+  correctionReason                 String?                    @map("correction_reason") @db.Text
+  createdAt                        DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdByUserId                  String                     @map("created_by_user_id") @db.Uuid
+  confirmedAt                      DateTime?                  @map("confirmed_at") @db.Timestamptz(6)
+  confirmedByUserId                String?                    @map("confirmed_by_user_id") @db.Uuid
+  provenance                       Json?
+  profile                          PatientProfile             @relation(fields: [patientId], references: [patientId], onDelete: Restrict, map: "reduction_baseline_revisions_patient_fk")
+  setupStateDraft                  ReductionSetupState[]       @relation("ReductionSetupDraftBaseline")
+  setupStateAuthoritative          ReductionSetupState[]       @relation("ReductionSetupAuthoritativeBaseline")
+  setupStateProposal               ReductionSetupState[]       @relation("ReductionSetupProposalBaseline")
+  correctionOf                     ReductionBaselineRevision? @relation("ReductionBaselineCorrections", fields: [correctionOfRevisionId], references: [id], onDelete: Restrict, map: "reduction_baseline_revisions_correction_fk")
+  corrections                      ReductionBaselineRevision[] @relation("ReductionBaselineCorrections")
+  days                             ReductionBaselineDay[]
+
+  @@unique([patientId, revision], map: "reduction_baseline_revisions_patient_revision_key")
+  @@map("reduction_baseline_revisions")
+}
+
+model ReductionBaselineDay {
+  id                    String                   @id @default(uuid()) @db.Uuid
+  baselineRevisionId    String                   @map("baseline_revision_id") @db.Uuid
+  localDate             DateTime                 @map("local_date") @db.Date
+  status                AlcoholDayStatus
+  standardDrinks        Decimal?                 @map("standard_drinks") @db.Decimal(12, 4)
+  ethanolGrams          Decimal?                 @map("ethanol_grams") @db.Decimal(12, 4)
+  source                String                   @db.VarChar(64)
+  unitPolicyVersion     String                   @map("unit_policy_version") @db.VarChar(64)
+  createdAt             DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedByUserId       String                   @map("updated_by_user_id") @db.Uuid
+  baselineRevision      ReductionBaselineRevision @relation(fields: [baselineRevisionId], references: [id], onDelete: Restrict, map: "reduction_baseline_days_revision_fk")
+
+  @@unique([baselineRevisionId, localDate], map: "reduction_baseline_days_revision_date_key")
+  @@map("reduction_baseline_days")
 }
 
 model SafetyInputRevision {

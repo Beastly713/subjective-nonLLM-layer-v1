@@ -18,6 +18,7 @@ import { registerScheduleRoutes } from './modules/scheduling/routes.js';
 import { registerRoutingRoutes } from './modules/routing/routes.js';
 import { registerOnboardingRoutes } from './modules/onboarding/routes.js';
 import { registerSafetyRoutes } from './modules/safety/routes.js';
+import { registerReductionSetupRoutes } from './modules/consumption/routes.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerApplicationAuthRoutes } from './routes/auth.js';
 import { registerErrorHandlers } from './shared/errors/error-handler.js';
@@ -114,6 +115,7 @@ export function buildApp({
   registerRoutingRoutes(app, prisma, auth, config, clock);
   registerOnboardingRoutes(app, prisma, auth, config, clock);
   registerSafetyRoutes(app, prisma, auth, config, clock);
+  registerReductionSetupRoutes(app, prisma, auth, config, clock);
 
   if (webRoot) {
     void app.register(fastifyStatic, {

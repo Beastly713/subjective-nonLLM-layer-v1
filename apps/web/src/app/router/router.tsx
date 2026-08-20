@@ -13,6 +13,7 @@ import { ClinicianPatientsPage } from '@/features/clinician/patients/clinician-p
 import { ClinicianSafetyPage } from '@/features/clinician/safety/clinician-safety-page';
 import { PatientProfilePage } from '@/features/patient/profile/patient-profile-page';
 import { PatientOnboardingPage } from '@/features/patient/onboarding/patient-onboarding-page';
+import { PatientReductionSetupPage } from '@/features/patient/reduction/reduction-setup-page';
 import { LoginPage } from '@/features/auth/login-page';
 import { RecoverAccountPage } from '@/features/auth/recover-account-page';
 import { ResetPasswordPage } from '@/features/auth/reset-password-page';
@@ -77,6 +78,11 @@ export const router = createBrowserRouter([
   {
     path: '/patient/onboarding',
     element: <PatientOnboardingPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: '/patient/reduction-setup',
+    element: <PatientReductionSetupPage />,
     errorElement: <RouteErrorBoundary />,
   },
   {
