@@ -2,7 +2,7 @@
 
 ## Document status
 
-**Status:** **PLANNED**
+**Status:** **CLOSED**
 
 **Phase:** **6 of 7**
 
@@ -25,6 +25,24 @@
 
 **Post-Phase-5 documentation refresh:**  
 `d5d6ae71577dbb3f200c721f298b5a9277f3777e`
+
+**Phase 6 implementation commits:**
+
+- `0d6020cc74440a8a767a0938c1e5db2add08ae23` — `feat: add deterministic missed-checkin engagement`
+- `f5a87a7edea46132a3f468c2eafb0307f50111df` — `feat: add engagement cases and technical operations`
+- `10197afb72a0b0d2d0bcee2af9880d863a1fecc7` — `feat: complete phase 6 local demo surfaces`
+
+**Phase 6 implementation-guide commit:**
+
+`dcc2c32ceb41de835af1f2cb510cba2dbf91392c4` — `docs: specs updated`
+
+**Autonomous closeout correction/test commit:**
+
+`a64872a1977b75e653ca6142b13ec08c1fb17e4a` — `fix: close Phase-6 audit findings`
+
+**Validated implementation head:** `a64872a1977b75e653ca6142b13ec08c1fb17e4a`
+
+The final documentation update is committed as `closing: Phase-6`.
 
 This guide defines the Phase 6 implementation boundary for the **local capstone demonstration**.
 
@@ -2219,15 +2237,17 @@ README should explicitly say:
 - `real_patient` remains refused;
 - UI routes available.
 
-Do not mark Phase 6 CLOSED before the closeout sweep.
-
-At implementation-sweep time use wording such as:
+Before closeout, use wording such as:
 
 ```text
 Phase 6 implementation present; validation/closeout pending.
 ```
 
-The later closeout sweep changes this to CLOSED after validation.
+The completed closeout sweep changes this to:
+
+```text
+Phase 6 closed for the local capstone implementation boundary.
+```
 
 ---
 
@@ -3217,6 +3237,51 @@ and record:
 - Phase 4/5/6 invariant results;
 - explicit local-demo deferrals;
 - Phase 7 handoff.
+
+## 39.1 Phase 6 closeout record
+
+Phase 6 is **CLOSED** for the local capstone implementation boundary. The
+validated implementation range is:
+
+```text
+d5d6ae71577dbb3f200c721f298b5a9277f3777e..a64872a1977b75e653ca6142b13ec08c1fb17e4a
+```
+
+The autonomous sweep corrected the accepted implementation seams without
+changing the locked domain semantics. Corrections included persisted and
+audited Patient Home reminder presentation, strict engagement lifecycle
+transitions, exact technical-failure due-time reconciliation and provenance,
+safe false-positive correction, repeatable prototype seed geometry, and
+Phase-6 authorization/read-only behavior. The sweep also added focused domain,
+backend integration, web, Playwright, and SQL-invariant coverage.
+
+Validation was run against a fresh isolated PostgreSQL database after applying
+all 20 committed migrations and seeding twice:
+
+- `pnpm format:check` — passed;
+- `pnpm lint` — passed;
+- `pnpm typecheck` — passed;
+- `pnpm build` — passed;
+- backend — 19 test files, 191 tests passed;
+- web — 12 test files, 34 tests passed;
+- Playwright — 10 tests passed, including the Phase-6 accessibility smoke;
+- focused Phase-6 integration — 8 tests passed.
+
+The invariant results were:
+
+- Phase 4 invariants — passed on a Phase-5-only database (`weekly_assessments=0`);
+- Phase 5 invariants — passed on both the Phase-5-only database and the final
+  Phase-6 database (`content_resolutions=6`, `clinical_cases=3`,
+  `clinician_tasks=6` on the final database);
+- Phase 6 invariants — passed (`engagement_states=13`, `engagement_cases=6`,
+  `reminders=22`, `technical_failures=6`, `engagement_tasks=4`).
+
+The final local-demo boundary remains explicit: no unattended background
+worker, pg-boss scheduler, external email/push delivery, provider callback or
+retry machinery, notification-delivery platform, automatic outage detector,
+production care-team routing, deployment hardening, or real-patient operation
+was introduced. Those remain production/Phase-7 handoff items; they do not
+block this local capstone closeout.
 
 Also update current-status notes in Master/Architecture/UX/README from:
 
