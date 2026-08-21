@@ -872,6 +872,76 @@ enum ContentResolutionResult {
   CONTENT_UNAVAILABLE
 }
 
+enum ClinicalReasonFamily {
+  CRAVING_LOW_CONFIDENCE
+  MOOD_CRAVING
+  PERSISTENT_HIGH_CRAVING
+  PERSISTENT_HIGH_NEGATIVE_MOOD
+  CONSECUTIVE_USE
+  RECURRENT_USE
+}
+
+enum ClinicianVisibilityFlagStatus {
+  CURRENT_ACTIVE
+  CURRENT_CLEARED
+  STALE_DATA_UNAVAILABLE
+  REVOKED_BY_REVISION
+}
+
+enum ClinicalReasonStatus {
+  INACTIVE
+  ACTIVE
+  CLEARANCE_PENDING
+  RESOLVED
+}
+
+enum ClinicalReasonEffect {
+  ELIGIBLE
+  SUPPRESSED_TRIGGER
+  HISTORICAL_ONLY
+  REVOKED_BY_REVISION
+}
+
+enum ClinicalCaseLifecycle {
+  NEW
+  ACKNOWLEDGED
+  ACTIVE
+  CLEARANCE_PENDING
+  RESOLVED
+  RESOLVED_CORRECTION
+}
+
+enum ClinicalCaseTier {
+  LEVEL_3
+}
+
+enum ClinicalCaseEventType {
+  CASE_CREATED
+  CASE_ACKNOWLEDGED
+  REASON_ADDED
+  REASON_CLEARED
+  REASON_REVOKED
+  LIFECYCLE_CHANGED
+  TASK_CREATED
+  TASK_UPDATE_REQUIRED
+}
+
+enum ClinicianTaskCaseType {
+  SUBJECTIVE_LEVEL_3_REVIEW
+}
+
+enum ClinicianTaskRecipientType {
+  PRIMARY_CLINICIAN
+  SYSTEM_UNROUTED_QUEUE
+}
+
+enum ClinicianDeliveryStatus {
+  DELIVERED
+  UNROUTED
+  UPDATE_REQUIRED
+  ACKNOWLEDGED
+}
+
 enum WeeklyConsumptionTargetStatus {
   MET
   NOT_MET
@@ -1256,6 +1326,132 @@ model ContentDeliveryAudit {
   @@unique([resolutionId, resourceId], map: "content_delivery_audits_resolution_resource_key")
   @@index([patientId, resourceId, deliveredAt], map: "content_delivery_audits_patient_resource_idx")
   @@map("content_delivery_audits")
+}
+
+model ClinicalReasonState {
+  id                    String              @id @default(uuid()) @db.Uuid
+  patientId             String              @map("patient_id") @db.Uuid
+  reasonFamily          ClinicalReasonFamily @map("reason_family")
+  status                ClinicalReasonStatus
+  effect                ClinicalReasonEffect
+  sourceEvaluationId    String?             @map("source_evaluation_id") @db.Uuid
+  sourceRevisionId      String?             @map("source_revision_id") @db.Uuid
+  sourcePeriodId        String?             @map("source_period_id") @db.Uuid
+  firstActiveAt         DateTime?           @map("first_active_at") @db.Timestamptz(6)
+  lastObservedAt        DateTime            @map("last_observed_at") @db.Timestamptz(6)
+  clearanceCount        Int                 @default(0) @map("clearance_count")
+  version               Int                 @default(1)
+  updatedAt             DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([patientId, reasonFamily], map: "clinical_reason_states_patient_family_key")
+  @@index([patientId, status], map: "clinical_reason_states_patient_status_idx")
+  @@map("clinical_reason_states")
+}
+
+model ClinicalReasonHistory {
+  id                    String              @id @default(uuid()) @db.Uuid
+  patientId             String              @map("patient_id") @db.Uuid
+  reasonFamily          ClinicalReasonFamily @map("reason_family")
+  fromStatus            ClinicalReasonStatus? @map("from_status")
+  toStatus              ClinicalReasonStatus @map("to_status")
+  effect                ClinicalReasonEffect
+  sourceEvaluationId    String?             @map("source_evaluation_id") @db.Uuid
+  sourceRevisionId      String?             @map("source_revision_id") @db.Uuid
+  sourcePeriodId        String?             @map("source_period_id") @db.Uuid
+  cause                 String              @db.VarChar(128)
+  trigger               AssessmentEvaluationTrigger
+  metadata              Json?
+  recordedAt            DateTime            @default(now()) @map("recorded_at") @db.Timestamptz(6)
+
+  @@index([patientId, reasonFamily, recordedAt], map: "clinical_reason_history_patient_family_idx")
+  @@index([patientId, recordedAt], map: "clinical_reason_history_patient_recorded_idx")
+  @@map("clinical_reason_history")
+}
+
+model ClinicianVisibilityFlag {
+  id                    String                      @id @default(uuid()) @db.Uuid
+  patientId             String                      @map("patient_id") @db.Uuid
+  flagKey               String                      @map("flag_key") @db.VarChar(128)
+  status                ClinicianVisibilityFlagStatus
+  sourceEvaluationId    String?                     @map("source_evaluation_id") @db.Uuid
+  sourceRevisionId      String?                     @map("source_revision_id") @db.Uuid
+  sourcePeriodId        String?                     @map("source_period_id") @db.Uuid
+  sourceCompletionStatus AssessmentRevisionCompletionStatus? @map("source_completion_status")
+  sourceSubmittedAt     DateTime?                   @map("source_submitted_at") @db.Timestamptz(6)
+  updatedAt             DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([patientId, flagKey], map: "clinician_visibility_flags_patient_flag_key")
+  @@index([patientId, status], map: "clinician_visibility_flags_patient_status_idx")
+  @@map("clinician_visibility_flags")
+}
+
+model ClinicalReviewCase {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  patientId             String                 @map("patient_id") @db.Uuid
+  tier                  ClinicalCaseTier       @default(LEVEL_3)
+  lifecycle             ClinicalCaseLifecycle
+  caseVersion           Int                    @default(1) @map("case_version")
+  activeReasonFamilies  Json                   @map("active_reason_families")
+  clearancePendingReasonFamilies Json          @map("clearance_pending_reason_families")
+  highestHistoricalTier ClinicalCaseTier       @default(LEVEL_3) @map("highest_historical_tier")
+  followupVisibility    Boolean                @default(true) @map("followup_visibility")
+  sourceEvaluationId    String?                @map("source_evaluation_id") @db.Uuid
+  sourceRevisionId      String?                @map("source_revision_id") @db.Uuid
+  sourcePeriodId        String?                @map("source_period_id") @db.Uuid
+  openedAt              DateTime               @default(now()) @map("opened_at") @db.Timestamptz(6)
+  acknowledgedAt        DateTime?              @map("acknowledged_at") @db.Timestamptz(6)
+  updatedAt             DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  resolvedAt            DateTime?              @map("resolved_at") @db.Timestamptz(6)
+  resolutionReason      String?                @map("resolution_reason") @db.VarChar(128)
+
+  @@index([patientId, lifecycle], map: "clinical_review_cases_patient_lifecycle_idx")
+  @@index([patientId, updatedAt], map: "clinical_review_cases_patient_updated_idx")
+  @@map("clinical_review_cases")
+}
+
+model ClinicalCaseEvent {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  caseId                String                 @map("case_id") @db.Uuid
+  patientId             String                 @map("patient_id") @db.Uuid
+  eventType             ClinicalCaseEventType  @map("event_type")
+  fromLifecycle         ClinicalCaseLifecycle? @map("from_lifecycle")
+  toLifecycle           ClinicalCaseLifecycle? @map("to_lifecycle")
+  reasonFamily          ClinicalReasonFamily?  @map("reason_family")
+  sourceEvaluationId    String?                @map("source_evaluation_id") @db.Uuid
+  sourceRevisionId      String?                @map("source_revision_id") @db.Uuid
+  sourcePeriodId        String?                @map("source_period_id") @db.Uuid
+  actorId               String?                @map("actor_id") @db.Uuid
+  metadata              Json?
+  occurredAt            DateTime               @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([caseId, occurredAt], map: "clinical_case_events_case_occurred_idx")
+  @@index([patientId, occurredAt], map: "clinical_case_events_patient_occurred_idx")
+  @@map("clinical_case_events")
+}
+
+model ClinicianTask {
+  id                    String                    @id @default(uuid()) @db.Uuid
+  patientId             String                    @map("patient_id") @db.Uuid
+  caseId                String                    @map("case_id") @db.Uuid
+  caseType              ClinicianTaskCaseType     @map("case_type")
+  recipientType         ClinicianTaskRecipientType @map("recipient_type")
+  recipientId           String?                   @map("recipient_id") @db.Uuid
+  deliveryStatus        ClinicianDeliveryStatus   @map("delivery_status")
+  createdReason         ClinicalReasonFamily      @map("created_reason")
+  sourceEvaluationId    String?                   @map("source_evaluation_id") @db.Uuid
+  sourceRevisionId      String?                   @map("source_revision_id") @db.Uuid
+  sourcePeriodId        String?                   @map("source_period_id") @db.Uuid
+  title                 String                    @db.VarChar(255)
+  detail                Json?
+  alertUpdateRequired   Boolean                   @default(false) @map("alert_update_required")
+  createdAt             DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  acknowledgedAt        DateTime?                 @map("acknowledged_at") @db.Timestamptz(6)
+  updatedAt             DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([caseId, createdReason], map: "clinician_tasks_case_reason_key")
+  @@index([recipientId, deliveryStatus, createdAt], map: "clinician_tasks_recipient_status_idx")
+  @@index([patientId, createdAt], map: "clinician_tasks_patient_created_idx")
+  @@map("clinician_tasks")
 }
 
 model ClinicianPatientAssignment {

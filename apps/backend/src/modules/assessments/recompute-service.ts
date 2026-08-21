@@ -10,6 +10,7 @@ import {
   resolveContentForEvaluation,
   safetyContextFromProjection,
 } from '../content/service.js';
+import { reconcileClinicalEvaluation } from '../clinical/service.js';
 import { lockPatientForProcessing } from '../../shared/authz/patient-processing-lock.js';
 import type { Clock } from '../../shared/clock/clock.js';
 import { DomainError } from '../../shared/errors/domain-error.js';
@@ -508,6 +509,12 @@ export async function recomputePatientMonitoringFromPeriod(input: {
       evaluationId: persisted.evaluation.id,
       safety: safetyContextFromProjection(safety),
       now: evaluatedAt,
+    });
+
+    await reconcileClinicalEvaluation({
+      tx,
+      evaluationId: persisted.evaluation.id,
+      ...(input.requestId ? { requestId: input.requestId } : {}),
     });
 
     history.push({
