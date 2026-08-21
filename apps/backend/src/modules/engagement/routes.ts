@@ -131,35 +131,46 @@ export function registerEngagementRoutes(
       'ENGAGEMENT_READ',
     );
     if (!actor.access.scopeKinds.includes('ASSIGNED_PATIENTS')) {
-      throw new DomainError(403, 'PERMISSION_DENIED', 'The action is not permitted.');
+      throw new DomainError(
+        403,
+        'PERMISSION_DENIED',
+        'The action is not permitted.',
+      );
     }
     return ClinicianEngagementResponseSchema.parse(
       await readClinicianEngagementQueue(prisma, clock, actor.userId),
     );
   });
 
-  app.get('/api/v1/clinician/patients/:patientId/engagement', async (request) => {
-    const actor = await requirePermission(
-      request,
-      auth,
-      prisma,
-      config,
-      'ENGAGEMENT_READ',
-    );
-    if (!actor.access.scopeKinds.includes('ASSIGNED_PATIENTS')) {
-      throw new DomainError(403, 'PERMISSION_DENIED', 'The action is not permitted.');
-    }
-    const { patientId } = PatientParamsSchema.parse(request.params);
-    const response = await prisma.$transaction((tx) =>
-      readClinicianEngagementDetail({
-        tx,
-        clock,
-        clinicianId: actor.userId,
-        patientId,
-      }),
-    );
-    return ClinicianEngagementItemSchema.parse(response);
-  });
+  app.get(
+    '/api/v1/clinician/patients/:patientId/engagement',
+    async (request) => {
+      const actor = await requirePermission(
+        request,
+        auth,
+        prisma,
+        config,
+        'ENGAGEMENT_READ',
+      );
+      if (!actor.access.scopeKinds.includes('ASSIGNED_PATIENTS')) {
+        throw new DomainError(
+          403,
+          'PERMISSION_DENIED',
+          'The action is not permitted.',
+        );
+      }
+      const { patientId } = PatientParamsSchema.parse(request.params);
+      const response = await prisma.$transaction((tx) =>
+        readClinicianEngagementDetail({
+          tx,
+          clock,
+          clinicianId: actor.userId,
+          patientId,
+        }),
+      );
+      return ClinicianEngagementItemSchema.parse(response);
+    },
+  );
 
   for (const action of ['acknowledge', 'outreach'] as const) {
     app.post(
@@ -177,7 +188,11 @@ export function registerEngagementRoutes(
             : 'ENGAGEMENT_CASE_OUTREACH',
         );
         if (!actor.access.scopeKinds.includes('ASSIGNED_PATIENTS')) {
-          throw new DomainError(403, 'PERMISSION_DENIED', 'The action is not permitted.');
+          throw new DomainError(
+            403,
+            'PERMISSION_DENIED',
+            'The action is not permitted.',
+          );
         }
         const { caseId } = CaseParamsSchema.parse(request.params);
         const body = EngagementCaseActionRequestSchema.parse(request.body);
@@ -202,9 +217,7 @@ export function registerEngagementRoutes(
               requestId: request.id,
             }),
         );
-        return ClinicianEngagementItemSchema.parse(
-          result.value,
-        );
+        return ClinicianEngagementItemSchema.parse(result.value);
       },
     );
   }

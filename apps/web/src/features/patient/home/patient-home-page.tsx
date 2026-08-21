@@ -21,7 +21,7 @@ import {
   ErrorState,
   LoadingState,
 } from '@/components/patterns/system-state';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { PatientSafetyBoundary } from '@/features/patient/safety/patient-safety-boundary';
 import { ApiClientError, apiGet } from '@/lib/api/client';
@@ -67,6 +67,28 @@ function reminderLabel(
   if (status === 'ELIGIBLE') return 'Available now';
   if (status === 'CANCELLED') return 'Paused or completed';
   return 'Upcoming';
+}
+
+export function selectCurrentReminder(
+  reminders: PatientHomeResponse['engagement']['reminders'],
+) {
+  const eligible = reminders
+    .filter(
+      (reminder) =>
+        reminder.presentationStatus === 'ELIGIBLE' ||
+        reminder.presentationStatus === 'PRESENTED',
+    )
+    .sort((left, right) => right.reminderNumber - left.reminderNumber)[0];
+  if (eligible) return [eligible];
+
+  const upcoming = reminders
+    .filter((reminder) => reminder.presentationStatus === 'UPCOMING')
+    .sort(
+      (left, right) =>
+        new Date(left.eligibleAt).getTime() -
+        new Date(right.eligibleAt).getTime(),
+    )[0];
+  return upcoming ? [upcoming] : [];
 }
 
 export function PatientHomePage() {
@@ -117,6 +139,7 @@ function HomeContent({ data }: { data: PatientHomeResponse }) {
   const notice = data.engagement.notice;
   const action = data.primaryAction;
   const checkInPeriod = data.checkIn.period;
+  const displayReminders = selectCurrentReminder(data.engagement.reminders);
 
   return (
     <>
@@ -152,11 +175,9 @@ function HomeContent({ data }: { data: PatientHomeResponse }) {
             </p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
               {action.href ? (
-                <Link to={action.href}>
-                  <Button>
-                    {action.label}
-                    <ArrowRight aria-hidden="true" className="size-4" />
-                  </Button>
+                <Link className={buttonVariants()} to={action.href}>
+                  {action.label}
+                  <ArrowRight aria-hidden="true" className="size-4" />
                 </Link>
               ) : (
                 <span className="inline-flex items-center gap-2 rounded-md border border-restricted-border bg-restricted-surface px-4 py-3 text-sm font-semibold text-restricted">
@@ -278,16 +299,17 @@ function HomeContent({ data }: { data: PatientHomeResponse }) {
         </Card>
       </div>
 
-      {data.engagement.reminders.length > 0 ? (
+      {displayReminders.length > 0 ? (
         <Card>
           <CardHeader>
-            <h2 className="m-0 text-lg font-semibold">Reminder schedule</h2>
+            <h2 className="m-0 text-lg font-semibold">Current reminder</h2>
             <p className="mb-0 mt-2 text-sm leading-6 text-muted-foreground">
-              These are in-app timing points. No external message is being sent.
+              This is an in-app timing point for the current check-in. No
+              external message is being sent.
             </p>
           </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2">
-            {data.engagement.reminders.map((reminder) => (
+          <CardContent className="grid gap-3">
+            {displayReminders.map((reminder) => (
               <div
                 className="rounded-lg border bg-surface-subtle p-4"
                 key={reminder.id}

@@ -16,6 +16,7 @@ import {
 
 type Tx = Prisma.TransactionClient;
 const HOUR_MS = 60 * 60 * 1_000;
+const DAY_MS = 24 * HOUR_MS;
 
 function json(value: unknown) {
   return value as Prisma.InputJsonValue;
@@ -46,14 +47,22 @@ async function technicalFailureView(
   row: Awaited<ReturnType<Tx['technicalFailure']['findUnique']>>,
 ): Promise<TechnicalFailureView> {
   if (!row) {
-    throw new DomainError(404, 'NOT_FOUND', 'The requested resource was not found.');
+    throw new DomainError(
+      404,
+      'NOT_FOUND',
+      'The requested resource was not found.',
+    );
   }
   const patient = await tx.user.findUnique({
     where: { id: row.patientId },
     select: { name: true },
   });
   if (!patient) {
-    throw new DomainError(404, 'NOT_FOUND', 'The requested resource was not found.');
+    throw new DomainError(
+      404,
+      'NOT_FOUND',
+      'The requested resource was not found.',
+    );
   }
   return TechnicalFailureViewSchema.parse({
     id: row.id,
@@ -99,7 +108,11 @@ async function loadFailure(tx: Tx, failureId: string) {
     where: { id: failureId },
   });
   if (!row) {
-    throw new DomainError(404, 'NOT_FOUND', 'The requested resource was not found.');
+    throw new DomainError(
+      404,
+      'NOT_FOUND',
+      'The requested resource was not found.',
+    );
   }
   return row;
 }
@@ -114,22 +127,33 @@ async function assertPatientAndPeriod(
     select: { patientId: true },
   });
   if (!patient) {
-    throw new DomainError(404, 'NOT_FOUND', 'The requested resource was not found.');
+    throw new DomainError(
+      404,
+      'NOT_FOUND',
+      'The requested resource was not found.',
+    );
   }
   if (!periodId) return null;
   const period = await tx.scheduledPeriod.findFirst({
     where: { id: periodId, patientId },
   });
   if (!period) {
-    throw new DomainError(409, 'VERSION_CONFLICT', 'The scheduled period is not valid for this patient.');
+    throw new DomainError(
+      409,
+      'VERSION_CONFLICT',
+      'The scheduled period is not valid for this patient.',
+    );
   }
   return period;
 }
 
-async function sourcePeriodForFailure(tx: Tx, failure: {
-  patientId: string;
-  sourcePeriodId: string | null;
-}) {
+async function sourcePeriodForFailure(
+  tx: Tx,
+  failure: {
+    patientId: string;
+    sourcePeriodId: string | null;
+  },
+) {
   if (failure.sourcePeriodId) {
     const period = await tx.scheduledPeriod.findFirst({
       where: { id: failure.sourcePeriodId, patientId: failure.patientId },
@@ -150,6 +174,54 @@ async function sourcePeriodForFailure(tx: Tx, failure: {
     where: { patientId: failure.patientId },
     orderBy: [{ effectiveDueAt: 'desc' }, { periodStartAt: 'desc' }],
   });
+}
+
+/**
+ * A correction may close an engagement case only when the case carries the
+ * shifted due-time provenance and was opened after the confirmed failure.
+ * Cases that predate the failure, or that are still valid at the restored
+ * due-time boundary, remain open for ordinary return/outreach handling.
+ */
+async function caseInvalidatedByTechnicalCorrection(
+  tx: Tx,
+  input: {
+    patientId: string;
+    periodId: string;
+    shiftedEffectiveDueAt: Date;
+    restoredEffectiveDueAt: Date;
+    confirmedAt: Date | null;
+    now: Date;
+  },
+) {
+  if (!input.confirmedAt) return false;
+  if (
+    input.shiftedEffectiveDueAt.getTime() ===
+    input.restoredEffectiveDueAt.getTime()
+  ) {
+    return false;
+  }
+  const current = await tx.engagementCase.findFirst({
+    where: {
+      patientId: input.patientId,
+      sourceMissedPeriodId: input.periodId,
+      lifecycle: { in: ['NEW', 'ACKNOWLEDGED', 'OUTREACH_IN_PROGRESS'] },
+    },
+    orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
+  });
+  if (!current) return false;
+
+  const restoredDisengagementAt = new Date(
+    input.restoredEffectiveDueAt.getTime() +
+      SUBJECTIVE_MONITORING_V1.engagement
+        .disengagementCaseDaysAfterEffectiveDue *
+        DAY_MS,
+  );
+  return (
+    current.sourceEffectiveDueAt.getTime() ===
+      input.shiftedEffectiveDueAt.getTime() &&
+    current.openedAt.getTime() >= input.confirmedAt.getTime() &&
+    input.now.getTime() < restoredDisengagementAt.getTime()
+  );
 }
 
 async function recordAudit(
@@ -187,6 +259,14 @@ export async function recordTechnicalFailure(input: {
   body: RecordTechnicalFailureRequest;
 }) {
   const now = input.clock.now();
+  const startedAt = new Date(input.body.startedAt);
+  if (startedAt.getTime() > now.getTime()) {
+    throw new DomainError(
+      400,
+      'INVALID_TECHNICAL_FAILURE_START',
+      'A technical-failure start cannot be in the future.',
+    );
+  }
   const period = await assertPatientAndPeriod(
     input.tx,
     input.body.patientId,
@@ -197,7 +277,7 @@ export async function recordTechnicalFailure(input: {
       patientId: input.body.patientId,
       failureType: input.body.failureType,
       affectedScope: json({ kind: 'PATIENT', patientId: input.body.patientId }),
-      startedAt: new Date(input.body.startedAt),
+      startedAt,
       evidence: json({ summary: input.body.evidence }),
       status: 'SUSPECTED',
       sourcePeriodId: period?.id ?? null,
@@ -212,7 +292,10 @@ export async function recordTechnicalFailure(input: {
     actorId: input.actorId,
     requestId: input.requestId,
     now,
-    metadata: json({ failureType: row.failureType, sourcePeriodId: row.sourcePeriodId }),
+    metadata: json({
+      failureType: row.failureType,
+      sourcePeriodId: row.sourcePeriodId,
+    }),
   });
   return technicalFailureView(input.tx, row);
 }
@@ -230,11 +313,20 @@ export async function confirmTechnicalFailure(input: {
   await lockPatientForProcessing(input.tx, current.patientId);
   const locked = await loadFailure(input.tx, input.failureId);
   if (locked.version !== input.expectedVersion) {
-    throw new DomainError(409, 'VERSION_CONFLICT', 'The technical-failure record changed before this action.');
+    throw new DomainError(
+      409,
+      'VERSION_CONFLICT',
+      'The technical-failure record changed before this action.',
+    );
   }
-  if (locked.status === 'CONFIRMED') return technicalFailureView(input.tx, locked);
+  if (locked.status === 'CONFIRMED')
+    return technicalFailureView(input.tx, locked);
   if (locked.status !== 'SUSPECTED') {
-    throw new DomainError(409, 'INVALID_TECHNICAL_FAILURE_TRANSITION', 'This technical-failure record cannot be confirmed.');
+    throw new DomainError(
+      409,
+      'INVALID_TECHNICAL_FAILURE_TRANSITION',
+      'This technical-failure record cannot be confirmed.',
+    );
   }
   const period = await sourcePeriodForFailure(input.tx, locked);
   const now = input.clock.now();
@@ -258,7 +350,10 @@ export async function confirmTechnicalFailure(input: {
     actorId: input.actorId,
     requestId: input.requestId,
     now,
-    metadata: json({ sourcePeriodId: row.sourcePeriodId, evidence: row.evidence }),
+    metadata: json({
+      sourcePeriodId: row.sourcePeriodId,
+      evidence: row.evidence,
+    }),
   });
   await reconcileEngagementForPatient({
     tx: input.tx,
@@ -286,6 +381,27 @@ async function reopenTechnicalReminderSlots(
   });
 }
 
+async function suppressExpiredCorrectionReminders(
+  tx: Tx,
+  patientId: string,
+  periodId: string | null,
+  now: Date,
+) {
+  if (!periodId) return;
+  await tx.missedCheckinReminder.updateMany({
+    where: {
+      patientId,
+      missedCyclePeriodId: periodId,
+      cancelledAt: null,
+      eligibleAt: { lte: now },
+    },
+    data: {
+      cancelledAt: now,
+      cancellationReason: 'TECHNICAL_CORRECTION_EXPIRED',
+    },
+  });
+}
+
 export async function resolveTechnicalFailure(input: {
   tx: Tx;
   clock: Clock;
@@ -299,30 +415,50 @@ export async function resolveTechnicalFailure(input: {
   await lockPatientForProcessing(input.tx, current.patientId);
   const locked = await loadFailure(input.tx, input.failureId);
   if (locked.version !== input.expectedVersion) {
-    throw new DomainError(409, 'VERSION_CONFLICT', 'The technical-failure record changed before this action.');
+    throw new DomainError(
+      409,
+      'VERSION_CONFLICT',
+      'The technical-failure record changed before this action.',
+    );
   }
-  if (locked.status === 'RESOLVED') return technicalFailureView(input.tx, locked);
+  if (locked.status === 'RESOLVED')
+    return technicalFailureView(input.tx, locked);
   if (locked.status !== 'CONFIRMED') {
-    throw new DomainError(409, 'INVALID_TECHNICAL_FAILURE_TRANSITION', 'Only a confirmed technical failure can be resolved.');
+    throw new DomainError(
+      409,
+      'INVALID_TECHNICAL_FAILURE_TRANSITION',
+      'Only a confirmed technical failure can be resolved.',
+    );
   }
   const period = await sourcePeriodForFailure(input.tx, locked);
   if (!period) {
-    throw new DomainError(409, 'VERSION_CONFLICT', 'A scheduled period is required to recalculate monitoring timing.');
+    throw new DomainError(
+      409,
+      'VERSION_CONFLICT',
+      'A scheduled period is required to recalculate monitoring timing.',
+    );
   }
   const now = input.clock.now();
   const pauseDurationMs = now.getTime() - locked.startedAt.getTime();
   if (pauseDurationMs < 0) {
-    throw new DomainError(409, 'INVALID_TECHNICAL_FAILURE_TRANSITION', 'The failure start cannot be after its resolution time.');
+    throw new DomainError(
+      409,
+      'INVALID_TECHNICAL_FAILURE_TRANSITION',
+      'The failure start cannot be after its resolution time.',
+    );
   }
   const recalculatedEffectiveDueAt = new Date(
     Math.max(
       period.originalDueAt.getTime() + pauseDurationMs,
       now.getTime() +
-        SUBJECTIVE_MONITORING_V1.engagement.technicalRecoveryGraceHours * HOUR_MS,
+        SUBJECTIVE_MONITORING_V1.engagement.technicalRecoveryGraceHours *
+          HOUR_MS,
     ),
   );
   const previousEffectiveDueAt = period.effectiveDueAt;
-  if (previousEffectiveDueAt.getTime() !== recalculatedEffectiveDueAt.getTime()) {
+  if (
+    previousEffectiveDueAt.getTime() !== recalculatedEffectiveDueAt.getTime()
+  ) {
     await input.tx.scheduledPeriod.update({
       where: { id: period.id },
       data: {
@@ -330,17 +466,17 @@ export async function resolveTechnicalFailure(input: {
         version: { increment: 1 },
       },
     });
-    await input.tx.periodRescheduleAudit.create({
-      data: {
-        periodId: period.id,
-        previousEffectiveDue: previousEffectiveDueAt,
-        newEffectiveDue: recalculatedEffectiveDueAt,
-        actorUserId: input.actorId,
-        reason: `TECHNICAL_FAILURE_RESOLVED: ${input.reason}`,
-        occurredAt: now,
-      },
-    });
   }
+  await input.tx.periodRescheduleAudit.create({
+    data: {
+      periodId: period.id,
+      previousEffectiveDue: previousEffectiveDueAt,
+      newEffectiveDue: recalculatedEffectiveDueAt,
+      actorUserId: input.actorId,
+      reason: `TECHNICAL_FAILURE_RESOLVED: ${input.reason}`,
+      occurredAt: now,
+    },
+  });
   const row = await input.tx.technicalFailure.update({
     where: { id: locked.id },
     data: {
@@ -393,18 +529,40 @@ export async function correctTechnicalFailure(input: {
   await lockPatientForProcessing(input.tx, current.patientId);
   const locked = await loadFailure(input.tx, input.failureId);
   if (locked.version !== input.expectedVersion) {
-    throw new DomainError(409, 'VERSION_CONFLICT', 'The technical-failure record changed before this action.');
+    throw new DomainError(
+      409,
+      'VERSION_CONFLICT',
+      'The technical-failure record changed before this action.',
+    );
   }
   if (locked.status === 'CORRECTED_FALSE_POSITIVE') {
     return technicalFailureView(input.tx, locked);
   }
   if (locked.status !== 'CONFIRMED') {
-    throw new DomainError(409, 'INVALID_TECHNICAL_FAILURE_TRANSITION', 'Only a confirmed technical failure can be corrected.');
+    throw new DomainError(
+      409,
+      'INVALID_TECHNICAL_FAILURE_TRANSITION',
+      'Only a confirmed technical failure can be corrected.',
+    );
   }
   const period = await sourcePeriodForFailure(input.tx, locked);
   const now = input.clock.now();
+  const shouldResolveEngagementCase =
+    period && locked.previousEffectiveDueAt
+      ? await caseInvalidatedByTechnicalCorrection(input.tx, {
+          patientId: locked.patientId,
+          periodId: period.id,
+          shiftedEffectiveDueAt: period.effectiveDueAt,
+          restoredEffectiveDueAt: locked.previousEffectiveDueAt,
+          confirmedAt: locked.confirmedAt,
+          now,
+        })
+      : false;
   if (period && locked.previousEffectiveDueAt) {
-    if (period.effectiveDueAt.getTime() !== locked.previousEffectiveDueAt.getTime()) {
+    if (
+      period.effectiveDueAt.getTime() !==
+      locked.previousEffectiveDueAt.getTime()
+    ) {
       await input.tx.scheduledPeriod.update({
         where: { id: period.id },
         data: {
@@ -436,21 +594,27 @@ export async function correctTechnicalFailure(input: {
       updatedAt: now,
     },
   });
-  await reopenTechnicalReminderSlots(input.tx, row.patientId, period?.id ?? row.sourcePeriodId);
-  await resolveOpenEngagementCase(
-    {
-      tx: input.tx,
-      clock: input.clock,
-      patientId: row.patientId,
-      actorId: input.actorId,
-      requestId: input.requestId,
-    },
-    'RESOLVED_TECHNICAL_CORRECTION',
-    'CASE_RESOLVED_TECHNICAL_CORRECTION',
-    'TECHNICAL_FAILURE_CORRECTED_FALSE_POSITIVE',
-    now,
-    row.id,
+  await reopenTechnicalReminderSlots(
+    input.tx,
+    row.patientId,
+    period?.id ?? row.sourcePeriodId,
   );
+  if (shouldResolveEngagementCase) {
+    await resolveOpenEngagementCase(
+      {
+        tx: input.tx,
+        clock: input.clock,
+        patientId: row.patientId,
+        actorId: input.actorId,
+        requestId: input.requestId,
+      },
+      'RESOLVED_TECHNICAL_CORRECTION',
+      'CASE_RESOLVED_TECHNICAL_CORRECTION',
+      'TECHNICAL_FAILURE_CORRECTED_FALSE_POSITIVE',
+      now,
+      row.id,
+    );
+  }
   await recordAudit(input.tx, {
     action: 'TECHNICAL_FAILURE_CORRECTED_FALSE_POSITIVE',
     failureId: row.id,
@@ -458,7 +622,10 @@ export async function correctTechnicalFailure(input: {
     actorId: input.actorId,
     requestId: input.requestId,
     now,
-    metadata: json({ sourcePeriodId: row.sourcePeriodId }),
+    metadata: json({
+      sourcePeriodId: row.sourcePeriodId,
+      engagementCaseResolved: shouldResolveEngagementCase,
+    }),
   });
   await reconcileEngagementForPatient({
     tx: input.tx,
@@ -467,5 +634,11 @@ export async function correctTechnicalFailure(input: {
     actorId: input.actorId,
     requestId: input.requestId,
   });
+  await suppressExpiredCorrectionReminders(
+    input.tx,
+    row.patientId,
+    period?.id ?? row.sourcePeriodId,
+    now,
+  );
   return technicalFailureView(input.tx, row);
 }

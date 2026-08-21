@@ -12,6 +12,9 @@ describe('code-owned permission table', () => {
       permissions: [
         'PATIENT_PROFILE_READ',
         'PATIENT_PROFILE_UPDATE',
+        'PATIENT_HOME_READ',
+        'PATIENT_MONITORING_READ',
+        'PATIENT_MONITORING_MANAGE',
         'PATIENT_SCHEDULE_READ',
         'PATIENT_ONBOARDING_READ',
         'PATIENT_ONBOARDING_UPDATE',
@@ -34,6 +37,9 @@ describe('code-owned permission table', () => {
         'SAFETY_CASE_DISPOSITION',
         'PATIENT_ASSESSMENT_STAFF_CORRECT',
         'PATIENT_MONITORING_READ',
+        'ENGAGEMENT_READ',
+        'ENGAGEMENT_CASE_ACKNOWLEDGE',
+        'ENGAGEMENT_CASE_OUTREACH',
         'CLINICAL_REVIEW_READ',
         'CLINICAL_REVIEW_ACKNOWLEDGE',
       ],
@@ -49,12 +55,18 @@ describe('code-owned permission table', () => {
         'ROUTING_TEST_RECORD',
         'ROUTING_CONFIG_ACTIVATE',
         'SAFETY_CASE_READ',
+        'TECHNICAL_FAILURE_READ',
+        'ENGAGEMENT_TECHNICAL_OVERRIDE',
       ]),
     );
 
     expect(ROLE_ACCESS.OPERATIONS.workspace).toBe('ADMIN');
 
-    expect(ROLE_ACCESS.OPERATIONS.permissions).toEqual(['USER_ACCESS_READ']);
+    expect(ROLE_ACCESS.OPERATIONS.permissions).toEqual([
+      'USER_ACCESS_READ',
+      'TECHNICAL_FAILURE_READ',
+      'ENGAGEMENT_TECHNICAL_OVERRIDE',
+    ]);
   });
 
   it('accepts only locked role/workspace pairs', () => {

@@ -31,7 +31,11 @@ function requireOperationsScope(
   actor: Awaited<ReturnType<typeof requirePermission>>,
 ) {
   if (!actor.access.scopeKinds.includes('ADMIN_OPERATIONAL')) {
-    throw new DomainError(403, 'PERMISSION_DENIED', 'The action is not permitted.');
+    throw new DomainError(
+      403,
+      'PERMISSION_DENIED',
+      'The action is not permitted.',
+    );
   }
 }
 
@@ -100,7 +104,9 @@ export function registerOperationsRoutes(
         );
         requireOperationsScope(actor);
         const { failureId } = FailureParamsSchema.parse(request.params);
-        const body = TechnicalFailureTransitionRequestSchema.parse(request.body);
+        const body = TechnicalFailureTransitionRequestSchema.parse(
+          request.body,
+        );
         const key = requireIdempotencyKey(request.headers['idempotency-key']);
         const result = await executeIdempotently(
           prisma,

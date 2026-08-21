@@ -187,8 +187,8 @@ async function findReturningSubmission(
 
   return (
     assessments.find((assessment) => {
-      const classification = assessment.authoritativeRevision
-        ?.submissionClassification;
+      const classification =
+        assessment.authoritativeRevision?.submissionClassification;
       return classification === 'CURRENT' || classification === 'LATE_CURRENT';
     }) ?? null
   );
@@ -351,7 +351,8 @@ async function routeEngagementTask(
           incidentType: 'ENGAGEMENT',
           code: 'ENGAGEMENT_UNROUTED',
           status: 'OPEN',
-          summary: 'Missed check-in engagement review could not be directly assigned.',
+          summary:
+            'Missed check-in engagement review could not be directly assigned.',
           metadata: json({ patientId: input.patientId, caseId: input.caseId }),
           requestId: input.requestId ?? null,
           provenanceReference: input.caseId,
@@ -419,7 +420,8 @@ async function ensureEngagementCase(
 
 export async function resolveOpenEngagementCase(
   input: ReconcileInput,
-  lifecycle: 'RESOLVED_RETURNED' | 'RESOLVED_OPT_OUT' | 'RESOLVED_TECHNICAL_CORRECTION',
+  lifecycle:
+    'RESOLVED_RETURNED' | 'RESOLVED_OPT_OUT' | 'RESOLVED_TECHNICAL_CORRECTION',
   eventType:
     | 'CASE_RESOLVED_RETURNED'
     | 'CASE_RESOLVED_OPT_OUT'
@@ -565,9 +567,7 @@ async function transitionState(
       ...(next.cycleTrackingFromAt !== undefined
         ? { cycleTrackingFromAt: next.cycleTrackingFromAt }
         : {}),
-      ...(next.optedOutAt !== undefined
-        ? { optedOutAt: next.optedOutAt }
-        : {}),
+      ...(next.optedOutAt !== undefined ? { optedOutAt: next.optedOutAt } : {}),
       ...(next.returnedAfterGapAt !== undefined
         ? { returnedAfterGapAt: next.returnedAfterGapAt }
         : {}),
@@ -682,7 +682,11 @@ async function applyReturnAfterGap(
 export async function reconcileEngagementForPatient(input: ReconcileInput) {
   const now = input.clock.now();
   await lockPatientForProcessing(input.tx, input.patientId);
-  await ensureRelevantPeriodsInTransaction(input.tx, input.clock, input.patientId);
+  await ensureRelevantPeriodsInTransaction(
+    input.tx,
+    input.clock,
+    input.patientId,
+  );
 
   let state = await ensureState(input, now);
   const safety = await loadPatientSafetyProjection(input.tx, input.patientId);
@@ -757,7 +761,7 @@ export async function reconcileEngagementForPatient(input: ReconcileInput) {
       input.patientId,
       now,
       'TECHNICAL_FAILURE',
-      anchor?.id,
+      activeTechnicalFailure.sourcePeriodId ?? anchor?.id,
     );
   } else if (anchor && evaluation.pauseReason === null) {
     await upsertReminderSlots(input.tx, {
@@ -837,6 +841,56 @@ async function loadReminders(
     orderBy: [{ reminderNumber: 'asc' }, { createdAt: 'asc' }],
   });
   return rows.map((row) => reminderView(row, now));
+}
+
+/**
+ * Patient Home is the only Phase-6 surface that records an in-app reminder
+ * presentation. The highest eligible slot is the current action when both
+ * thresholds have elapsed; the other slot remains historical state.
+ */
+async function presentCurrentReminder(
+  tx: Tx,
+  patientId: string,
+  periodId: string | null,
+  now: Date,
+) {
+  if (!periodId) return null;
+  const reminder = await tx.missedCheckinReminder.findFirst({
+    where: {
+      patientId,
+      missedCyclePeriodId: periodId,
+      eligibleAt: { lte: now },
+      cancelledAt: null,
+    },
+    orderBy: [
+      { reminderNumber: 'desc' },
+      { eligibleAt: 'desc' },
+      { id: 'asc' },
+    ],
+  });
+  if (!reminder || reminder.presentedAt) return null;
+
+  const presented = await tx.missedCheckinReminder.update({
+    where: { id: reminder.id },
+    data: { presentedAt: now, updatedAt: now },
+  });
+  await tx.auditEvent.create({
+    data: {
+      actorId: patientId,
+      action: 'ENGAGEMENT_REMINDER_PRESENTED',
+      entityType: 'MISSED_CHECKIN_REMINDER',
+      entityId: reminder.id,
+      patientId,
+      occurredAt: now,
+      configurationVersion: SUBJECTIVE_MONITORING_V1.configurationVersion,
+      metadata: json({
+        missedCyclePeriodId: periodId,
+        reminderNumber: reminder.reminderNumber,
+        presentationSurface: 'PATIENT_HOME',
+      }),
+    },
+  });
+  return presented;
 }
 
 async function currentPeriod(tx: Tx, patientId: string, now: Date) {
@@ -930,7 +984,8 @@ function checkInProjection(
         }
       : null,
     assessmentId: assessment?.id ?? null,
-    completionStatus: submitted?.completionStatus ?? assessment?.completionStatus ?? null,
+    completionStatus:
+      submitted?.completionStatus ?? assessment?.completionStatus ?? null,
     submittedAt: submitted?.submittedAt.toISOString() ?? null,
   };
 }
@@ -1023,7 +1078,8 @@ export async function readPatientMonitoring(
     state: result.state.state,
     version: result.state.version,
     optedOutAt: result.state.optedOutAt?.toISOString() ?? null,
-    cycleTrackingFromAt: result.state.cycleTrackingFromAt?.toISOString() ?? null,
+    cycleTrackingFromAt:
+      result.state.cycleTrackingFromAt?.toISOString() ?? null,
     missedCycle: result.anchor
       ? {
           periodId: result.anchor.id,
@@ -1056,25 +1112,38 @@ export async function readPatientHome(
     currentPeriod(tx, patientId, now),
     readPatientSupport(tx, clock, patientId),
   ]);
-  if (!patient) throw new DomainError(404, 'NOT_FOUND', 'The requested resource was not found.');
+  if (!patient)
+    throw new DomainError(
+      404,
+      'NOT_FOUND',
+      'The requested resource was not found.',
+    );
 
   const checkIn = checkInProjection(period, now);
-  const reminders = await loadReminders(
+  const stateEvaluation = result.evaluation;
+  const safetyControlled =
+    result.safety.requiresSafetyShell ||
+    result.safety.monitoringPromptPolicy === 'PAUSE';
+  if (!safetyControlled && stateEvaluation.pauseReason === null) {
+    await presentCurrentReminder(
+      tx,
+      patientId,
+      result.state.missedCyclePeriodId,
+      now,
+    );
+  }
+  const presentedReminders = await loadReminders(
     tx,
     patientId,
     now,
     result.state.missedCyclePeriodId,
   );
-  const stateEvaluation = result.evaluation;
-  const safetyControlled =
-    result.safety.requiresSafetyShell ||
-    result.safety.monitoringPromptPolicy === 'PAUSE';
   const goal = period
     ? await resolveRecoveryGoalForPeriod(tx, patientId, period as never)
     : null;
   const notice = safetyControlled
     ? null
-    : noticeForState(stateEvaluation.state, reminders);
+    : noticeForState(stateEvaluation.state, presentedReminders);
 
   let primaryAction: PatientHomeResponse['primaryAction'];
   if (safetyControlled) {
@@ -1124,7 +1193,10 @@ export async function readPatientHome(
   } else {
     primaryAction = {
       kind: 'START_CHECK_IN',
-      label: stateEvaluation.state === 'DISENGAGED' ? 'Return to check-in' : 'Start check-in',
+      label:
+        stateEvaluation.state === 'DISENGAGED'
+          ? 'Return to check-in'
+          : 'Start check-in',
       href: '/patient/check-in/action',
       supportingText:
         stateEvaluation.state === 'DISENGAGED'
@@ -1153,7 +1225,7 @@ export async function readPatientHome(
           }
         : null,
       overdueDays: stateEvaluation.overdueDays,
-      reminders,
+      reminders: presentedReminders,
       notice,
     },
     monitoring: {
@@ -1203,7 +1275,11 @@ export async function optOutMonitoring(input: {
     now,
   );
   if (current.version !== input.expectedVersion) {
-    throw new DomainError(409, 'VERSION_CONFLICT', 'Monitoring changed before this action.');
+    throw new DomainError(
+      409,
+      'VERSION_CONFLICT',
+      'Monitoring changed before this action.',
+    );
   }
   if (current.state !== 'OPTED_OUT') {
     await input.tx.engagementState.update({
@@ -1277,7 +1353,11 @@ export async function reEnableMonitoring(input: {
     now,
   );
   if (current.version !== input.expectedVersion) {
-    throw new DomainError(409, 'VERSION_CONFLICT', 'Monitoring changed before this action.');
+    throw new DomainError(
+      409,
+      'VERSION_CONFLICT',
+      'Monitoring changed before this action.',
+    );
   }
   if (current.state === 'OPTED_OUT') {
     await input.tx.engagementState.update({
@@ -1382,7 +1462,8 @@ async function latestCompletedCheckIn(tx: Tx, patientId: string) {
     take: 20,
   });
   const completed = assessments.find((assessment) => {
-    const classification = assessment.authoritativeRevision?.submissionClassification;
+    const classification =
+      assessment.authoritativeRevision?.submissionClassification;
     return classification === 'CURRENT' || classification === 'LATE_CURRENT';
   });
   if (!completed?.authoritativeRevision) return null;
@@ -1399,39 +1480,40 @@ async function buildClinicianEngagementItem(
   patientId: string,
   result: Awaited<ReturnType<typeof reconcileEngagementForPatient>>,
 ): Promise<ClinicianEngagementItem> {
-  const [patient, engagementCase, task, lastCompletedCheckIn] = await Promise.all([
-    tx.user.findUnique({ where: { id: patientId }, select: { name: true } }),
-    tx.engagementCase.findFirst({
-      where: {
-        patientId,
-        lifecycle: { in: [...OPEN_ENGAGEMENT_CASE_LIFECYCLES] },
-      },
-      orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
-    }),
-    tx.engagementCase
-      .findFirst({
+  const [patient, engagementCase, task, lastCompletedCheckIn] =
+    await Promise.all([
+      tx.user.findUnique({ where: { id: patientId }, select: { name: true } }),
+      tx.engagementCase.findFirst({
         where: {
           patientId,
           lifecycle: { in: [...OPEN_ENGAGEMENT_CASE_LIFECYCLES] },
         },
-        select: { id: true },
         orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
-      })
-      .then((caseRow) =>
-        caseRow
-          ? tx.clinicianTask.findUnique({
-              where: {
-                caseType_caseId_taskIdentity: {
-                  caseType: 'ENGAGEMENT',
-                  caseId: caseRow.id,
-                  taskIdentity: 'DISENGAGEMENT_REVIEW',
+      }),
+      tx.engagementCase
+        .findFirst({
+          where: {
+            patientId,
+            lifecycle: { in: [...OPEN_ENGAGEMENT_CASE_LIFECYCLES] },
+          },
+          select: { id: true },
+          orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
+        })
+        .then((caseRow) =>
+          caseRow
+            ? tx.clinicianTask.findUnique({
+                where: {
+                  caseType_caseId_taskIdentity: {
+                    caseType: 'ENGAGEMENT',
+                    caseId: caseRow.id,
+                    taskIdentity: 'DISENGAGEMENT_REVIEW',
+                  },
                 },
-              },
-            })
-          : null,
-      ),
-    latestCompletedCheckIn(tx, patientId),
-  ]);
+              })
+            : null,
+        ),
+      latestCompletedCheckIn(tx, patientId),
+    ]);
   if (!patient) {
     throw new DomainError(
       404,
@@ -1471,7 +1553,8 @@ async function buildClinicianEngagementItem(
           caseVersion: engagementCase.caseVersion,
           openedAt: engagementCase.openedAt.toISOString(),
           acknowledgedAt: engagementCase.acknowledgedAt?.toISOString() ?? null,
-          outreachStartedAt: engagementCase.outreachStartedAt?.toISOString() ?? null,
+          outreachStartedAt:
+            engagementCase.outreachStartedAt?.toISOString() ?? null,
           resolvedAt: engagementCase.resolvedAt?.toISOString() ?? null,
           resolutionReason: engagementCase.resolutionReason,
         }
@@ -1507,7 +1590,9 @@ export async function readClinicianEngagementQueue(
     select: { patientId: true },
     orderBy: [{ patientId: 'asc' }, { id: 'asc' }],
   });
-  const patientIds = [...new Set(assignments.map((assignment) => assignment.patientId))];
+  const patientIds = [
+    ...new Set(assignments.map((assignment) => assignment.patientId)),
+  ];
   const items: ClinicianEngagementItem[] = [];
   for (const patientId of patientIds) {
     const item = await prisma.$transaction((tx) =>
@@ -1546,18 +1631,34 @@ export async function transitionEngagementCase(input: {
     select: { patientId: true },
   });
   if (!caseIdentity) {
-    throw new DomainError(404, 'NOT_FOUND', 'The requested resource was not found.');
+    throw new DomainError(
+      404,
+      'NOT_FOUND',
+      'The requested resource was not found.',
+    );
   }
-  await assertAssignedPatient(input.tx, input.clinicianId, caseIdentity.patientId);
+  await assertAssignedPatient(
+    input.tx,
+    input.clinicianId,
+    caseIdentity.patientId,
+  );
   await lockPatientForProcessing(input.tx, caseIdentity.patientId);
   const current = await input.tx.engagementCase.findUnique({
     where: { id: input.caseId },
   });
   if (!current) {
-    throw new DomainError(404, 'NOT_FOUND', 'The requested resource was not found.');
+    throw new DomainError(
+      404,
+      'NOT_FOUND',
+      'The requested resource was not found.',
+    );
   }
   if (current.caseVersion !== input.expectedCaseVersion) {
-    throw new DomainError(409, 'VERSION_CONFLICT', 'The engagement case changed before this action.');
+    throw new DomainError(
+      409,
+      'VERSION_CONFLICT',
+      'The engagement case changed before this action.',
+    );
   }
   if (current.lifecycle === input.target) {
     return readClinicianEngagementDetail({
@@ -1570,7 +1671,7 @@ export async function transitionEngagementCase(input: {
   const allowed =
     input.target === 'ACKNOWLEDGED'
       ? current.lifecycle === 'NEW'
-      : current.lifecycle === 'NEW' || current.lifecycle === 'ACKNOWLEDGED';
+      : current.lifecycle === 'ACKNOWLEDGED';
   if (!allowed) {
     throw new DomainError(
       409,

@@ -311,52 +311,50 @@ async function seedEngagementScenario(
   const effectiveDueAt = new Date(
     now.getTime() + scenario.dueOffsetDays * DAY_MS,
   );
-  const periodStartAt = new Date(effectiveDueAt.getTime() - 7 * DAY_MS);
+  // Scheduled-period facts are historical and the database enforces the
+  // one-day gap between open_at and original_due_at. Keep the demo period
+  // geometrically valid before the effective due-time offset is applied.
+  const openAt = new Date(effectiveDueAt.getTime() - DAY_MS);
+  const periodEndAt = openAt;
+  const periodStartAt = new Date(periodEndAt.getTime() - 7 * DAY_MS);
   const scheduleId = `00000000-0000-4600-8000-${scenario.idSuffix}`;
   const periodId = `00000000-0000-4610-8000-${scenario.idSuffix}`;
-  await prisma.monitoringScheduleVersion.upsert({
+  const schedule = await prisma.monitoringScheduleVersion.findUnique({
     where: { id: scheduleId },
-    create: {
-      id: scheduleId,
-      patientId: patient.id,
-      version: 1,
-      monitoringTimezone: 'UTC',
-      effectiveBoundary: periodStartAt,
-      lifecycle: 'ACTIVE',
-      createdByUserId: adminUserId,
-      provenance: 'phase6_deterministic_engagement_demo',
-    },
-    update: {
-      monitoringTimezone: 'UTC',
-      effectiveBoundary: periodStartAt,
-      lifecycle: 'ACTIVE',
-      provenance: 'phase6_deterministic_engagement_demo',
-    },
   });
-  await prisma.scheduledPeriod.upsert({
+  if (!schedule) {
+    await prisma.monitoringScheduleVersion.create({
+      data: {
+        id: scheduleId,
+        patientId: patient.id,
+        version: 1,
+        monitoringTimezone: 'UTC',
+        effectiveBoundary: periodStartAt,
+        lifecycle: 'ACTIVE',
+        createdByUserId: adminUserId,
+        provenance: 'phase6_deterministic_engagement_demo',
+      },
+    });
+  }
+  let period = await prisma.scheduledPeriod.findUnique({
     where: { id: periodId },
-    create: {
-      id: periodId,
-      patientId: patient.id,
-      scheduleVersionId: scheduleId,
-      monitoringTimezone: 'UTC',
-      periodStartAt,
-      periodEndAt: effectiveDueAt,
-      openAt: effectiveDueAt,
-      originalDueAt: effectiveDueAt,
-      effectiveDueAt,
-      version: 1,
-    },
-    update: {
-      scheduleVersionId: scheduleId,
-      monitoringTimezone: 'UTC',
-      periodStartAt,
-      periodEndAt: effectiveDueAt,
-      openAt: effectiveDueAt,
-      originalDueAt: effectiveDueAt,
-      effectiveDueAt,
-    },
   });
+  if (!period) {
+    period = await prisma.scheduledPeriod.create({
+      data: {
+        id: periodId,
+        patientId: patient.id,
+        scheduleVersionId: scheduleId,
+        monitoringTimezone: 'UTC',
+        periodStartAt,
+        periodEndAt,
+        openAt,
+        originalDueAt: effectiveDueAt,
+        effectiveDueAt,
+        version: 1,
+      },
+    });
+  }
   if (scenario.technicalFailure) {
     const failureId = `00000000-0000-4700-8000-${scenario.idSuffix}`;
     await prisma.technicalFailure.upsert({
@@ -374,8 +372,8 @@ async function seedEngagementScenario(
         confirmedBy: adminUserId,
         confirmedAt: now,
         reason: 'Deterministic Phase 6 local demonstration scenario',
-        sourcePeriodId: periodId,
-        previousEffectiveDueAt: effectiveDueAt,
+        sourcePeriodId: period.id,
+        previousEffectiveDueAt: period.effectiveDueAt,
       },
       update: {
         patientId: patient.id,
@@ -387,8 +385,8 @@ async function seedEngagementScenario(
         confirmedBy: adminUserId,
         confirmedAt: now,
         reason: 'Deterministic Phase 6 local demonstration scenario',
-        sourcePeriodId: periodId,
-        previousEffectiveDueAt: effectiveDueAt,
+        sourcePeriodId: period.id,
+        previousEffectiveDueAt: period.effectiveDueAt,
       },
     });
   }

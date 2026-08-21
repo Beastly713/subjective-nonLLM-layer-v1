@@ -116,6 +116,18 @@ test('renders the patient profile and explicit unknown preferences', async ({
         };
       }
 
+      if (pathname === '/api/v1/patient/monitoring') {
+        return {
+          patientId: userId,
+          state: 'ENGAGED',
+          version: 1,
+          optedOutAt: null,
+          cycleTrackingFromAt: null,
+          missedCycle: null,
+          reminders: [],
+        };
+      }
+
       if (pathname === '/api/v1/patient/profile') {
         return {
           patientId: userId,
