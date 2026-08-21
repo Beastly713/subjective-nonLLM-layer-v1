@@ -3,6 +3,7 @@ import {
   CheckInStateResponseSchema,
   WeeklyAssessmentDraftAnswersSchema,
   WeeklyAssessmentDraftProjectionSchema,
+  SubmittedWeeklyAssessmentProjectionSchema,
   WeeklyCheckInGoalContextSchema,
   WeeklyCheckInInstrumentProjectionSchema,
   WeeklyCheckInPeriodProjectionSchema,
@@ -173,10 +174,53 @@ export function projectDraft(assessment: {
   });
 }
 
+export function projectSubmitted(assessment: {
+  id: string;
+  scheduledPeriodId: string;
+  completionStatus: string;
+  authoritativeRevision: {
+    id: string;
+    revisionNumber: number;
+    completionStatus: string;
+    submissionClassification: string;
+    submittedAt: Date;
+    sourceDraftVersion: number;
+  } | null;
+}) {
+  if (!assessment.authoritativeRevision) {
+    throw new Error('A submitted assessment is missing its authoritative revision.');
+  }
+  return SubmittedWeeklyAssessmentProjectionSchema.parse({
+    assessmentId: assessment.id,
+    periodId: assessment.scheduledPeriodId,
+    scheduledPeriodId: assessment.scheduledPeriodId,
+    revisionId: assessment.authoritativeRevision.id,
+    revisionNumber: assessment.authoritativeRevision.revisionNumber,
+    completionStatus: assessment.authoritativeRevision.completionStatus,
+    submissionClassification: assessment.authoritativeRevision.submissionClassification,
+    submittedAt: assessment.authoritativeRevision.submittedAt.toISOString(),
+    sourceDraftVersion: assessment.authoritativeRevision.sourceDraftVersion,
+  });
+}
+
+function projectAssessment(assessment: Parameters<typeof projectDraft>[0] & {
+  authoritativeRevision?: Parameters<typeof projectSubmitted>[0]['authoritativeRevision'];
+}) {
+  if (assessment.completionStatus === 'DRAFT') return projectDraft(assessment);
+  return projectSubmitted({
+    id: assessment.id,
+    scheduledPeriodId: assessment.scheduledPeriodId,
+    completionStatus: assessment.completionStatus,
+    authoritativeRevision: assessment.authoritativeRevision ?? null,
+  });
+}
+
 export function projectCheckInState(input: {
   availability: CheckInAvailability;
   period: AssessmentPeriodRecord | null;
-  assessment: Parameters<typeof projectDraft>[0] | null;
+  assessment: (Parameters<typeof projectDraft>[0] & {
+    authoritativeRevision?: Parameters<typeof projectSubmitted>[0]['authoritativeRevision'];
+  }) | null;
   context: AssessmentContext | null;
   safety: PatientSafetyProjection;
   now: Date;
@@ -191,7 +235,7 @@ export function projectCheckInState(input: {
 
   return CheckInStateResponseSchema.parse({
     availability: input.availability,
-    assessment: input.assessment ? projectDraft(input.assessment) : null,
+    assessment: input.assessment ? projectAssessment(input.assessment) : null,
     instrument: projectInstrument(goal.goal),
     period: input.period ? projectPeriod(input.period, input.now) : null,
     goalContext: goal,

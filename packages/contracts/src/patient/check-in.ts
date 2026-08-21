@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 import {
   WeeklyAssessmentDraftAnswersSchema,
-  WeeklyAssessmentDraftProjectionSchema,
   WeeklyAssessmentDraftStepSchema,
+  WeeklyAssessmentStateProjectionSchema,
   WeeklyCheckInGoalContextSchema,
   WeeklyCheckInInstrumentProjectionSchema,
   WeeklyCheckInPeriodProjectionSchema,
@@ -30,7 +30,7 @@ const WeeklyConsumptionDatesSchema = z
 
 export const CheckInStateResponseSchema = z.object({
   availability: CheckInAvailabilitySchema,
-  assessment: WeeklyAssessmentDraftProjectionSchema.nullable(),
+  assessment: WeeklyAssessmentStateProjectionSchema.nullable(),
   instrument: WeeklyCheckInInstrumentProjectionSchema,
   period: WeeklyCheckInPeriodProjectionSchema.nullable(),
   goalContext: WeeklyCheckInGoalContextSchema,
@@ -39,6 +39,15 @@ export const CheckInStateResponseSchema = z.object({
   weeklyConsumptionRequired: z.boolean(),
   weeklyConsumptionDates: WeeklyConsumptionDatesSchema,
 });
+
+export const SubmitWeeklyAssessmentRequestSchema = z
+  .object({
+    expectedDraftVersion: z.number().int().nonnegative(),
+    completionIntent: z.enum(['PARTIAL', 'COMPLETE']),
+  })
+  .strict();
+
+export const SubmitWeeklyAssessmentResponseSchema = CheckInStateResponseSchema;
 
 export const SaveWeeklyAssessmentDraftRequestSchema = z.object({
   expectedDraftVersion: z.number().int().nonnegative(),
@@ -57,4 +66,10 @@ export type SaveWeeklyAssessmentDraftRequest = z.infer<
 >;
 export type SaveWeeklyAssessmentDraftResponse = z.infer<
   typeof SaveWeeklyAssessmentDraftResponseSchema
+>;
+export type SubmitWeeklyAssessmentRequest = z.infer<
+  typeof SubmitWeeklyAssessmentRequestSchema
+>;
+export type SubmitWeeklyAssessmentResponse = z.infer<
+  typeof SubmitWeeklyAssessmentResponseSchema
 >;

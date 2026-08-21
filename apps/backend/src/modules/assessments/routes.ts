@@ -1,16 +1,25 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import {
+  SubmitWeeklyAssessmentRequestSchema,
+  SubmitWeeklyAssessmentResponseSchema,
+} from '@aud-subjective/contracts';
 
 import type { PrismaClient } from '../../generated/prisma/client.js';
 import type { AppAuth } from '../../infrastructure/auth/auth.js';
 import type { AppConfig } from '../../infrastructure/config/config.js';
 import { requirePermission } from '../../shared/authz/authorize.js';
+import {
+  executeIdempotently,
+  requireIdempotencyKey,
+} from '../../shared/authz/idempotency.js';
 import { DomainError } from '../../shared/errors/domain-error.js';
 import type { Clock } from '../../shared/clock/clock.js';
 import {
   saveWeeklyAssessmentDraft,
   startOrResumeWeeklyCheckIn,
 } from './service.js';
+import { submitWeeklyAssessment } from './submission-service.js';
 
 const AssessmentParamsSchema = z.object({ assessmentId: z.uuid() });
 
@@ -60,5 +69,37 @@ export function registerAssessmentRoutes(
         request.body,
       ),
     );
+  });
+
+  app.post('/api/v1/patient/assessments/:assessmentId/submit', async (request) => {
+    const actor = await requirePermission(
+      request,
+      auth,
+      prisma,
+      config,
+      'PATIENT_ASSESSMENT_UPDATE',
+    );
+    requireOwnPatient(actor);
+    const { assessmentId } = AssessmentParamsSchema.parse(request.params);
+    const body = SubmitWeeklyAssessmentRequestSchema.parse(request.body);
+    const key = requireIdempotencyKey(request.headers['idempotency-key']);
+    const idempotencyPayload = { assessmentId, ...body };
+    const result = await executeIdempotently(
+      prisma,
+      actor.userId,
+      'PATIENT_WEEKLY_ASSESSMENT_SUBMIT',
+      key,
+      idempotencyPayload,
+      (tx) =>
+        submitWeeklyAssessment({
+          tx,
+          clock,
+          patientId: actor.userId,
+          assessmentId,
+          request: body,
+          requestId: request.id,
+        }),
+    );
+    return SubmitWeeklyAssessmentResponseSchema.parse(result.value);
   });
 }

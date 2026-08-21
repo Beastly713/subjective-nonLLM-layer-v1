@@ -54,6 +54,28 @@ export const AssessmentCompletionStatusSchema = z.enum([
   'COMPLETE',
 ]);
 
+export const AssessmentRevisionCompletionStatusSchema = z.enum([
+  'PARTIAL',
+  'COMPLETE',
+]);
+
+export const AssessmentSubmissionClassificationSchema = z.enum([
+  'CURRENT',
+  'LATE_CURRENT',
+]);
+
+export const SubmittedWeeklyAssessmentProjectionSchema = z.object({
+  assessmentId: z.uuid(),
+  periodId: z.uuid(),
+  scheduledPeriodId: z.uuid(),
+  revisionId: z.uuid(),
+  revisionNumber: z.number().int().positive(),
+  completionStatus: AssessmentRevisionCompletionStatusSchema,
+  submissionClassification: AssessmentSubmissionClassificationSchema,
+  submittedAt: z.iso.datetime(),
+  sourceDraftVersion: z.number().int().nonnegative(),
+});
+
 export const WeeklyCheckInInstrumentItemProjectionSchema = z.discriminatedUnion(
   'type',
   [
@@ -159,6 +181,11 @@ export const WeeklyAssessmentDraftProjectionSchema = z.object({
   completionStatus: z.literal('DRAFT'),
 });
 
+export const WeeklyAssessmentStateProjectionSchema = z.union([
+  WeeklyAssessmentDraftProjectionSchema,
+  SubmittedWeeklyAssessmentProjectionSchema,
+]);
+
 export type WeeklyAssessmentItemId = z.infer<
   typeof WeeklyAssessmentItemIdSchema
 >;
@@ -170,6 +197,12 @@ export type WeeklyAssessmentDraftStep = z.infer<
 >;
 export type AssessmentCompletionStatus = z.infer<
   typeof AssessmentCompletionStatusSchema
+>;
+export type AssessmentRevisionCompletionStatus = z.infer<
+  typeof AssessmentRevisionCompletionStatusSchema
+>;
+export type AssessmentSubmissionClassification = z.infer<
+  typeof AssessmentSubmissionClassificationSchema
 >;
 export type WeeklyCheckInInstrumentProjection = z.infer<
   typeof WeeklyCheckInInstrumentProjectionSchema
@@ -186,4 +219,10 @@ export type WeeklyCheckInPreferenceContext = z.infer<
 export type WeeklyConsumptionDraftDay = WeeklyAlcoholDayInput;
 export type WeeklyAssessmentDraftProjection = z.infer<
   typeof WeeklyAssessmentDraftProjectionSchema
+>;
+export type SubmittedWeeklyAssessmentProjection = z.infer<
+  typeof SubmittedWeeklyAssessmentProjectionSchema
+>;
+export type WeeklyAssessmentStateProjection = z.infer<
+  typeof WeeklyAssessmentStateProjectionSchema
 >;

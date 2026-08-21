@@ -1,6 +1,7 @@
 import {
   CheckInStateResponseSchema,
   SaveWeeklyAssessmentDraftRequestSchema,
+  SubmitWeeklyAssessmentRequestSchema,
   type CheckInStateResponse,
   type CheckInAvailability,
   type WeeklyAssessmentDraftAnswers,
@@ -67,6 +68,13 @@ function PatientCheckInContent() {
   });
   const [local, setLocal] = useState<LocalDraft | null>(null);
   const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [draftDirty, setDraftDirty] = useState(false);
+  const [confirmingSubmit, setConfirmingSubmit] = useState(false);
+  const [submissionAttempt, setSubmissionAttempt] = useState<{
+    fingerprint: string;
+    key: string;
+  } | null>(null);
   const [message, setMessage] = useState<string>();
 
   if (query.isLoading) {
@@ -98,7 +106,13 @@ function PatientCheckInContent() {
   }
 
   const data = query.data;
-  const serverDraft = data.assessment;
+  if (data.assessment && data.assessment.completionStatus !== 'DRAFT') {
+    return <SubmittedState data={data} />;
+  }
+  const serverDraft =
+    data.assessment && data.assessment.completionStatus === 'DRAFT'
+      ? data.assessment
+      : null;
   const currentDraft =
     local &&
     serverDraft &&
@@ -134,6 +148,8 @@ function PatientCheckInContent() {
         ...changes,
       },
     }));
+    setDraftDirty(true);
+    setSubmissionAttempt(null);
     setMessage(undefined);
   };
 
@@ -145,6 +161,8 @@ function PatientCheckInContent() {
         : {}),
       weeklyConsumptionDays: days,
     }));
+    setDraftDirty(true);
+    setSubmissionAttempt(null);
     setMessage(undefined);
   };
 
@@ -169,7 +187,13 @@ function PatientCheckInContent() {
         { schema: CheckInStateResponseSchema },
       );
       queryClient.setQueryData(['patient', 'check-in'], response);
-      setLocal(response.assessment ? fromServerDraft(response.assessment) : null);
+      setLocal(
+        response.assessment && response.assessment.completionStatus === 'DRAFT'
+          ? fromServerDraft(response.assessment)
+          : null,
+      );
+      setDraftDirty(false);
+      setSubmissionAttempt(null);
       return response;
     } catch (error) {
       if (
@@ -190,6 +214,20 @@ function PatientCheckInContent() {
           'This check-in is now safety-controlled. Your draft was not changed.',
         );
         await query.refetch();
+      } else if (
+        error instanceof ApiClientError &&
+        error.response?.error.code === 'HISTORICAL_BACKFILL_REQUIRED'
+      ) {
+        setMessage(
+          'This period is now historical because a newer check-in was recorded. The latest state has been reloaded.',
+        );
+        setLocal(null);
+        await query.refetch();
+      } else if (
+        error instanceof ApiClientError &&
+        error.response?.error.code === 'WEEKLY_ALCOHOL_CONFLICT'
+      ) {
+        setMessage(alcoholConflictMessage(currentDraft));
       } else {
         setMessage('Your draft could not be saved. Please try again.');
       }
@@ -206,6 +244,82 @@ function PatientCheckInContent() {
   const saveAndExit = async () => {
     const response = await saveDraft(currentDraft.currentStep);
     if (response) navigate('/patient/profile');
+  };
+
+  const submitAssessment = async () => {
+    let draft = currentDraft;
+    if (draftDirty) {
+      const saved = await saveDraft('REVIEW');
+      if (!saved?.assessment || saved.assessment.completionStatus !== 'DRAFT') {
+        return;
+      }
+      draft = fromServerDraft(saved.assessment);
+    }
+    const unanswered = data.instrument.items.filter((item) =>
+      item.itemId === 'U1'
+        ? draft.answers.U1 === undefined
+        : draft.answers[item.itemId] === undefined,
+    );
+    const completionIntent = unanswered.length === 0 ? 'COMPLETE' : 'PARTIAL';
+    const request = SubmitWeeklyAssessmentRequestSchema.parse({
+      expectedDraftVersion: draft.draftVersion,
+      completionIntent,
+    });
+    const fingerprint = JSON.stringify({ assessmentId: draft.assessmentId, ...request });
+    const attempt =
+      submissionAttempt?.fingerprint === fingerprint
+        ? submissionAttempt
+        : { fingerprint, key: globalThis.crypto.randomUUID() };
+    setSubmissionAttempt(attempt);
+    setSubmitting(true);
+    setMessage(undefined);
+    try {
+      const response = await apiMutate<CheckInStateResponse>(
+        `/api/v1/patient/assessments/${draft.assessmentId}/submit` as `/api/v1/${string}`,
+        'POST',
+        request,
+        {
+          schema: CheckInStateResponseSchema,
+          headers: { 'Idempotency-Key': attempt.key },
+        },
+      );
+      queryClient.setQueryData(['patient', 'check-in'], response);
+      setLocal(null);
+      setDraftDirty(false);
+      setSubmissionAttempt(null);
+      setConfirmingSubmit(false);
+    } catch (error) {
+      if (
+        error instanceof ApiClientError &&
+        error.response?.error.code === 'WEEKLY_ALCOHOL_CONFLICT'
+      ) {
+        setMessage(alcoholConflictMessage(draft));
+      } else if (
+        error instanceof ApiClientError &&
+        error.response?.error.code === 'HISTORICAL_BACKFILL_REQUIRED'
+      ) {
+        setMessage(
+          'This period is now historical because a newer check-in was recorded. Historical backfill is not available here.',
+        );
+        setLocal(null);
+        await query.refetch();
+      } else if (
+        error instanceof ApiClientError &&
+        error.response?.error.code === 'COMPLETE_REQUIRES_ALL_ITEMS'
+      ) {
+        setMessage('Answer every question before choosing the complete submission option.');
+      } else if (
+        error instanceof ApiClientError &&
+        error.response?.error.code === 'SAFETY_PAUSED'
+      ) {
+        setMessage('This check-in is now safety-controlled. Your draft was not submitted.');
+        await query.refetch();
+      } else {
+        setMessage('The check-in could not be submitted. Your saved draft remains available.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const stepIndex = steps.indexOf(currentDraft.currentStep);
@@ -257,14 +371,22 @@ function PatientCheckInContent() {
           />
         ) : null}
         {currentDraft.currentStep === 'REVIEW' ? (
-          <ReviewStep data={data} draft={currentDraft} />
+          <ReviewStep
+            confirming={confirmingSubmit}
+            data={data}
+            draft={currentDraft}
+            onCancelSubmit={() => setConfirmingSubmit(false)}
+            onConfirmSubmit={() => void submitAssessment()}
+            onRequestSubmit={() => setConfirmingSubmit(true)}
+            submitting={submitting}
+          />
         ) : null}
 
         <div className="flex flex-col-reverse gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex gap-2">
             {stepIndex > 0 ? (
               <Button
-                disabled={saving}
+                disabled={saving || submitting}
                 onClick={() => void moveTo(steps[stepIndex - 1]!)}
                 variant="outline"
               >
@@ -272,13 +394,17 @@ function PatientCheckInContent() {
                 Back
               </Button>
             ) : null}
-            <Button disabled={saving} onClick={() => void saveAndExit()} variant="ghost">
+            <Button
+              disabled={saving || submitting}
+              onClick={() => void saveAndExit()}
+              variant="ghost"
+            >
               Save and exit
             </Button>
           </div>
           {stepIndex < steps.length - 1 ? (
             <Button
-              disabled={saving}
+              disabled={saving || submitting}
               onClick={() => void moveTo(steps[stepIndex + 1]!)}
             >
               {saving ? 'Saving…' : stepIndex === steps.length - 2 ? 'Review' : 'Continue'}
@@ -440,7 +566,23 @@ function ScaleStep({
   );
 }
 
-function ReviewStep({ data, draft }: { data: CheckInStateResponse; draft: LocalDraft }) {
+function ReviewStep({
+  data,
+  draft,
+  confirming,
+  submitting,
+  onRequestSubmit,
+  onCancelSubmit,
+  onConfirmSubmit,
+}: {
+  data: CheckInStateResponse;
+  draft: LocalDraft;
+  confirming: boolean;
+  submitting: boolean;
+  onRequestSubmit: () => void;
+  onCancelSubmit: () => void;
+  onConfirmSubmit: () => void;
+}) {
   const unanswered = data.instrument.items.filter((item) => {
     if (item.itemId === 'U1') return draft.answers.U1 === undefined;
     return draft.answers[item.itemId] === undefined;
@@ -465,8 +607,8 @@ function ReviewStep({ data, draft }: { data: CheckInStateResponse; draft: LocalD
         </div>
       ) : (
         <div className="rounded-xl border border-success-border bg-success-surface/50 p-5 text-sm">
-          All eleven questions have a saved answer. Final submission will be
-          added in a later release.
+          All eleven questions have an answer. You can submit this check-in as
+          a complete authoritative weekly record.
         </div>
       )}
       <Card>
@@ -525,12 +667,120 @@ function ReviewStep({ data, draft }: { data: CheckInStateResponse; draft: LocalD
           </CardContent>
         </Card>
       ) : null}
+      <div className="rounded-xl border border-primary/20 bg-primary/5 p-5">
+        <p className="m-0 font-semibold">
+          {unanswered.length === 0 ? 'Submit check-in' : 'Submit available answers'}
+        </p>
+        <p className="mb-0 mt-2 text-sm leading-6 text-muted-foreground">
+          This creates a real submitted check-in for the period above. Any
+          unanswered questions remain unknown and are not filled in for you.
+        </p>
+        {!confirming ? (
+          <Button
+            className="mt-4"
+            disabled={submitting}
+            onClick={onRequestSubmit}
+          >
+            {unanswered.length === 0 ? 'Submit check-in' : 'Submit available answers'}
+          </Button>
+        ) : (
+          <div className="mt-4 flex flex-col gap-3 rounded-lg border bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="m-0 text-sm">
+              Confirm that you want to create this submitted weekly record.
+            </p>
+            <div className="flex gap-2">
+              <Button disabled={submitting} onClick={onCancelSubmit} variant="outline">
+                Cancel
+              </Button>
+              <Button disabled={submitting} onClick={onConfirmSubmit}>
+                {submitting ? 'Submitting…' : 'Confirm submission'}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
       <p className="m-0 text-sm text-muted-foreground">
         Use Back to make changes or Save and exit to keep this draft for later.
-        There is no Submit or Complete action in this release.
       </p>
     </section>
   );
+}
+
+function SubmittedState({ data }: { data: CheckInStateResponse }) {
+  const assessment = data.assessment;
+  if (!assessment || assessment.completionStatus === 'DRAFT') {
+    return <NonActionableState data={data} />;
+  }
+  return (
+    <PatientShell>
+      <div className="grid gap-6">
+        <CheckInHeader data={data} />
+        <div className="rounded-xl border border-success-border bg-success-surface/50 p-6" role="status">
+          <p className="m-0 text-xs font-bold uppercase tracking-[0.12em] text-success">
+            Check-in recorded
+          </p>
+          <h1 className="mb-0 mt-2 text-2xl font-semibold">
+            Your weekly check-in was submitted.
+          </h1>
+          <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-muted-foreground">Completion</dt>
+              <dd className="m-0 font-semibold">
+                {assessment.completionStatus === 'COMPLETE' ? 'Complete' : 'Partial'}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Submitted</dt>
+              <dd className="m-0 font-semibold">
+                {new Date(assessment.submittedAt).toLocaleString()}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Revision</dt>
+              <dd className="m-0 font-semibold">{assessment.revisionNumber}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Timing</dt>
+              <dd className="m-0 font-semibold">
+                {assessment.submissionClassification === 'LATE_CURRENT'
+                  ? 'Submitted late'
+                  : 'Submitted during the current window'}
+              </dd>
+            </div>
+          </dl>
+          <p className="mb-0 mt-5 text-sm leading-6 text-muted-foreground">
+            This page shows the submitted period and record status. It does not
+            change the submitted answers.
+          </p>
+        </div>
+      </div>
+    </PatientShell>
+  );
+}
+
+function alcoholConflictMessage(draft: LocalDraft) {
+  const answer =
+    draft.answers.U1 === undefined
+      ? 'unanswered'
+      : draft.answers.U1
+        ? 'Yes'
+        : 'No';
+  const enteredDays = draft.weeklyConsumptionDays
+    .filter(
+      (day) =>
+        day.status === 'KNOWN_QUANTITY' && (day.standardDrinks ?? 0) > 0,
+    )
+    .map((day) => day.localDate)
+    .join(', ');
+  const allKnownZero =
+    draft.weeklyConsumptionDays.length === 7 &&
+    draft.weeklyConsumptionDays.every((day) => day.status === 'KNOWN_ZERO');
+  if (draft.answers.U1 === true && allKnownZero) {
+    return 'Your U1 answer is Yes, but the weekly calendar records zero drinks for all seven days. Correct the U1 answer or the calendar entries before submitting.';
+  }
+  return enteredDays
+    ? `Your U1 answer is ${answer}, but the calendar shows positive quantities on ${enteredDays}. Correct the U1 answer or those calendar entries before submitting.`
+    : `Your U1 answer is ${answer}, but it conflicts with the weekly calendar. Correct one of the sources before submitting.`;
 }
 
 function NonActionableState({ data }: { data: CheckInStateResponse }) {
@@ -614,7 +864,10 @@ function NonActionableState({ data }: { data: CheckInStateResponse }) {
 }
 
 function fromServerDraft(
-  draft: NonNullable<CheckInStateResponse['assessment']>,
+  draft: Extract<
+    NonNullable<CheckInStateResponse['assessment']>,
+    { completionStatus: 'DRAFT' }
+  >,
 ): LocalDraft {
   return {
     assessmentId: draft.assessmentId,

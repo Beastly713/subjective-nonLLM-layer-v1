@@ -7,6 +7,7 @@ export type AssessmentDatabase = Pick<
   | 'monitoringScheduleVersion'
   | 'profilePreferenceVersion'
   | 'recoveryGoalVersion'
+  | 'reductionBaselineRevision'
   | 'safetyCase'
   | 'safetyEvaluationResult'
 >;

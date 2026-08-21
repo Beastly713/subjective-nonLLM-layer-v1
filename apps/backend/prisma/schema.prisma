@@ -247,6 +247,15 @@ model PatientProfile {
   safetyEvaluationResults SafetyEvaluationResult[]
   safetyCases SafetyCase[]
   weeklyAssessments WeeklyAssessment[]
+  assessmentEvaluations AssessmentEvaluation[]
+  useObservationLedger UseObservationLedger[]
+  alcoholConsumptionDays AlcoholConsumptionDay[]
+  weeklyConsumptionSummaries WeeklyConsumptionSummary[]
+  stateFlagObservations StateFlagObservation[]
+  currentStateFlags CurrentStateFlag[]
+  aggregateContextRecords AggregateContextRecord[]
+  longitudinalFeatureRecords LongitudinalFeatureRecord[]
+  patientInterventionIntents PatientInterventionIntent[]
 
   @@map("patient_profiles")
 }
@@ -376,6 +385,7 @@ model ReductionBaselineRevision {
   correctionOf                     ReductionBaselineRevision? @relation("ReductionBaselineCorrections", fields: [correctionOfRevisionId], references: [id], onDelete: Restrict, map: "reduction_baseline_revisions_correction_fk")
   corrections                      ReductionBaselineRevision[] @relation("ReductionBaselineCorrections")
   days                             ReductionBaselineDay[]
+  weeklyConsumptionSummaries       WeeklyConsumptionSummary[]
 
   @@unique([patientId, revision], map: "reduction_baseline_revisions_patient_revision_key")
   @@map("reduction_baseline_revisions")
@@ -583,6 +593,15 @@ model ScheduledPeriod {
   recoveryGoalVersions RecoveryGoalVersion[]
   rescheduleAudits   PeriodRescheduleAudit[]
   weeklyAssessments  WeeklyAssessment[]
+  assessmentEvaluations AssessmentEvaluation[]
+  useObservationLedger UseObservationLedger[]
+  alcoholConsumptionDays AlcoholConsumptionDay[]
+  weeklyConsumptionSummaries WeeklyConsumptionSummary[]
+  stateFlagObservations StateFlagObservation[]
+  currentStateFlags CurrentStateFlag[] @relation("CurrentFlagSourcePeriod")
+  aggregateContextRecords AggregateContextRecord[]
+  longitudinalFeatureRecords LongitudinalFeatureRecord[]
+  patientInterventionIntents PatientInterventionIntent[]
 
   @@unique([patientId, periodStartAt], map: "scheduled_periods_patient_start_key")
   @@index([patientId, periodEndAt], map: "scheduled_periods_patient_end_idx")
@@ -612,6 +631,7 @@ model ProfilePreferenceVersion {
   createdAt                  DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
   createdByUserId            String                      @map("created_by_user_id") @db.Uuid
   profile                    PatientProfile              @relation(fields: [patientId], references: [patientId], onDelete: Restrict)
+  assessmentEvaluations     AssessmentEvaluation[]
 
   @@unique([patientId, version], map: "profile_preference_versions_patient_version_key")
   @@index([patientId, version(sort: Desc)], map: "profile_preference_versions_latest_idx")
@@ -663,6 +683,8 @@ model RecoveryGoalVersion {
   effectiveFromPeriod         ScheduledPeriod?  @relation(fields: [effectiveFromPeriodId], references: [id], onDelete: Restrict, map: "recovery_goal_versions_period_fk")
   sourceOnboardingRevision    OnboardingRevision @relation(fields: [sourceOnboardingRevisionId], references: [id], onDelete: Restrict, map: "recovery_goal_versions_onboarding_fk")
   sourceSafetyEvaluationResult SafetyEvaluationResult @relation(fields: [sourceSafetyEvaluationResultId], references: [id], onDelete: Restrict, map: "recovery_goal_versions_safety_fk")
+  assessmentEvaluations      AssessmentEvaluation[] @relation("AssessmentEvaluationGoal")
+  weeklyConsumptionSummaries WeeklyConsumptionSummary[]
 
   @@unique([patientId, goalVersion], map: "recovery_goal_versions_patient_version_key")
   @@map("recovery_goal_versions")
@@ -706,6 +728,7 @@ model WeeklyAssessment {
   scheduledPeriod            ScheduledPeriod          @relation(fields: [scheduledPeriodId], references: [id], onDelete: Restrict, map: "weekly_assessments_period_fk")
   authoritativeRevision      AssessmentRevision?      @relation("AssessmentAuthoritativeRevision", fields: [authoritativeRevisionId], references: [id], onDelete: Restrict, map: "weekly_assessments_authoritative_revision_fk")
   revisions                  AssessmentRevision[]     @relation("AssessmentRevisions")
+  evaluations                AssessmentEvaluation[]
 
   @@unique([patientId, scheduledPeriodId, instrumentId, instrumentVersion], map: "weekly_assessments_patient_period_instrument_key")
   @@index([patientId, scheduledPeriodId], map: "weekly_assessments_patient_period_idx")
@@ -733,6 +756,15 @@ model AssessmentRevision {
   supersedesRevision      AssessmentRevision?              @relation("AssessmentRevisionSupersedes", fields: [supersedesRevisionId], references: [id], onDelete: Restrict, map: "assessment_revisions_supersedes_fk")
   supersededBy            AssessmentRevision[]              @relation("AssessmentRevisionSupersedes")
   itemResponses           AssessmentItemResponse[]
+  evaluations             AssessmentEvaluation[]
+  useObservations         UseObservationLedger[]
+  alcoholConsumptionDays  AlcoholConsumptionDay[]
+  weeklyConsumptionSummaries WeeklyConsumptionSummary[]
+  stateFlagObservations   StateFlagObservation[]
+  patientInterventionIntents PatientInterventionIntent[]
+  currentStateFlags       CurrentStateFlag[] @relation("CurrentFlagSourceRevision")
+  aggregateContextRecords AggregateContextRecord[]
+  longitudinalFeatureRecords LongitudinalFeatureRecord[]
 
   @@unique([assessmentId, revisionNumber], map: "assessment_revisions_assessment_revision_key")
   @@index([assessmentId, submittedAt], map: "assessment_revisions_assessment_submitted_idx")
@@ -753,6 +785,302 @@ model AssessmentItemResponse {
 
   @@unique([assessmentRevisionId, itemId], map: "assessment_item_responses_revision_item_key")
   @@map("assessment_item_responses")
+}
+
+enum AssessmentEvaluationTrigger {
+  CURRENT_PATIENT_SUBMISSION
+  CURRENT_PATIENT_CORRECTION
+  STAFF_CORRECTION
+  HISTORICAL_BACKFILL
+  POLICY_MIGRATION
+  ADMINISTRATIVE_RECOMPUTE
+}
+
+enum AssessmentEvaluationLifecycle {
+  ACTIVE
+  SUPERSEDED_BY_REVISION
+  REVOKED_BY_REVISION
+}
+
+enum UseObservationStatus {
+  POSITIVE
+  NEGATIVE
+  UNKNOWN
+}
+
+enum StateFlagObservationState {
+  ACTIVE
+  CLEAR
+  UNKNOWN
+}
+
+enum CurrentStateFlagState {
+  CURRENT_ACTIVE
+  CURRENT_CLEARED
+  STALE_DATA_UNAVAILABLE
+  REVOKED_BY_REVISION
+}
+
+enum PatientInterventionClass {
+  CRAVING_COPING_SUPPORT
+  SELF_EFFICACY_SUPPORT
+  MOOD_COPING_SUPPORT
+  TRIGGER_MANAGEMENT_SUPPORT
+  RELATIONSHIP_COPING_SUPPORT
+  SOCIAL_SUPPORT_ACTIVATION
+  USE_EVENT_RECOVERY_SUPPORT
+  RECURRENT_USE_RECOVERY_SUPPORT
+  RECOVERY_PLAN_REVIEW
+  POSITIVE_REINFORCEMENT
+}
+
+enum PatientInterventionEffect {
+  ELIGIBLE
+  SUPPRESSED_SAFETY
+  SUPPRESSED_TRIGGER
+  HISTORICAL_ONLY
+}
+
+enum WeeklyConsumptionTargetStatus {
+  MET
+  NOT_MET
+  UNRESOLVED
+}
+
+model AssessmentEvaluation {
+  id                         String                         @id @default(uuid()) @db.Uuid
+  patientId                  String                         @map("patient_id") @db.Uuid
+  assessmentId               String                         @map("assessment_id") @db.Uuid
+  assessmentRevisionId       String                         @map("assessment_revision_id") @db.Uuid
+  scheduledPeriodId          String                         @map("scheduled_period_id") @db.Uuid
+  trigger                    AssessmentEvaluationTrigger
+  lifecycle                  AssessmentEvaluationLifecycle  @default(ACTIVE)
+  ruleSetVersion             String                         @map("rule_set_version") @db.VarChar(128)
+  configurationVersion       String                         @map("configuration_version") @db.VarChar(128)
+  instrumentVersion          String                         @map("instrument_version") @db.VarChar(64)
+  recoveryGoalVersionId      String?                        @map("recovery_goal_version_id") @db.Uuid
+  preferenceVersionId        String?                        @map("preference_version_id") @db.Uuid
+  evaluatedAt                DateTime                       @map("evaluated_at") @db.Timestamptz(6)
+  inputSnapshot              Json                           @map("input_snapshot")
+  resultSnapshot             Json                           @map("result_snapshot")
+  derivedStateChangesSnapshot Json?                         @map("derived_state_changes_snapshot")
+  effectPlanSnapshot         Json?                           @map("effect_plan_snapshot")
+  candidateClinicianReasonFamilies Json                       @map("candidate_clinician_reason_families")
+  patient                    PatientProfile                  @relation(fields: [patientId], references: [patientId], onDelete: Restrict, map: "assessment_evaluations_patient_fk")
+  assessment                 WeeklyAssessment                @relation(fields: [assessmentId], references: [id], onDelete: Restrict, map: "assessment_evaluations_assessment_fk")
+  assessmentRevision         AssessmentRevision              @relation(fields: [assessmentRevisionId], references: [id], onDelete: Restrict, map: "assessment_evaluations_revision_fk")
+  scheduledPeriod            ScheduledPeriod                @relation(fields: [scheduledPeriodId], references: [id], onDelete: Restrict, map: "assessment_evaluations_period_fk")
+  recoveryGoalVersion        RecoveryGoalVersion?            @relation("AssessmentEvaluationGoal", fields: [recoveryGoalVersionId], references: [id], onDelete: Restrict, map: "assessment_evaluations_goal_fk")
+  preferenceVersion          ProfilePreferenceVersion?       @relation(fields: [preferenceVersionId], references: [id], onDelete: Restrict, map: "assessment_evaluations_preference_fk")
+  stateFlagObservations      StateFlagObservation[]
+  useObservations             UseObservationLedger[]
+  patientInterventionIntents PatientInterventionIntent[]
+  aggregateContext            AggregateContextRecord?
+  longitudinalFeature         LongitudinalFeatureRecord?
+  currentStateFlags            CurrentStateFlag[] @relation("CurrentFlagSourceEvaluation")
+
+  @@unique([assessmentRevisionId, trigger], map: "assessment_evaluations_revision_trigger_key")
+  @@index([patientId, evaluatedAt], map: "assessment_evaluations_patient_evaluated_idx")
+  @@index([scheduledPeriodId, lifecycle], map: "assessment_evaluations_period_lifecycle_idx")
+  @@map("assessment_evaluations")
+}
+
+model UseObservationLedger {
+  id                       String              @id @default(uuid()) @db.Uuid
+  patientId                String              @map("patient_id") @db.Uuid
+  assessmentId             String              @map("assessment_id") @db.Uuid
+  assessmentRevisionId     String              @map("assessment_revision_id") @db.Uuid
+  scheduledPeriodId        String              @map("scheduled_period_id") @db.Uuid
+  source                   String              @db.VarChar(64)
+  periodStartAt            DateTime            @map("period_start_at") @db.Timestamptz(6)
+  periodEndAt              DateTime            @map("period_end_at") @db.Timestamptz(6)
+  status                   UseObservationStatus
+  observedAt               DateTime            @map("observed_at") @db.Timestamptz(6)
+  provenance               Json?
+  patient                  PatientProfile       @relation(fields: [patientId], references: [patientId], onDelete: Restrict, map: "use_observation_ledger_patient_fk")
+  assessment               WeeklyAssessment     @relation(fields: [assessmentId], references: [id], onDelete: Restrict, map: "use_observation_ledger_assessment_fk")
+  assessmentRevision       AssessmentRevision   @relation(fields: [assessmentRevisionId], references: [id], onDelete: Restrict, map: "use_observation_ledger_revision_fk")
+  scheduledPeriod          ScheduledPeriod      @relation(fields: [scheduledPeriodId], references: [id], onDelete: Restrict, map: "use_observation_ledger_period_fk")
+  evaluation               AssessmentEvaluation? @relation(fields: [evaluationId], references: [id], onDelete: Restrict, map: "use_observation_ledger_evaluation_fk")
+  evaluationId             String?             @map("evaluation_id") @db.Uuid
+
+  @@unique([assessmentRevisionId, source], map: "use_observation_ledger_revision_source_key")
+  @@index([patientId, periodStartAt], map: "use_observation_ledger_patient_period_idx")
+  @@map("use_observation_ledger")
+}
+
+model AlcoholConsumptionDay {
+  id                       String               @id @default(uuid()) @db.Uuid
+  patientId                String               @map("patient_id") @db.Uuid
+  scheduledPeriodId        String               @map("scheduled_period_id") @db.Uuid
+  assessmentRevisionId     String               @map("assessment_revision_id") @db.Uuid
+  localDate                DateTime             @map("local_date") @db.Date
+  status                   AlcoholDayStatus
+  standardDrinks           Decimal?             @map("standard_drinks") @db.Decimal(12, 4)
+  ethanolGrams             Decimal?             @map("ethanol_grams") @db.Decimal(12, 4)
+  source                   String               @db.VarChar(64)
+  unitPolicyVersion        String               @map("unit_policy_version") @db.VarChar(64)
+  createdAt                DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  patient                  PatientProfile        @relation(fields: [patientId], references: [patientId], onDelete: Restrict, map: "alcohol_consumption_days_patient_fk")
+  scheduledPeriod          ScheduledPeriod       @relation(fields: [scheduledPeriodId], references: [id], onDelete: Restrict, map: "alcohol_consumption_days_period_fk")
+  assessmentRevision       AssessmentRevision   @relation(fields: [assessmentRevisionId], references: [id], onDelete: Restrict, map: "alcohol_consumption_days_revision_fk")
+
+  @@unique([assessmentRevisionId, localDate], map: "alcohol_consumption_days_revision_date_key")
+  @@index([patientId, localDate], map: "alcohol_consumption_days_patient_date_idx")
+  @@map("alcohol_consumption_days")
+}
+
+model WeeklyConsumptionSummary {
+  id                              String                       @id @default(uuid()) @db.Uuid
+  patientId                       String                       @map("patient_id") @db.Uuid
+  scheduledPeriodId               String                       @map("scheduled_period_id") @db.Uuid
+  assessmentRevisionId            String                       @map("assessment_revision_id") @db.Uuid
+  recoveryGoalVersionId           String                       @map("recovery_goal_version_id") @db.Uuid
+  baselineRevisionId              String?                      @map("baseline_revision_id") @db.Uuid
+  observedDayCount                Int                          @map("observed_day_count")
+  unknownDayCount                 Int                          @map("unknown_day_count")
+  coverageRatio                   Decimal                      @map("coverage_ratio") @db.Decimal(8, 6)
+  knownStandardDrinksTotal        Decimal                      @map("known_standard_drinks_total") @db.Decimal(12, 4)
+  completeWeekTotalStandardDrinks Decimal?                     @map("complete_week_total_standard_drinks") @db.Decimal(12, 4)
+  completeWeekEthanolGrams        Decimal?                     @map("complete_week_ethanol_grams") @db.Decimal(12, 4)
+  drinkingDays                    Int                          @map("drinking_days")
+  alcoholFreeDays                 Int?                         @map("alcohol_free_days")
+  averageDrinksPerDrinkingDay     Decimal?                     @map("average_drinks_per_drinking_day") @db.Decimal(12, 4)
+  maximumDailyStandardDrinks      Decimal?                     @map("maximum_daily_standard_drinks") @db.Decimal(12, 4)
+  heavyDrinkingDays               Int                          @map("heavy_drinking_days")
+  targetWeeklyStandardDrinks      Decimal?                     @map("target_weekly_standard_drinks") @db.Decimal(12, 4)
+  targetStatus                    WeeklyConsumptionTargetStatus @map("target_status")
+  baselineAverageWeeklyDrinks     Decimal?                     @map("baseline_average_weekly_drinks") @db.Decimal(12, 4)
+  reductionFromBaselinePercent    Decimal?                     @map("reduction_from_baseline_percent") @db.Decimal(12, 4)
+  whoWindowComplete               Boolean                      @default(false) @map("who_window_complete")
+  whoRiskRank                     Int?                         @map("who_risk_rank")
+  whoRiskRankChange               Int?                         @map("who_risk_rank_change")
+  whoTwoLevelReduction            Boolean?                     @map("who_two_level_reduction")
+  createdAt                       DateTime                     @default(now()) @map("created_at") @db.Timestamptz(6)
+  patient                         PatientProfile               @relation(fields: [patientId], references: [patientId], onDelete: Restrict, map: "weekly_consumption_summaries_patient_fk")
+  scheduledPeriod                 ScheduledPeriod              @relation(fields: [scheduledPeriodId], references: [id], onDelete: Restrict, map: "weekly_consumption_summaries_period_fk")
+  assessmentRevision              AssessmentRevision            @relation(fields: [assessmentRevisionId], references: [id], onDelete: Restrict, map: "weekly_consumption_summaries_revision_fk")
+  recoveryGoalVersion             RecoveryGoalVersion           @relation(fields: [recoveryGoalVersionId], references: [id], onDelete: Restrict, map: "weekly_consumption_summaries_goal_fk")
+  baselineRevision                ReductionBaselineRevision?    @relation(fields: [baselineRevisionId], references: [id], onDelete: Restrict, map: "weekly_consumption_summaries_baseline_fk")
+
+  @@unique([assessmentRevisionId], map: "weekly_consumption_summaries_revision_key")
+  @@index([patientId, scheduledPeriodId], map: "weekly_consumption_summaries_patient_period_idx")
+  @@map("weekly_consumption_summaries")
+}
+
+model StateFlagObservation {
+  id                       String                    @id @default(uuid()) @db.Uuid
+  patientId                String                    @map("patient_id") @db.Uuid
+  assessmentRevisionId     String                    @map("assessment_revision_id") @db.Uuid
+  scheduledPeriodId        String                    @map("scheduled_period_id") @db.Uuid
+  evaluationId             String                    @map("evaluation_id") @db.Uuid
+  flagKey                  String                    @map("flag_key") @db.VarChar(64)
+  state                    StateFlagObservationState
+  observedValue            Json?                    @map("observed_value")
+  observedAt               DateTime                  @map("observed_at") @db.Timestamptz(6)
+  patient                  PatientProfile             @relation(fields: [patientId], references: [patientId], onDelete: Restrict, map: "state_flag_observations_patient_fk")
+  assessmentRevision       AssessmentRevision         @relation(fields: [assessmentRevisionId], references: [id], onDelete: Restrict, map: "state_flag_observations_revision_fk")
+  scheduledPeriod          ScheduledPeriod            @relation(fields: [scheduledPeriodId], references: [id], onDelete: Restrict, map: "state_flag_observations_period_fk")
+  evaluation               AssessmentEvaluation       @relation(fields: [evaluationId], references: [id], onDelete: Restrict, map: "state_flag_observations_evaluation_fk")
+
+  @@unique([evaluationId, flagKey], map: "state_flag_observations_evaluation_flag_key")
+  @@index([patientId, flagKey, observedAt], map: "state_flag_observations_patient_flag_idx")
+  @@map("state_flag_observations")
+}
+
+model CurrentStateFlag {
+  id                   String              @id @default(uuid()) @db.Uuid
+  patientId            String              @map("patient_id") @db.Uuid
+  flagKey              String              @map("flag_key") @db.VarChar(64)
+  state                CurrentStateFlagState
+  sourceEvaluationId   String              @map("source_evaluation_id") @db.Uuid
+  sourceRevisionId     String              @map("source_revision_id") @db.Uuid
+  sourcePeriodId       String              @map("source_period_id") @db.Uuid
+  updatedAt            DateTime            @map("updated_at") @db.Timestamptz(6)
+  patient              PatientProfile       @relation(fields: [patientId], references: [patientId], onDelete: Restrict, map: "current_state_flags_patient_fk")
+  sourceEvaluation     AssessmentEvaluation @relation("CurrentFlagSourceEvaluation", fields: [sourceEvaluationId], references: [id], onDelete: Restrict, map: "current_state_flags_evaluation_fk")
+  sourceRevision       AssessmentRevision   @relation("CurrentFlagSourceRevision", fields: [sourceRevisionId], references: [id], onDelete: Restrict, map: "current_state_flags_revision_fk")
+  sourcePeriod         ScheduledPeriod      @relation("CurrentFlagSourcePeriod", fields: [sourcePeriodId], references: [id], onDelete: Restrict, map: "current_state_flags_period_fk")
+
+  @@unique([patientId, flagKey], map: "current_state_flags_patient_flag_key")
+  @@index([patientId, state], map: "current_state_flags_patient_state_idx")
+  @@map("current_state_flags")
+}
+
+model AggregateContextRecord {
+  id                              String                @id @default(uuid()) @db.Uuid
+  patientId                       String                @map("patient_id") @db.Uuid
+  assessmentRevisionId            String                @map("assessment_revision_id") @db.Uuid
+  scheduledPeriodId               String                @map("scheduled_period_id") @db.Uuid
+  evaluationId                    String                @unique @map("evaluation_id") @db.Uuid
+  riskScore                       Int?                  @map("risk_score")
+  rawProtectionScore              Int?                  @map("raw_protection_score")
+  recoveryProgress                Int?                  @map("recovery_progress")
+  riskTag                         String?               @map("risk_tag") @db.VarChar(64)
+  protectionTag                   String?               @map("protection_tag") @db.VarChar(64)
+  operationalProtectionDomainsObserved Int              @map("operational_protection_domains_observed")
+  operationalProtectionDomainsTotal Int                 @default(5) @map("operational_protection_domains_total")
+  protectionCoverageRatio         Decimal?              @map("protection_coverage_ratio") @db.Decimal(8, 6)
+  minimumPossibleProtection       Int?                  @map("minimum_possible_protection")
+  maximumPossibleProtection       Int?                  @map("maximum_possible_protection")
+  interactionTags                 Json                  @map("interaction_tags")
+  patient                         PatientProfile         @relation(fields: [patientId], references: [patientId], onDelete: Restrict, map: "aggregate_context_records_patient_fk")
+  assessmentRevision              AssessmentRevision     @relation(fields: [assessmentRevisionId], references: [id], onDelete: Restrict, map: "aggregate_context_records_revision_fk")
+  scheduledPeriod                 ScheduledPeriod        @relation(fields: [scheduledPeriodId], references: [id], onDelete: Restrict, map: "aggregate_context_records_period_fk")
+  evaluation                      AssessmentEvaluation   @relation(fields: [evaluationId], references: [id], onDelete: Restrict, map: "aggregate_context_records_evaluation_fk")
+
+  @@index([patientId, scheduledPeriodId], map: "aggregate_context_records_patient_period_idx")
+  @@map("aggregate_context_records")
+}
+
+model LongitudinalFeatureRecord {
+  id                              String              @id @default(uuid()) @db.Uuid
+  patientId                       String              @map("patient_id") @db.Uuid
+  assessmentRevisionId            String              @map("assessment_revision_id") @db.Uuid
+  scheduledPeriodId               String              @map("scheduled_period_id") @db.Uuid
+  evaluationId                    String              @unique @map("evaluation_id") @db.Uuid
+  cravingDelta                    Int?                @map("craving_delta")
+  confidenceDelta                 Int?                @map("confidence_delta")
+  negativeMoodDelta               Int?                @map("negative_mood_delta")
+  riskScoreDelta                  Int?                @map("risk_score_delta")
+  rawProtectionScoreDelta         Int?                @map("raw_protection_score_delta")
+  recoveryProgressDelta           Int?                @map("recovery_progress_delta")
+  persistenceStreakSnapshot       Json                @map("persistence_streak_snapshot")
+  clearanceReasonStateSnapshot    Json                @map("clearance_reason_state_snapshot")
+  consecutiveUse                  Boolean             @map("consecutive_use")
+  recurrentUse                    Boolean             @map("recurrent_use")
+  useAfterStability               Boolean             @map("use_after_stability")
+  trendDataValid                  Boolean             @map("trend_data_valid")
+  patient                         PatientProfile       @relation(fields: [patientId], references: [patientId], onDelete: Restrict, map: "longitudinal_feature_records_patient_fk")
+  assessmentRevision              AssessmentRevision   @relation(fields: [assessmentRevisionId], references: [id], onDelete: Restrict, map: "longitudinal_feature_records_revision_fk")
+  scheduledPeriod                 ScheduledPeriod      @relation(fields: [scheduledPeriodId], references: [id], onDelete: Restrict, map: "longitudinal_feature_records_period_fk")
+  evaluation                      AssessmentEvaluation @relation(fields: [evaluationId], references: [id], onDelete: Restrict, map: "longitudinal_feature_records_evaluation_fk")
+
+  @@index([patientId, scheduledPeriodId], map: "longitudinal_feature_records_patient_period_idx")
+  @@map("longitudinal_feature_records")
+}
+
+model PatientInterventionIntent {
+  id                    String                    @id @default(uuid()) @db.Uuid
+  patientId             String                    @map("patient_id") @db.Uuid
+  assessmentRevisionId  String                    @map("assessment_revision_id") @db.Uuid
+  scheduledPeriodId     String                    @map("scheduled_period_id") @db.Uuid
+  evaluationId          String                    @map("evaluation_id") @db.Uuid
+  interventionClass     PatientInterventionClass  @map("intervention_class")
+  sourceReasons         Json                      @map("source_reasons")
+  resolverMetadata      Json?                     @map("resolver_metadata")
+  effect                PatientInterventionEffect
+  suppressionReason     String?                   @map("suppression_reason") @db.VarChar(255)
+  trigger               AssessmentEvaluationTrigger
+  createdAt             DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  patient               PatientProfile             @relation(fields: [patientId], references: [patientId], onDelete: Restrict, map: "patient_intervention_intents_patient_fk")
+  assessmentRevision    AssessmentRevision         @relation(fields: [assessmentRevisionId], references: [id], onDelete: Restrict, map: "patient_intervention_intents_revision_fk")
+  scheduledPeriod       ScheduledPeriod            @relation(fields: [scheduledPeriodId], references: [id], onDelete: Restrict, map: "patient_intervention_intents_period_fk")
+  evaluation            AssessmentEvaluation       @relation(fields: [evaluationId], references: [id], onDelete: Restrict, map: "patient_intervention_intents_evaluation_fk")
+
+  @@unique([evaluationId, interventionClass], map: "patient_intervention_intents_evaluation_class_key")
+  @@index([patientId, createdAt], map: "patient_intervention_intents_patient_created_idx")
+  @@map("patient_intervention_intents")
 }
 
 model ClinicianPatientAssignment {

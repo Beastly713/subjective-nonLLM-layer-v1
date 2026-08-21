@@ -66,6 +66,87 @@ async function targetPeriod(
   return (upcoming as AssessmentPeriodRecord | null) ?? null;
 }
 
+async function hasNewerAuthoritativeAssessment(
+  db: AssessmentDatabase,
+  patientId: string,
+  period: AssessmentPeriodRecord,
+) {
+  const newer = await db.weeklyAssessment.findFirst({
+    where: {
+      patientId,
+      instrumentId: AUD_WEEKLY_CHECKIN_INSTRUMENT_ID,
+      instrumentVersion: AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION,
+      authoritativeRevisionId: { not: null },
+      scheduledPeriod: {
+        periodStartAt: { gt: period.periodStartAt },
+      },
+    },
+    select: { id: true },
+  });
+  return Boolean(newer);
+}
+
+export async function classifyFirstWeeklyAssessmentSubmission(
+  db: AssessmentDatabase,
+  patientId: string,
+  period: AssessmentPeriodRecord,
+  now: Date,
+) {
+  if (now < period.openAt) {
+    throw new DomainError(
+      409,
+      'ASSESSMENT_PERIOD_NOT_OPEN',
+      'This weekly assessment cannot be submitted before its scheduled opening.',
+    );
+  }
+  if (await hasNewerAuthoritativeAssessment(db, patientId, period)) {
+    throw new DomainError(
+      409,
+      'HISTORICAL_BACKFILL_REQUIRED',
+      'This assessment is historical because a newer weekly submission is already authoritative.',
+    );
+  }
+  return now <= period.effectiveDueAt ? ('CURRENT' as const) : ('LATE_CURRENT' as const);
+}
+
+async function eligibleDraft(
+  db: AssessmentDatabase,
+  patientId: string,
+  now: Date,
+) {
+  const drafts = await db.weeklyAssessment.findMany({
+    where: {
+      patientId,
+      instrumentId: AUD_WEEKLY_CHECKIN_INSTRUMENT_ID,
+      instrumentVersion: AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION,
+      completionStatus: 'DRAFT',
+      authoritativeRevisionId: null,
+      scheduledPeriod: { openAt: { lte: now } },
+    },
+    orderBy: { scheduledPeriod: { periodStartAt: 'desc' } },
+    include: {
+      scheduledPeriod: periodInclude(),
+      authoritativeRevision: {
+        select: {
+          id: true,
+          revisionNumber: true,
+          completionStatus: true,
+          submissionClassification: true,
+          submittedAt: true,
+          sourceDraftVersion: true,
+        },
+      },
+    },
+  });
+  for (const draft of drafts) {
+    const period = draft.scheduledPeriod as AssessmentPeriodRecord;
+    if (!(await hasNewerAuthoritativeAssessment(db, patientId, period))) {
+      return draft;
+    }
+  }
+  return null;
+}
+
 async function contextForPeriod(
   db: AssessmentDatabase,
   patientId: string,
@@ -142,7 +223,10 @@ export async function startOrResumeWeeklyCheckIn(
   }
 
   await ensureRelevantPeriodsInTransaction(tx, clock, patientId);
-  const period = await targetPeriod(tx, patientId, now);
+  const existingDraft = await eligibleDraft(tx, patientId, now);
+  const period = existingDraft
+    ? (existingDraft.scheduledPeriod as AssessmentPeriodRecord)
+    : await targetPeriod(tx, patientId, now);
   if (!period) {
     throw new DomainError(
       409,
@@ -164,14 +248,26 @@ export async function startOrResumeWeeklyCheckIn(
     });
   }
 
-  let assessment = await tx.weeklyAssessment.findFirst({
+  let assessment = existingDraft ?? (await tx.weeklyAssessment.findFirst({
     where: {
       patientId,
       scheduledPeriodId: period.id,
       instrumentId: AUD_WEEKLY_CHECKIN_INSTRUMENT_ID,
       instrumentVersion: AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION,
     },
-  });
+    include: {
+      authoritativeRevision: {
+        select: {
+          id: true,
+          revisionNumber: true,
+          completionStatus: true,
+          submissionClassification: true,
+          submittedAt: true,
+          sourceDraftVersion: true,
+        },
+      },
+    },
+  }));
 
   if (!assessment) {
     assessment = await tx.weeklyAssessment.create({
@@ -189,14 +285,6 @@ export async function startOrResumeWeeklyCheckIn(
         updatedByUserId: patientId,
       },
     });
-  }
-
-  if (assessment.completionStatus !== 'DRAFT') {
-    throw new DomainError(
-      409,
-      'ASSESSMENT_STATE_INVALID',
-      'The weekly assessment is not an editable draft.',
-    );
   }
 
   return projectCheckInState({
@@ -261,14 +349,7 @@ export async function saveWeeklyAssessmentDraft(
 
   const period = assessment.scheduledPeriod as AssessmentPeriodRecord;
   const now = clock.now();
-  const currentTarget = await targetPeriod(tx, patientId, now);
-  if (!currentTarget || currentTarget.id !== period.id || now < period.openAt) {
-    throw new DomainError(
-      409,
-      'ASSESSMENT_PERIOD_NOT_CURRENT',
-      'This draft is not the currently actionable monitoring period.',
-    );
-  }
+  await classifyFirstWeeklyAssessmentSubmission(tx, patientId, period, now);
   const context = await contextForPeriod(tx, patientId, period);
   const safety = await loadPatientSafetyProjection(tx, patientId);
   enforceSafety(safety, now);
