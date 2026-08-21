@@ -42,7 +42,13 @@
 
 **Validated implementation head:** `a64872a1977b75e653ca6142b13ec08c1fb17e4a`
 
-The final documentation update is committed as `closing: Phase-6`.
+The closeout documentation was committed as `closing: Phase-6`; this follow-up
+documentation commit removes superseded planning and status language.
+
+The implementation-plan sections below are retained as the historical Phase 6
+scope and acceptance record. The current status is CLOSED and the closeout
+record in section 39.1 is authoritative for validation, deferrals, and the
+Phase 7 handoff.
 
 This guide defines the Phase 6 implementation boundary for the **local capstone demonstration**.
 
@@ -2237,13 +2243,7 @@ README should explicitly say:
 - `real_patient` remains refused;
 - UI routes available.
 
-Before closeout, use wording such as:
-
-```text
-Phase 6 implementation present; validation/closeout pending.
-```
-
-The completed closeout sweep changes this to:
+The completed closeout status is:
 
 ```text
 Phase 6 closed for the local capstone implementation boundary.
@@ -2749,10 +2749,10 @@ Expose the real Phase-6 backend through polished patient, clinician, and operati
 50. Update Master implementation-status note without changing normative rules.
 51. Update Locked Architecture with explicit local-demo deferral boundary.
 52. Update UX Lock current route/surface status.
-53. Update README with Phase-6 implementation-present / validation-pending status.
+53. Update README with the closed local-capstone Phase-6 status.
 54. Explicitly list deferred pg-boss/external delivery/worker/provider/readiness items.
 55. Explicitly state UI/UX is not deferred.
-56. Do not mark Phase 6 CLOSED yet.
+56. Marked Phase 6 CLOSED only after the documented closeout validation passed.
 
 ## Likely files
 
@@ -2800,7 +2800,7 @@ README.md
 13. No fake dashboard filler is introduced.
 14. Prototype seed supports a useful evaluator walkthrough.
 15. Docs clearly distinguish implemented local behavior from deferred production infrastructure.
-16. Phase 6 is not falsely marked validated/closed before closeout.
+16. Phase 6 is marked CLOSED only by the completed closeout record.
 
 After Commit 3, STOP.
 
@@ -2940,14 +2940,15 @@ Codex must not:
 - add fake metrics;
 - move engagement timing logic into React;
 - downgrade UI quality because the app is local;
-- mark Phase 6 CLOSED before closeout;
+- claim Phase 6 closure before the closeout validation is complete;
 - push commits.
 
 ---
 
 # 34. Phase 6 acceptance matrix for the later closeout sweep
 
-The implementation should support all of these before Phase 6 is closed.
+The completed closeout sweep verified all of these before marking Phase 6
+CLOSED.
 
 ## Timing
 
@@ -3216,19 +3217,7 @@ Any failed repository-related validation must be corrected and rerun autonomousl
 
 # 39. Closeout documentation
 
-After validation is green, update:
-
-```text
-docs/AUD_V1_Phase_6_Engagement_and_Local_Demo_Operations_Implementation_Guide.md
-```
-
-to:
-
-```text
-Status: CLOSED
-```
-
-and record:
+The closeout sweep is complete. This guide is now `Status: CLOSED` and records:
 
 - three implementation SHAs;
 - correction/test SHA;
@@ -3283,13 +3272,8 @@ production care-team routing, deployment hardening, or real-patient operation
 was introduced. Those remain production/Phase-7 handoff items; they do not
 block this local capstone closeout.
 
-Also update current-status notes in Master/Architecture/UX/README from:
-
-```text
-implementation present; validation pending
-```
-
-to:
+The current-status notes in the Master Specification, Locked Architecture, UX
+Lock, and README now state:
 
 ```text
 Phase 6 closed for the local capstone implementation boundary
@@ -3336,89 +3320,19 @@ Phase 7 must use the documentation changes made in Phase 6 so these items are no
 
 ---
 
-# 41. Codex one-sweep operating instructions
+# 41. One-sweep implementation record
 
-When the Phase 6 implementation session begins, Codex must do the following.
+The Phase 6 implementation sweep and subsequent autonomous closeout are
+complete. The three planned implementation outcomes were delivered in these
+commits:
 
-## Before Commit 1
+- `0d6020cc74440a8a767a0938c1e5db2add08ae23` — deterministic missed-check-in engagement;
+- `f5a87a7edea46132a3f468c2eafb0307f50111df` — engagement cases and technical operations;
+- `10197afb72a0b0d2d0bcee2af9880d863a1fecc7` — local demonstration surfaces.
 
-Read the governing docs.
-
-Inspect actual HEAD and working tree.
-
-Inspect the repository areas listed in this guide.
-
-Do not produce another architecture proposal.
-
-Do not ask the user to choose between implementation approaches when the docs already provide enough information.
-
-Choose the simplest correct implementation.
-
-## Commit 1
-
-Implement the complete Commit 1 packet.
-
-Create local commit:
-
-```text
-feat: add deterministic missed-checkin engagement
-```
-
-Do not stop.
-
-## Commit 2
-
-Immediately continue.
-
-Implement the complete Commit 2 packet.
-
-Create local commit:
-
-```text
-feat: add engagement cases and technical-failure controls
-```
-
-Do not stop.
-
-## Commit 3
-
-Immediately continue.
-
-Implement the complete Commit 3 packet, including:
-
-- UI;
-- prototype scenarios;
-- documentation deferral alignment.
-
-Create local commit:
-
-```text
-feat: expose engagement workflows for local demonstration
-```
-
-## After Commit 3
-
-Stop.
-
-Do not:
-
-- push;
-- add Phase-6 closeout tests;
-- run the full closeout validation sweep;
-- mark Phase 6 CLOSED;
-- start Phase 7.
-
-Return only:
-
-```text
-Phase 6 implementation sweep complete.
-
-Commit 1: <sha>
-Commit 2: <sha>
-Commit 3: <sha>
-
-Important caveat: <only if a genuine unresolved caveat exists>
-```
+The later closeout sweep added the audit corrections, tests, SQL invariants,
+validation evidence, and documentation recorded in section 39.1. No Phase 7
+work has started.
 
 If there is no genuine caveat, omit the caveat line.
 
