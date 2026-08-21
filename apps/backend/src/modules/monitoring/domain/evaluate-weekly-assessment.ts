@@ -451,7 +451,10 @@ function resolveCandidates(
   aggregate: AggregateContext,
   longitudinal: LongitudinalFeatures,
   previous: HistoricalWeeklyObservation | null,
-): CandidatePatientIntervention[] {
+): {
+  proactive: CandidatePatientIntervention[];
+  followUp: CandidatePatientIntervention[];
+} {
   const candidates = new Map<
     CandidatePatientIntervention['interventionClass'],
     CandidatePatientIntervention
@@ -608,12 +611,11 @@ function resolveCandidates(
     input.safety.safetyState === 'REVIEW_REQUIRED' ||
     input.safety.safetyState === 'HANDOFF_REQUIRED';
 
-  return [...candidates.values()]
+  const withEffects = [...candidates.values()]
     .filter(
       (candidate) => reasons.length > 0 || candidate.sourceReasons.length > 0,
     )
     .sort((left, right) => left.resolverPriority - right.resolverPriority)
-    .slice(0, SUBJECTIVE_MONITORING_V1.maxInterventionClassesPerEvaluation)
     .map((candidate) => {
       if (
         input.trigger === 'STAFF_CORRECTION' ||
@@ -641,10 +643,20 @@ function resolveCandidates(
 
       return {
         ...candidate,
-        effect: 'SUPPRESSED_SAFETY',
+        effect: 'SUPPRESSED_SAFETY' as const,
         suppressionReason: 'ALLOW_WITH_HANDOFF_RESTRICTION',
       };
     });
+
+  return {
+    proactive: withEffects.slice(
+      0,
+      SUBJECTIVE_MONITORING_V1.maxInterventionClassesPerEvaluation,
+    ),
+    followUp: withEffects.slice(
+      SUBJECTIVE_MONITORING_V1.maxInterventionClassesPerEvaluation,
+    ),
+  };
 }
 
 function evaluateLongitudinal(
@@ -968,7 +980,7 @@ export function evaluateWeeklyAssessment(
 
   const previous = previousAdjacent(input.history, input.periodStartAt);
 
-  const candidatePatientInterventions = resolveCandidates(
+  const resolvedCandidates = resolveCandidates(
     input,
     flags,
     [...clinicianReasons],
@@ -977,9 +989,13 @@ export function evaluateWeeklyAssessment(
     previous,
   );
 
+  const candidatePatientInterventions = resolvedCandidates.proactive;
+  const availableFollowupCandidates = resolvedCandidates.followUp;
+
   const effectPlan: EffectPlan = {
     trigger: input.trigger,
     candidatePatientInterventions,
+    followUpCandidates: availableFollowupCandidates,
     candidateClinicianReasonFamilies: [...clinicianReasons],
     candidateClinicianReasons: [...clinicianReasons].map((reasonFamily) => {
       const triggerSuppressed =
@@ -1017,6 +1033,7 @@ export function evaluateWeeklyAssessment(
     longitudinal,
     candidateClinicianReasonFamilies: [...clinicianReasons],
     candidatePatientInterventions,
+    availableFollowupCandidates,
     effectPlan,
     consumption: input.consumption,
     derivedStateChanges: {
@@ -1025,6 +1042,7 @@ export function evaluateWeeklyAssessment(
       longitudinal,
       candidateClinicianReasonFamilies: [...clinicianReasons],
       candidatePatientInterventions,
+      availableFollowupCandidates,
     },
   };
 }

@@ -842,6 +842,36 @@ enum PatientInterventionEffect {
   HISTORICAL_ONLY
 }
 
+enum ContentReviewStatus {
+  DRAFT
+  UNDER_REVIEW
+  APPROVED
+  RETIRED
+  REJECTED
+}
+
+enum ContentFeedbackOutcome {
+  DISMISS
+  NOT_HELPFUL
+  DONT_SHOW_THIS_TYPE
+  HELPFUL
+}
+
+enum ContentSuppressionScope {
+  RESOURCE
+  INTERVENTION_CLASS
+}
+
+enum ContentSuppressionReason {
+  RESOURCE_NOT_HELPFUL
+  INTERVENTION_CLASS_DONT_SHOW
+}
+
+enum ContentResolutionResult {
+  SELECTED
+  CONTENT_UNAVAILABLE
+}
+
 enum WeeklyConsumptionTargetStatus {
   MET
   NOT_MET
@@ -1088,6 +1118,144 @@ model PatientInterventionIntent {
   @@unique([evaluationId, interventionClass], map: "patient_intervention_intents_evaluation_class_key")
   @@index([patientId, createdAt], map: "patient_intervention_intents_patient_created_idx")
   @@map("patient_intervention_intents")
+}
+
+model ContentResource {
+  id                String                  @id @default(uuid()) @db.Uuid
+  interventionClass PatientInterventionClass @map("intervention_class")
+  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdByUserId   String                  @map("created_by_user_id") @db.Uuid
+
+  @@index([interventionClass, createdAt], map: "content_resources_class_created_idx")
+  @@map("content_resources")
+}
+
+model ContentResourceVersion {
+  id                       String                  @id @default(uuid()) @db.Uuid
+  resourceId               String                  @map("resource_id") @db.Uuid
+  version                  Int
+  interventionClass        PatientInterventionClass @map("intervention_class")
+  locale                   String                  @db.VarChar(32)
+  language                 String                  @db.VarChar(16)
+  recoveryGoalsAllowed     Json                    @map("recovery_goals_allowed")
+  deliveryChannels         Json                    @map("delivery_channels")
+  mutualHelpRequirement    String                  @map("mutual_help_requirement") @db.VarChar(64)
+  spiritualRequirement     String                  @map("spiritual_requirement") @db.VarChar(64)
+  contraindications        Json
+  safetyGateCompatibility  Json                    @map("safety_gate_compatibility")
+  estimatedDurationSeconds Int                     @map("estimated_duration_seconds")
+  title                    String                  @db.VarChar(255)
+  markdownBody             String                  @map("markdown_body") @db.Text
+  reviewStatus             ContentReviewStatus     @map("review_status")
+  reviewedByUserId         String?                 @map("reviewed_by_user_id") @db.Uuid
+  reviewedAt               DateTime?               @map("reviewed_at") @db.Timestamptz(6)
+  effectiveFrom            DateTime                @map("effective_from") @db.Timestamptz(6)
+  retiredAt                DateTime?               @map("retired_at") @db.Timestamptz(6)
+  enabled                  Boolean                 @default(true)
+  provenance               Json?
+  createdAt                DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([resourceId, version], map: "content_resource_versions_resource_version_key")
+  @@index([interventionClass, locale, reviewStatus, enabled], map: "content_resource_versions_eligibility_idx")
+  @@map("content_resource_versions")
+}
+
+model ContentFeedback {
+  id                 String                @id @default(uuid()) @db.Uuid
+  patientId          String                @map("patient_id") @db.Uuid
+  resourceId         String                @map("resource_id") @db.Uuid
+  resourceVersionId  String                @map("resource_version_id") @db.Uuid
+  resolutionId       String?               @map("resolution_id") @db.Uuid
+  outcome            ContentFeedbackOutcome
+  recordedAt         DateTime              @default(now()) @map("recorded_at") @db.Timestamptz(6)
+
+  @@index([patientId, recordedAt], map: "content_feedback_patient_recorded_idx")
+  @@index([patientId, resourceId, recordedAt], map: "content_feedback_patient_resource_idx")
+  @@map("content_feedback")
+}
+
+model ContentSuppression {
+  id                 String                  @id @default(uuid()) @db.Uuid
+  patientId          String                  @map("patient_id") @db.Uuid
+  scope              ContentSuppressionScope
+  resourceId         String?                 @map("resource_id") @db.Uuid
+  interventionClass  PatientInterventionClass? @map("intervention_class")
+  startsAt           DateTime                @map("starts_at") @db.Timestamptz(6)
+  expiresAt          DateTime?               @map("expires_at") @db.Timestamptz(6)
+  endedAt            DateTime?               @map("ended_at") @db.Timestamptz(6)
+  sourceFeedbackId   String?                 @map("source_feedback_id") @db.Uuid
+  reason             ContentSuppressionReason
+  createdAt          DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([patientId, scope, endedAt, expiresAt], map: "content_suppressions_active_idx")
+  @@index([patientId, interventionClass, endedAt], map: "content_suppressions_class_idx")
+  @@index([patientId, resourceId, endedAt], map: "content_suppressions_resource_idx")
+  @@map("content_suppressions")
+}
+
+model ContentResolutionRecord {
+  id                       String                  @id @default(uuid()) @db.Uuid
+  patientId               String                  @map("patient_id") @db.Uuid
+  sourceAssessmentId      String                  @map("source_assessment_id") @db.Uuid
+  sourceAssessmentRevisionId String               @map("source_assessment_revision_id") @db.Uuid
+  sourceEvaluationId      String                  @unique @map("source_evaluation_id") @db.Uuid
+  scheduledPeriodId       String                  @map("scheduled_period_id") @db.Uuid
+  resolverInputVersion    String                  @map("resolver_input_version") @db.VarChar(64)
+  contentResult            ContentResolutionResult @map("content_result")
+  selectedResourceIds      Json                    @map("selected_resource_ids")
+  selectedResourceVersionIds Json                  @map("selected_resource_version_ids")
+  selectedInterventionClasses Json                 @map("selected_intervention_classes")
+  selectionReasons         Json                    @map("selection_reasons")
+  filterSummary            Json                    @map("filter_summary")
+  cooldownResult           Json                    @map("cooldown_result")
+  effectResult             Json                    @map("effect_result")
+  resolvedAt               DateTime                @map("resolved_at") @db.Timestamptz(6)
+
+  @@index([patientId, resolvedAt], map: "content_resolution_records_patient_resolved_idx")
+  @@index([patientId, scheduledPeriodId], map: "content_resolution_records_patient_period_idx")
+  @@map("content_resolution_records")
+}
+
+model AvailableFollowup {
+  id                       String                  @id @default(uuid()) @db.Uuid
+  patientId               String                  @map("patient_id") @db.Uuid
+  sourceEvaluationId      String                  @map("source_evaluation_id") @db.Uuid
+  sourceAssessmentRevisionId String               @map("source_assessment_revision_id") @db.Uuid
+  scheduledPeriodId       String                  @map("scheduled_period_id") @db.Uuid
+  interventionClass       PatientInterventionClass @map("intervention_class")
+  resourceId              String?                 @map("resource_id") @db.Uuid
+  resourceVersionId       String?                 @map("resource_version_id") @db.Uuid
+  availableFrom           DateTime                @map("available_from") @db.Timestamptz(6)
+  expiresAt               DateTime                @map("expires_at") @db.Timestamptz(6)
+  supersededAt            DateTime?               @map("superseded_at") @db.Timestamptz(6)
+  createdAt                DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([sourceEvaluationId, interventionClass], map: "available_followups_evaluation_class_key")
+  @@index([patientId, expiresAt, supersededAt], map: "available_followups_patient_active_idx")
+  @@map("available_followups")
+}
+
+model ContentDeliveryAudit {
+  id                  String                  @id @default(uuid()) @db.Uuid
+  patientId           String                  @map("patient_id") @db.Uuid
+  sourceAssessmentId  String                  @map("source_assessment_id") @db.Uuid
+  sourceEvaluationId  String                  @map("source_evaluation_id") @db.Uuid
+  resolutionId        String                  @map("resolution_id") @db.Uuid
+  intentId            String?                 @map("intent_id") @db.Uuid
+  interventionClass   PatientInterventionClass @map("intervention_class")
+  resourceId          String                  @map("resource_id") @db.Uuid
+  resourceVersionId   String                  @map("resource_version_id") @db.Uuid
+  selectionReasons    Json                    @map("selection_reasons")
+  preferenceFilters   Json                    @map("preference_filters")
+  contraindicationResult Json                 @map("contraindication_result")
+  cooldownResult      Json                    @map("cooldown_result")
+  deliveredAt         DateTime                @map("delivered_at") @db.Timestamptz(6)
+  channel             String                  @db.VarChar(32)
+  interactionOutcome  String?                 @map("interaction_outcome") @db.VarChar(64)
+
+  @@unique([resolutionId, resourceId], map: "content_delivery_audits_resolution_resource_key")
+  @@index([patientId, resourceId, deliveredAt], map: "content_delivery_audits_patient_resource_idx")
+  @@map("content_delivery_audits")
 }
 
 model ClinicianPatientAssignment {

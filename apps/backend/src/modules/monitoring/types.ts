@@ -241,6 +241,8 @@ export type EffectPlan = {
 
   candidatePatientInterventions: CandidatePatientIntervention[];
 
+  followUpCandidates: CandidatePatientIntervention[];
+
   candidateClinicianReasonFamilies: ClinicalReasonFamily[];
 
   candidateClinicianReasons: Array<{
@@ -268,6 +270,8 @@ export type WeeklyEvaluationResult = {
 
   candidatePatientInterventions: CandidatePatientIntervention[];
 
+  availableFollowupCandidates: CandidatePatientIntervention[];
+
   effectPlan: EffectPlan;
 
   consumption: ReductionWeeklySummaryInput | null;
@@ -280,6 +284,8 @@ export type WeeklyEvaluationResult = {
     candidateClinicianReasonFamilies: ClinicalReasonFamily[];
 
     candidatePatientInterventions: CandidatePatientIntervention[];
+
+    availableFollowupCandidates: CandidatePatientIntervention[];
   };
 };
 

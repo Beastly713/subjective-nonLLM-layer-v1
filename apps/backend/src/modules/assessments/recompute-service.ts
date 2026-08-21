@@ -6,6 +6,10 @@ import {
   resolveRecoveryGoalForPeriod,
 } from '../profiles/period-context.js';
 import { loadPatientSafetyProjection } from '../safety/projections.js';
+import {
+  resolveContentForEvaluation,
+  safetyContextFromProjection,
+} from '../content/service.js';
 import { lockPatientForProcessing } from '../../shared/authz/patient-processing-lock.js';
 import type { Clock } from '../../shared/clock/clock.js';
 import { DomainError } from '../../shared/errors/domain-error.js';
@@ -497,6 +501,13 @@ export async function recomputePatientMonitoringFromPeriod(input: {
       data: {
         evaluationId: persisted.evaluation.id,
       },
+    });
+
+    await resolveContentForEvaluation({
+      tx,
+      evaluationId: persisted.evaluation.id,
+      safety: safetyContextFromProjection(safety),
+      now: evaluatedAt,
     });
 
     history.push({

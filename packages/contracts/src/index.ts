@@ -14,3 +14,4 @@ export * from './reduction/reduction.js';
 export * from './assessment/assessment.js';
 export * from './monitoring/monitoring.js';
 export * from './safety/safety.js';
+export * from './content/content.js';
