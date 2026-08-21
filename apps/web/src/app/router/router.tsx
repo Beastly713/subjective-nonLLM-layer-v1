@@ -15,6 +15,8 @@ import { PatientProfilePage } from '@/features/patient/profile/patient-profile-p
 import { PatientOnboardingPage } from '@/features/patient/onboarding/patient-onboarding-page';
 import { PatientReductionSetupPage } from '@/features/patient/reduction/reduction-setup-page';
 import { PatientCheckInPage } from '@/features/patient/check-in/check-in-page';
+import { PatientCheckInActionPage } from '@/features/patient/check-in/patient-check-in-action-page';
+import { PatientCheckInHistoryPage } from '@/features/patient/check-in/patient-check-in-history-page';
 import { LoginPage } from '@/features/auth/login-page';
 import { RecoverAccountPage } from '@/features/auth/recover-account-page';
 import { ResetPasswordPage } from '@/features/auth/reset-password-page';
@@ -89,6 +91,16 @@ export const router = createBrowserRouter([
   {
     path: '/patient/check-in',
     element: <PatientCheckInPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: '/patient/check-in/history',
+    element: <PatientCheckInHistoryPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: '/patient/check-in/action',
+    element: <PatientCheckInActionPage />,
     errorElement: <RouteErrorBoundary />,
   },
   {

@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import type { Prisma } from '../../generated/prisma/client.js';
 import {
   AUD_WEEKLY_CHECKIN_INSTRUMENT_ID,
@@ -8,10 +10,14 @@ import {
   heavyDayThresholdTenths,
   standardDrinksToEthanolGrams,
 } from '../consumption/reduction-domain.js';
-import { evaluateWeeklyAssessment } from './domain/evaluate-weekly-assessment.js';
+import {
+  resolvePreferencesForPeriod,
+  resolveRecoveryGoalForPeriod,
+} from '../profiles/period-context.js';
 import type {
   EvaluateWeeklyAssessmentInput,
   HistoricalWeeklyObservation,
+  MonitoringPreferenceContext,
   ReductionWeeklySummaryInput,
   WeeklyAnswers,
   WeeklyEvaluationResult,
@@ -72,7 +78,18 @@ function useStatus(answers: WeeklyAnswers) {
   return 'UNKNOWN' as const;
 }
 
-function summaryInputFromRow(
+export function preferenceContextFromVersion(
+  preference: Awaited<ReturnType<typeof resolvePreferencesForPeriod>>,
+): MonitoringPreferenceContext | null {
+  return preference
+    ? {
+        mutualHelpPreference: preference.mutualHelpPreference,
+        spiritualContentPreference: preference.spiritualContentPreference,
+      }
+    : null;
+}
+
+export function summaryInputFromRow(
   row: {
     observedDayCount: number;
     unknownDayCount: number;
@@ -173,7 +190,7 @@ export async function loadHistoricalWeeklyObservations(
         assessmentRevisionId: { in: revisionIds },
         lifecycle: 'ACTIVE',
       },
-      include: { aggregateContext: true },
+      include: { aggregateContext: true, longitudinalFeature: true },
     }),
   ]);
   const assessmentByPeriod = new Map(
@@ -197,15 +214,24 @@ export async function loadHistoricalWeeklyObservations(
       ]),
   );
 
-  return periods.map((period) => {
+  const observations = await Promise.all(periods.map(async (period) => {
     const assessment = assessmentByPeriod.get(period.id);
     const revision = assessment?.authoritativeRevision;
+    const [goal, preference] = await Promise.all([
+      resolveRecoveryGoalForPeriod(tx, patientId, period),
+      resolvePreferencesForPeriod(tx, patientId, period),
+    ]);
     if (!revision) {
       return {
         periodId: period.id,
         periodStartAt: period.periodStartAt,
         periodEndAt: period.periodEndAt,
         authoritative: false,
+        completionStatus: null,
+        goal: goal?.goal ?? null,
+        goalVersionId: goal?.id ?? null,
+        preferenceVersionId: preference?.id ?? null,
+        preferences: preferenceContextFromVersion(preference),
         answers: null,
         useStatus: 'UNKNOWN' as const,
         riskScore: null,
@@ -223,16 +249,41 @@ export async function loadHistoricalWeeklyObservations(
       periodStartAt: period.periodStartAt,
       periodEndAt: period.periodEndAt,
       authoritative: true,
+      completionStatus: revision.completionStatus,
+      goal: goal?.goal ?? 'UNSURE',
+      goalVersionId: goal?.id ?? null,
+      preferenceVersionId: preference?.id ?? null,
+      preferences: preferenceContextFromVersion(preference),
       answers,
       useStatus: useStatus(answers),
       riskScore: aggregate?.riskScore ?? null,
       rawProtectionScore: aggregate?.rawProtectionScore ?? null,
       recoveryProgress: aggregate?.recoveryProgress ?? null,
-      consumption: summary
+      reasonLifecycle: evaluations
+        .find((evaluation) => evaluation.assessmentRevisionId === revision.id)
+        ?.longitudinalFeature?.clearanceReasonStateSnapshot as
+        | HistoricalWeeklyObservation['reasonLifecycle']
+        | undefined,
+      persistenceStreakSnapshot: evaluations
+        .find((evaluation) => evaluation.assessmentRevisionId === revision.id)
+        ?.longitudinalFeature?.persistenceStreakSnapshot as
+        | Record<string, number>
+        | undefined,
+      consumption: goal?.goal === 'REDUCTION' && summary
         ? summaryInputFromRow(summary, days)
         : null,
     };
-  });
+  }));
+  let carriedReasonLifecycle = observations[0]?.reasonLifecycle;
+  for (const observation of observations) {
+    if (!observation.authoritative) {
+      observation.reasonLifecycle = carriedReasonLifecycle;
+      observation.persistenceStreakSnapshot = {};
+    } else if (observation.reasonLifecycle) {
+      carriedReasonLifecycle = observation.reasonLifecycle;
+    }
+  }
+  return observations;
 }
 
 function whoRank(ethanolGrams: number, thresholdProfile: 'LOWER_THRESHOLD' | 'HIGHER_THRESHOLD') {
@@ -407,7 +458,72 @@ export function finalizeReductionWeek(input: {
   };
 }
 
-export async function persistMonitoringEvaluation(input: {
+function canonicalize(value: unknown): unknown {
+  if (value instanceof Date) return value.toISOString();
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, canonicalize(entry)]),
+    );
+  }
+  return value;
+}
+
+export function monitoringDerivationFingerprint(
+  input: EvaluateWeeklyAssessmentInput,
+) {
+  const primitiveSnapshot = canonicalize({
+    assessmentRevisionId: input.revisionId,
+    completionStatus: input.completionStatus,
+    scheduledPeriodId: input.periodId,
+    periodStartAt: input.periodStartAt,
+    periodEndAt: input.periodEndAt,
+    instrumentVersion: AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION,
+    goalVersionId: input.goalVersionId,
+    goal: input.goal,
+    targetWeeklyStandardDrinks: input.targetWeeklyStandardDrinks,
+    baselineAverageWeeklyDrinks: input.baselineAverageWeeklyDrinks,
+    preferenceVersionId: input.preferenceVersionId,
+    preferences: input.preferences,
+    ruleSetVersion: SUBJECTIVE_MONITORING_V1.ruleSetVersion,
+    configurationVersion: SUBJECTIVE_MONITORING_V1.configurationVersion,
+    trigger: input.trigger,
+    effectScope: input.effectScope,
+    answers: input.answers,
+    consumption: input.consumption,
+    safety: {
+      safetyState: input.safety.safetyState,
+      requiresSafetyShell: input.safety.requiresSafetyShell,
+      monitoringPromptPolicy: input.safety.monitoringPromptPolicy,
+      allowedSubjectiveInterventions: [...input.safety.allowedSubjectiveInterventions],
+      reassessmentDueAt: input.safety.reassessmentDueAt,
+    },
+    history: input.history.map((observation) => ({
+      periodId: observation.periodId,
+      periodStartAt: observation.periodStartAt,
+      periodEndAt: observation.periodEndAt,
+      authoritative: observation.authoritative,
+      completionStatus: observation.completionStatus,
+      goal: observation.goal,
+      goalVersionId: observation.goalVersionId,
+      preferenceVersionId: observation.preferenceVersionId,
+      preferences: observation.preferences,
+      answers: observation.answers,
+      useStatus: observation.useStatus,
+      riskScore: observation.riskScore,
+      rawProtectionScore: observation.rawProtectionScore,
+      recoveryProgress: observation.recoveryProgress,
+      consumption: observation.consumption,
+      reasonLifecycle: observation.reasonLifecycle ?? null,
+      persistenceStreakSnapshot: observation.persistenceStreakSnapshot ?? null,
+    })),
+  });
+  return createHash('sha256').update(JSON.stringify(primitiveSnapshot)).digest('hex');
+}
+
+export async function persistMonitoringEvaluationHistory(input: {
   tx: Tx;
   evaluationInput: EvaluateWeeklyAssessmentInput;
   result: WeeklyEvaluationResult;
@@ -416,6 +532,42 @@ export async function persistMonitoringEvaluation(input: {
 }) {
   const { tx, evaluationInput, result } = input;
   const json = (value: unknown) => value as Prisma.InputJsonValue;
+  const derivationFingerprint = monitoringDerivationFingerprint(evaluationInput);
+  const existing = await tx.assessmentEvaluation.findUnique({
+    where: {
+      assessmentRevisionId_derivationFingerprint: {
+        assessmentRevisionId: evaluationInput.revisionId,
+        derivationFingerprint,
+      },
+    },
+  });
+  if (existing) {
+    if (existing.lifecycle === 'SUPERSEDED_BY_REVISION') {
+      await tx.assessmentEvaluation.updateMany({
+        where: {
+          assessmentRevisionId: evaluationInput.revisionId,
+          lifecycle: 'ACTIVE',
+          id: { not: existing.id },
+        },
+        data: {
+          lifecycle: 'SUPERSEDED_BY_REVISION',
+          supersededByEvaluationId: existing.id,
+          supersededAt: evaluationInput.evaluatedAt,
+        },
+      });
+      const restored = await tx.assessmentEvaluation.update({
+        where: { id: existing.id },
+        data: {
+          lifecycle: 'ACTIVE',
+          supersededByEvaluationId: null,
+          supersededAt: null,
+        },
+      });
+      return { evaluation: restored, created: false };
+    }
+    return { evaluation: existing, created: false };
+  }
+
   const evaluation = await tx.assessmentEvaluation.create({
     data: {
       patientId: evaluationInput.patientId,
@@ -424,6 +576,9 @@ export async function persistMonitoringEvaluation(input: {
       scheduledPeriodId: evaluationInput.periodId,
       trigger: evaluationInput.trigger,
       lifecycle: 'ACTIVE',
+      derivationFingerprint,
+      supersededByEvaluationId: null,
+      supersededAt: null,
       ruleSetVersion: SUBJECTIVE_MONITORING_V1.ruleSetVersion,
       configurationVersion: SUBJECTIVE_MONITORING_V1.configurationVersion,
       instrumentVersion: AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION,
@@ -433,8 +588,38 @@ export async function persistMonitoringEvaluation(input: {
       inputSnapshot: json({
         answers: evaluationInput.answers,
         goal: evaluationInput.goal,
+        goalVersionId: evaluationInput.goalVersionId,
+        completionStatus: evaluationInput.completionStatus,
         preferences: evaluationInput.preferences,
+        preferenceVersionId: evaluationInput.preferenceVersionId,
         periodId: evaluationInput.periodId,
+        effectScope: evaluationInput.effectScope,
+        safety: {
+          safetyState: evaluationInput.safety.safetyState,
+          requiresSafetyShell: evaluationInput.safety.requiresSafetyShell,
+          monitoringPromptPolicy: evaluationInput.safety.monitoringPromptPolicy,
+          allowedSubjectiveInterventions: [
+            ...evaluationInput.safety.allowedSubjectiveInterventions,
+          ],
+          reassessmentDueAt: evaluationInput.safety.reassessmentDueAt,
+        },
+        history: evaluationInput.history.map((observation) => ({
+          periodId: observation.periodId,
+          periodStartAt: observation.periodStartAt.toISOString(),
+          periodEndAt: observation.periodEndAt.toISOString(),
+          authoritative: observation.authoritative,
+          completionStatus: observation.completionStatus,
+          goal: observation.goal,
+          goalVersionId: observation.goalVersionId,
+          preferenceVersionId: observation.preferenceVersionId,
+          preferences: observation.preferences,
+          answers: observation.answers,
+          useStatus: observation.useStatus,
+          reasonLifecycle: observation.reasonLifecycle ?? null,
+          persistenceStreakSnapshot:
+            observation.persistenceStreakSnapshot ?? null,
+          consumption: observation.consumption,
+        })),
       }),
       resultSnapshot: json(result),
       derivedStateChangesSnapshot: json(result.derivedStateChanges),
@@ -442,6 +627,19 @@ export async function persistMonitoringEvaluation(input: {
       candidateClinicianReasonFamilies: json(
         result.candidateClinicianReasonFamilies,
       ),
+    },
+  });
+
+  await tx.assessmentEvaluation.updateMany({
+    where: {
+      assessmentRevisionId: evaluationInput.revisionId,
+      lifecycle: 'ACTIVE',
+      id: { not: evaluation.id },
+    },
+    data: {
+      lifecycle: 'SUPERSEDED_BY_REVISION',
+      supersededByEvaluationId: evaluation.id,
+      supersededAt: evaluationInput.evaluatedAt,
     },
   });
 
@@ -457,43 +655,6 @@ export async function persistMonitoringEvaluation(input: {
       observedAt: evaluationInput.evaluatedAt,
     })),
   });
-
-  for (const flag of result.flags) {
-    await tx.currentStateFlag.upsert({
-      where: {
-        patientId_flagKey: {
-          patientId: evaluationInput.patientId,
-          flagKey: flag.flagKey,
-        },
-      },
-      create: {
-        patientId: evaluationInput.patientId,
-        flagKey: flag.flagKey,
-        state:
-          flag.state === 'ACTIVE'
-            ? 'CURRENT_ACTIVE'
-            : flag.state === 'CLEAR'
-              ? 'CURRENT_CLEARED'
-              : 'STALE_DATA_UNAVAILABLE',
-        sourceEvaluationId: evaluation.id,
-        sourceRevisionId: evaluationInput.revisionId,
-        sourcePeriodId: evaluationInput.periodId,
-        updatedAt: evaluationInput.evaluatedAt,
-      },
-      update: {
-        state:
-          flag.state === 'ACTIVE'
-            ? 'CURRENT_ACTIVE'
-            : flag.state === 'CLEAR'
-              ? 'CURRENT_CLEARED'
-              : 'STALE_DATA_UNAVAILABLE',
-        sourceEvaluationId: evaluation.id,
-        sourceRevisionId: evaluationInput.revisionId,
-        sourcePeriodId: evaluationInput.periodId,
-        updatedAt: evaluationInput.evaluatedAt,
-      },
-    });
-  }
 
   await tx.aggregateContextRecord.create({
     data: {
@@ -555,5 +716,141 @@ export async function persistMonitoringEvaluation(input: {
       })),
     });
   }
-  return evaluation;
+  return { evaluation, created: true };
+}
+
+export async function revokeEvaluationsForRevision(
+  tx: Tx,
+  revisionId: string,
+  at = new Date(),
+) {
+  await tx.assessmentEvaluation.updateMany({
+    where: { assessmentRevisionId: revisionId, lifecycle: 'ACTIVE' },
+    data: {
+      lifecycle: 'REVOKED_BY_REVISION',
+      supersededAt: at,
+    },
+  });
+}
+
+export async function reconcileCurrentStateProjection(
+  tx: Tx,
+  patientId: string,
+  now: Date,
+) {
+  const periods = await tx.scheduledPeriod.findMany({
+    where: { patientId },
+    orderBy: { periodStartAt: 'asc' },
+  });
+  const assessments = await tx.weeklyAssessment.findMany({
+    where: {
+      patientId,
+      scheduledPeriodId: { in: periods.map((period) => period.id) },
+      authoritativeRevisionId: { not: null },
+    },
+    include: {
+      authoritativeRevision: {
+        include: { itemResponses: true },
+      },
+    },
+  });
+  const revisionIds = assessments
+    .map((assessment) => assessment.authoritativeRevision?.id)
+    .filter((id): id is string => Boolean(id));
+  const evaluations = await tx.assessmentEvaluation.findMany({
+    where: {
+      patientId,
+      assessmentRevisionId: { in: revisionIds },
+      lifecycle: 'ACTIVE',
+    },
+    include: { stateFlagObservations: true },
+    orderBy: { evaluatedAt: 'desc' },
+  });
+  const current = await tx.currentStateFlag.findMany({ where: { patientId } });
+  const currentByFlag = new Map(current.map((flag) => [flag.flagKey, flag]));
+  const assessmentByPeriod = new Map(
+    assessments.map((assessment) => [assessment.scheduledPeriodId, assessment]),
+  );
+  const evaluationByRevision = new Map<string, (typeof evaluations)[number]>();
+  for (const evaluation of evaluations) {
+    if (!evaluationByRevision.has(evaluation.assessmentRevisionId)) {
+      evaluationByRevision.set(evaluation.assessmentRevisionId, evaluation);
+    }
+  }
+
+  const write = async (input: {
+    flagKey: string;
+    state: 'CURRENT_ACTIVE' | 'CURRENT_CLEARED' | 'STALE_DATA_UNAVAILABLE';
+    evaluationId: string;
+    revisionId: string;
+    periodId: string;
+  }) => {
+    const result = await tx.currentStateFlag.upsert({
+      where: {
+        patientId_flagKey: { patientId, flagKey: input.flagKey },
+      },
+      create: {
+        patientId,
+        flagKey: input.flagKey,
+        state: input.state,
+        sourceEvaluationId: input.evaluationId,
+        sourceRevisionId: input.revisionId,
+        sourcePeriodId: input.periodId,
+        updatedAt: now,
+      },
+      update: {
+        state: input.state,
+        sourceEvaluationId: input.evaluationId,
+        sourceRevisionId: input.revisionId,
+        sourcePeriodId: input.periodId,
+        updatedAt: now,
+      },
+    });
+    currentByFlag.set(input.flagKey, result);
+  };
+
+  for (const period of periods) {
+    const assessment = assessmentByPeriod.get(period.id);
+    const revision = assessment?.authoritativeRevision;
+    const evaluation = revision
+      ? evaluationByRevision.get(revision.id)
+      : undefined;
+    if (!revision || !evaluation) {
+      if (now >= period.effectiveDueAt) {
+        for (const existing of currentByFlag.values()) {
+          await write({
+            flagKey: existing.flagKey,
+            state: 'STALE_DATA_UNAVAILABLE',
+            evaluationId: existing.sourceEvaluationId,
+            revisionId: existing.sourceRevisionId,
+            periodId: existing.sourcePeriodId,
+          });
+        }
+      }
+      continue;
+    }
+    for (const observation of evaluation.stateFlagObservations) {
+      if (observation.state === 'UNKNOWN') {
+        if (now < period.effectiveDueAt) continue;
+        await write({
+          flagKey: observation.flagKey,
+          state: 'STALE_DATA_UNAVAILABLE',
+          evaluationId: evaluation.id,
+          revisionId: revision.id,
+          periodId: period.id,
+        });
+        continue;
+      }
+      await write({
+        flagKey: observation.flagKey,
+        state:
+          observation.state === 'ACTIVE'
+            ? 'CURRENT_ACTIVE'
+            : 'CURRENT_CLEARED',
+        evaluationId: evaluation.id,
+        revisionId: revision.id,
+        periodId: period.id,
+      });
+    }
+  }
 }

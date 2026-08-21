@@ -40,6 +40,12 @@ export function PatientShell({
                 Check-in
               </NavLink>
               <NavLink
+                className="rounded-lg bg-surface-interactive px-4 py-2 text-sm font-semibold"
+                to="/patient/check-in/history"
+              >
+                History
+              </NavLink>
+              <NavLink
                 className="flex items-center gap-2 rounded-lg bg-surface-interactive px-4 py-2 text-sm font-semibold"
                 to="/patient/profile"
               >

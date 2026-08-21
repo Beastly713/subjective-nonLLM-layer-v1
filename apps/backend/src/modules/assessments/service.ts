@@ -20,6 +20,7 @@ import {
   projectCheckInState,
   safetyAvailability,
 } from './projections.js';
+import { reconcileCurrentStateProjection } from '../monitoring/service.js';
 import type { AssessmentContext, AssessmentDatabase, AssessmentPeriodRecord } from './types.js';
 
 type Tx = Prisma.TransactionClient;
@@ -66,7 +67,7 @@ async function targetPeriod(
   return (upcoming as AssessmentPeriodRecord | null) ?? null;
 }
 
-async function hasNewerAuthoritativeAssessment(
+export async function hasNewerAuthoritativeAssessment(
   db: AssessmentDatabase,
   patientId: string,
   period: AssessmentPeriodRecord,
@@ -91,6 +92,7 @@ export async function classifyFirstWeeklyAssessmentSubmission(
   patientId: string,
   period: AssessmentPeriodRecord,
   now: Date,
+  options: { allowHistoricalBackfill?: boolean } = {},
 ) {
   if (now < period.openAt) {
     throw new DomainError(
@@ -100,6 +102,7 @@ export async function classifyFirstWeeklyAssessmentSubmission(
     );
   }
   if (await hasNewerAuthoritativeAssessment(db, patientId, period)) {
+    if (options.allowHistoricalBackfill) return 'HISTORICAL_BACKFILL' as const;
     throw new DomainError(
       409,
       'HISTORICAL_BACKFILL_REQUIRED',
@@ -195,6 +198,7 @@ export async function startOrResumeWeeklyCheckIn(
   const safetyState = safetyAvailability(safety, now);
 
   if (safetyState) {
+    await reconcileCurrentStateProjection(tx, patientId, now);
     const period = (await activeSchedule(tx, patientId))
       ? await targetPeriod(tx, patientId, now)
       : null;
@@ -223,6 +227,7 @@ export async function startOrResumeWeeklyCheckIn(
   }
 
   await ensureRelevantPeriodsInTransaction(tx, clock, patientId);
+  await reconcileCurrentStateProjection(tx, patientId, now);
   const existingDraft = await eligibleDraft(tx, patientId, now);
   const period = existingDraft
     ? (existingDraft.scheduledPeriod as AssessmentPeriodRecord)
@@ -349,7 +354,13 @@ export async function saveWeeklyAssessmentDraft(
 
   const period = assessment.scheduledPeriod as AssessmentPeriodRecord;
   const now = clock.now();
-  await classifyFirstWeeklyAssessmentSubmission(tx, patientId, period, now);
+  if (now < period.openAt) {
+    throw new DomainError(
+      409,
+      'ASSESSMENT_PERIOD_NOT_OPEN',
+      'This weekly assessment cannot be edited before its scheduled opening.',
+    );
+  }
   const context = await contextForPeriod(tx, patientId, period);
   const safety = await loadPatientSafetyProjection(tx, patientId);
   enforceSafety(safety, now);

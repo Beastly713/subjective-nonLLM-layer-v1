@@ -125,32 +125,19 @@ function calculateAggregate(
   const operationalProtectionDomainsObserved = applicability.filter(
     (value, index) => value === 'APPLICABLE' && protectionValues[index] !== null,
   ).length;
-  const hasKnownOperationalInputs = applicability.every(
-    (value, index) =>
-      value !== 'APPLICABLE' || protectionValues[index] !== null,
+  const minimumPossibleProtection = protectionValues.reduce(
+    (total, value, index) =>
+      total +
+      (applicability[index] === 'APPLICABLE' && value !== null ? value : 0),
+    0,
   );
-  const minimumPossibleProtection =
-    protectionComplete && hasKnownOperationalInputs
-      ? protectionValues.reduce(
-          (total, value, index) =>
-            total +
-            (applicability[index] === 'APPLICABLE' ? (value ?? 0) : 0),
-          0,
-        )
-      : null;
-  const maximumPossibleProtection =
-    protectionComplete && hasKnownOperationalInputs
-      ? protectionValues.reduce(
-          (total, value, index) =>
-            total +
-            (applicability[index] === 'APPLICABLE'
-              ? (value ?? 0)
-              : 7),
-          0,
-        )
-      : null;
-  const protectionCoverageRatio =
-    protectionComplete ? operationalProtectionDomainsObserved / 5 : null;
+  const maximumPossibleProtection = protectionValues.reduce(
+    (total, value, index) =>
+      total +
+      (applicability[index] === 'APPLICABLE' && value !== null ? value : 7),
+    0,
+  );
+  const protectionCoverageRatio = operationalProtectionDomainsObserved / 5;
   let protectionTag: AggregateContext['protectionTag'] = null;
   if (maximumPossibleProtection !== null && maximumPossibleProtection <= 5) {
     protectionTag = 'WEAK_PROTECTION';
@@ -212,37 +199,31 @@ function combinedCondition(
   return left && right;
 }
 
-function reasonLifecycleSnapshot(
-  currentCondition: boolean | null,
+function previousReasonState(
   history: readonly HistoricalWeeklyObservation[],
-  periodStartAt: Date,
-  historicalCondition: (
-    observation: HistoricalWeeklyObservation,
-    index: number,
-    history: readonly HistoricalWeeklyObservation[],
-  ) => boolean | null,
+  reasonFamily: string,
 ): ReasonLifecycleSnapshot {
-  if (currentCondition === true) return { status: 'ACTIVE', clearanceCount: 0 };
-
-  let clearCount = currentCondition === false ? 1 : 0;
-  let activeSeen = false;
-  let nextStart = periodStartAt;
-  for (let index = history.length - 1; index >= 0; index -= 1) {
-    const observation = history[index];
-    if (!observation || !periodIsAdjacent(observation, nextStart)) break;
-    const value = historicalCondition(observation, index, history);
-    if (value === true) {
-      activeSeen = true;
-      break;
+  return (
+    history[history.length - 1]?.reasonLifecycle?.[reasonFamily] ?? {
+      status: 'INACTIVE',
+      clearanceCount: 0,
     }
-    if (value === false) clearCount += 1;
-    nextStart = observation.periodStartAt;
-  }
+  );
+}
 
-  if (!activeSeen) return { status: 'INACTIVE', clearanceCount: 0 };
-  return clearCount >= SUBJECTIVE_MONITORING_V1.persistence.N_CLEAR
-    ? { status: 'RESOLVED', clearanceCount: clearCount }
-    : { status: 'CLEARANCE_PENDING', clearanceCount: clearCount };
+function reasonLifecycleTransition(
+  currentCondition: boolean | null,
+  previous: ReasonLifecycleSnapshot,
+): ReasonLifecycleSnapshot {
+  if (currentCondition === null) return { ...previous };
+  if (currentCondition) return { status: 'ACTIVE', clearanceCount: 0 };
+  if (previous.status === 'ACTIVE' || previous.status === 'CLEARANCE_PENDING') {
+    const clearanceCount = previous.clearanceCount + 1;
+    return clearanceCount >= SUBJECTIVE_MONITORING_V1.persistence.N_CLEAR
+      ? { status: 'RESOLVED', clearanceCount }
+      : { status: 'CLEARANCE_PENDING', clearanceCount };
+  }
+  return { ...previous };
 }
 
 function persistenceConditionAt(
@@ -269,10 +250,11 @@ function currentPersistenceCondition(
 ) {
   const current = conditionForFlag(flagKey, answers);
   if (current === null) return null;
+  if (!current) return false;
   const previous = previousAdjacent(history, periodStartAt);
   if (!previous || !previous.authoritative) return null;
   const previousValue = conditionForFlag(flagKey, previous.answers);
-  return previousValue === null ? null : current && previousValue;
+  return previousValue === null ? null : previousValue;
 }
 
 function consecutiveUseConditionAt(
@@ -280,11 +262,19 @@ function consecutiveUseConditionAt(
   index: number,
   history: readonly HistoricalWeeklyObservation[],
 ) {
-  if (!observation.authoritative || observation.useStatus === 'UNKNOWN') {
+  if (
+    !observation.authoritative ||
+    observation.goal !== 'ABSTINENCE' ||
+    observation.useStatus === 'UNKNOWN'
+  ) {
     return null;
   }
   const previous = history[index - 1];
-  if (!previous || !previous.authoritative) return null;
+  if (
+    !previous ||
+    !previous.authoritative ||
+    previous.goal !== 'ABSTINENCE'
+  ) return null;
   if (!periodIsAdjacent(previous, observation.periodStartAt)) return null;
   if (previous.useStatus === 'UNKNOWN') return null;
   return observation.useStatus === 'POSITIVE' && previous.useStatus === 'POSITIVE';
@@ -292,15 +282,22 @@ function consecutiveUseConditionAt(
 
 function currentConsecutiveUseCondition(
   currentUseStatus: ReturnType<typeof deriveUseStatus>,
+  currentGoal: EvaluateWeeklyAssessmentInput['goal'],
   history: readonly HistoricalWeeklyObservation[],
   periodStartAt: Date,
 ) {
-  if (currentUseStatus === 'UNKNOWN') return null;
+  if (currentGoal !== 'ABSTINENCE' || currentUseStatus === 'UNKNOWN') return null;
+  if (currentUseStatus !== 'POSITIVE') return false;
   const previous = previousAdjacent(history, periodStartAt);
-  if (!previous || !previous.authoritative || previous.useStatus === 'UNKNOWN') {
+  if (
+    !previous ||
+    !previous.authoritative ||
+    previous.goal !== 'ABSTINENCE' ||
+    previous.useStatus === 'UNKNOWN'
+  ) {
     return null;
   }
-  return currentUseStatus === 'POSITIVE' && previous.useStatus === 'POSITIVE';
+  return previous.useStatus === 'POSITIVE';
 }
 
 function windowIsAdjacent(
@@ -320,14 +317,24 @@ function recurrentUseConditionAt(
   index: number,
   history: readonly HistoricalWeeklyObservation[],
 ) {
-  if (!observation.authoritative || observation.useStatus !== 'POSITIVE') {
+  if (
+    !observation.authoritative ||
+    observation.goal !== 'ABSTINENCE' ||
+    observation.useStatus !== 'POSITIVE'
+  ) {
     return observation.useStatus === 'UNKNOWN' ? null : false;
   }
   const windowSize = SUBJECTIVE_MONITORING_V1.recurrenceWindowPeriods - 1;
   const window = history.slice(Math.max(0, index - windowSize), index);
   if (
     window.length !== windowSize ||
-    !windowIsAdjacent(window, observation.periodStartAt)
+    !windowIsAdjacent(window, observation.periodStartAt) ||
+    window.some(
+      (item) =>
+        !item.authoritative ||
+        item.useStatus === 'UNKNOWN' ||
+        item.goal !== 'ABSTINENCE',
+    )
   ) {
     return null;
   }
@@ -338,13 +345,24 @@ function recurrentUseConditionAt(
 
 function currentRecurrentUseCondition(
   currentUseStatus: ReturnType<typeof deriveUseStatus>,
+  currentGoal: EvaluateWeeklyAssessmentInput['goal'],
   history: readonly HistoricalWeeklyObservation[],
   periodStartAt: Date,
 ) {
-  if (currentUseStatus === 'UNKNOWN') return null;
+  if (currentGoal !== 'ABSTINENCE' || currentUseStatus === 'UNKNOWN') return null;
+  if (currentUseStatus !== 'POSITIVE') return false;
   const windowSize = SUBJECTIVE_MONITORING_V1.recurrenceWindowPeriods - 1;
   const window = history.slice(-windowSize);
-  if (window.length !== windowSize || !windowIsAdjacent(window, periodStartAt)) {
+  if (
+    window.length !== windowSize ||
+    !windowIsAdjacent(window, periodStartAt) ||
+    window.some(
+      (item) =>
+        !item.authoritative ||
+        item.useStatus === 'UNKNOWN' ||
+        item.goal !== 'ABSTINENCE',
+    )
+  ) {
     return null;
   }
   return [currentUseStatus, ...window.map((item) => item.useStatus)].filter(
@@ -493,6 +511,26 @@ function resolveCandidates(
     .sort((left, right) => left.resolverPriority - right.resolverPriority)
     .slice(0, SUBJECTIVE_MONITORING_V1.maxInterventionClassesPerEvaluation)
     .map((candidate) => {
+      if (
+        input.trigger === 'STAFF_CORRECTION' ||
+        input.trigger === 'ADMINISTRATIVE_RECOMPUTE' ||
+        input.trigger === 'POLICY_MIGRATION'
+      ) {
+        return {
+          ...candidate,
+          effect: 'SUPPRESSED_TRIGGER' as const,
+          suppressionReason: input.trigger,
+        };
+      }
+      if (
+        input.effectScope === 'HISTORICAL'
+      ) {
+        return {
+          ...candidate,
+          effect: 'HISTORICAL_ONLY' as const,
+          suppressionReason: 'HISTORICAL_EFFECT_SCOPE',
+        };
+      }
       if (!restricted || allowed.has(candidate.interventionClass)) return candidate;
       return {
         ...candidate,
@@ -548,7 +586,7 @@ function evaluateLongitudinal(
       : null;
     persistenceStreakSnapshot[flagKey] =
       current?.state === 'ACTIVE'
-        ? previous &&
+      ? previous &&
           previous.authoritative &&
           periodIsAdjacent(previous, input.periodStartAt) &&
           previousValue === true
@@ -576,6 +614,12 @@ function evaluateLongitudinal(
     currentUseStatus === 'POSITIVE' &&
     rollingWindow.length === SUBJECTIVE_MONITORING_V1.recurrenceWindowPeriods - 1 &&
     windowIsAdjacent(rollingWindow, input.periodStartAt) &&
+    rollingWindow.every(
+      (item) =>
+        item.authoritative &&
+        item.useStatus !== 'UNKNOWN' &&
+        item.goal === 'ABSTINENCE',
+    ) &&
     [currentUseStatus, ...rollingWindow.map((item) => item.useStatus)].filter(
       (status) => status === 'POSITIVE',
     ).length >= 2;
@@ -585,6 +629,7 @@ function evaluateLongitudinal(
     currentUseStatus === 'POSITIVE' &&
     stabilityWindow.length === SUBJECTIVE_MONITORING_V1.useAfterStabilityNegativePeriods &&
     windowIsAdjacent(stabilityWindow, input.periodStartAt) &&
+    stabilityWindow.every((item) => item.goal === 'ABSTINENCE') &&
     stabilityWindow.every(
       (item) => item.authoritative && item.useStatus === 'NEGATIVE',
     );
@@ -622,7 +667,7 @@ export function evaluateWeeklyAssessment(
     weeklyUseStatus,
     flags,
   );
-  const clinicianReasons = new Set<
+  const allClinicianReasons = new Set<
     'CRAVING_LOW_CONFIDENCE' |
       'MOOD_CRAVING' |
       'PERSISTENT_HIGH_CRAVING' |
@@ -633,15 +678,6 @@ export function evaluateWeeklyAssessment(
   const highCraving = flags.find((flag) => flag.flagKey === 'HIGH_CRAVING')?.state === 'ACTIVE';
   const highMood = flags.find((flag) => flag.flagKey === 'HIGH_NEGATIVE_MOOD')?.state === 'ACTIVE';
   const lowConfidence = flags.find((flag) => flag.flagKey === 'LOW_CONFIDENCE')?.state === 'ACTIVE';
-  const historicalCombinedCondition = (left: FlagKey, right: FlagKey) => (
-    observation: HistoricalWeeklyObservation,
-  ) => {
-    if (!observation.authoritative) return null;
-    return combinedCondition(
-      conditionForFlag(left, observation.answers),
-      conditionForFlag(right, observation.answers),
-    );
-  };
   const currentCravingLowConfidence = combinedCondition(
     currentFlagValue('HIGH_CRAVING', input.answers),
     currentFlagValue('LOW_CONFIDENCE', input.answers),
@@ -651,84 +687,80 @@ export function evaluateWeeklyAssessment(
     currentFlagValue('HIGH_CRAVING', input.answers),
   );
   longitudinal.clearanceReasonStateSnapshot.CRAVING_LOW_CONFIDENCE =
-    reasonLifecycleSnapshot(
+    reasonLifecycleTransition(
       currentCravingLowConfidence,
-      input.history,
-      input.periodStartAt,
-      historicalCombinedCondition('HIGH_CRAVING', 'LOW_CONFIDENCE'),
+      previousReasonState(input.history, 'CRAVING_LOW_CONFIDENCE'),
     );
   longitudinal.clearanceReasonStateSnapshot.MOOD_CRAVING =
-    reasonLifecycleSnapshot(
+    reasonLifecycleTransition(
       currentMoodCraving,
-      input.history,
-      input.periodStartAt,
-      historicalCombinedCondition('HIGH_NEGATIVE_MOOD', 'HIGH_CRAVING'),
+      previousReasonState(input.history, 'MOOD_CRAVING'),
     );
   longitudinal.clearanceReasonStateSnapshot.PERSISTENT_HIGH_CRAVING =
-    reasonLifecycleSnapshot(
+    reasonLifecycleTransition(
       currentPersistenceCondition(
         'HIGH_CRAVING',
         input.answers,
         input.history,
         input.periodStartAt,
       ),
-      input.history,
-      input.periodStartAt,
-      (observation, index, history) =>
-        persistenceConditionAt('HIGH_CRAVING', observation, index, history),
+      previousReasonState(input.history, 'PERSISTENT_HIGH_CRAVING'),
     );
   longitudinal.clearanceReasonStateSnapshot.PERSISTENT_HIGH_NEGATIVE_MOOD =
-    reasonLifecycleSnapshot(
+    reasonLifecycleTransition(
       currentPersistenceCondition(
         'HIGH_NEGATIVE_MOOD',
         input.answers,
         input.history,
         input.periodStartAt,
       ),
-      input.history,
-      input.periodStartAt,
-      (observation, index, history) =>
-        persistenceConditionAt('HIGH_NEGATIVE_MOOD', observation, index, history),
+      previousReasonState(input.history, 'PERSISTENT_HIGH_NEGATIVE_MOOD'),
     );
   longitudinal.clearanceReasonStateSnapshot.CONSECUTIVE_USE =
     input.goal !== 'ABSTINENCE'
       ? { status: 'INACTIVE', clearanceCount: 0 }
-      : reasonLifecycleSnapshot(
+      : reasonLifecycleTransition(
           currentConsecutiveUseCondition(
             weeklyUseStatus,
+            input.goal,
             input.history,
             input.periodStartAt,
           ),
-          input.history,
-          input.periodStartAt,
-          consecutiveUseConditionAt,
+          previousReasonState(input.history, 'CONSECUTIVE_USE'),
         );
   longitudinal.clearanceReasonStateSnapshot.RECURRENT_USE =
     input.goal !== 'ABSTINENCE'
       ? { status: 'INACTIVE', clearanceCount: 0 }
-      : reasonLifecycleSnapshot(
+      : reasonLifecycleTransition(
           currentRecurrentUseCondition(
             weeklyUseStatus,
+            input.goal,
             input.history,
             input.periodStartAt,
           ),
-          input.history,
-          input.periodStartAt,
-          recurrentUseConditionAt,
+          previousReasonState(input.history, 'RECURRENT_USE'),
         );
-  if (highCraving && lowConfidence) clinicianReasons.add('CRAVING_LOW_CONFIDENCE');
-  if (highMood && highCraving) clinicianReasons.add('MOOD_CRAVING');
+  if (highCraving && lowConfidence) allClinicianReasons.add('CRAVING_LOW_CONFIDENCE');
+  if (highMood && highCraving) allClinicianReasons.add('MOOD_CRAVING');
   if (longitudinal.persistenceStreakSnapshot.HIGH_CRAVING === SUBJECTIVE_MONITORING_V1.persistence.N_PERSIST) {
-    clinicianReasons.add('PERSISTENT_HIGH_CRAVING');
+    allClinicianReasons.add('PERSISTENT_HIGH_CRAVING');
   }
   if (
     longitudinal.persistenceStreakSnapshot.HIGH_NEGATIVE_MOOD ===
     SUBJECTIVE_MONITORING_V1.persistence.N_PERSIST
   ) {
-    clinicianReasons.add('PERSISTENT_HIGH_NEGATIVE_MOOD');
+    allClinicianReasons.add('PERSISTENT_HIGH_NEGATIVE_MOOD');
   }
-  if (longitudinal.consecutiveUse) clinicianReasons.add('CONSECUTIVE_USE');
-  if (longitudinal.recurrentUse) clinicianReasons.add('RECURRENT_USE');
+  if (longitudinal.consecutiveUse) allClinicianReasons.add('CONSECUTIVE_USE');
+  if (longitudinal.recurrentUse) allClinicianReasons.add('RECURRENT_USE');
+
+  const clinicianReasons = new Set(
+    input.completionStatus === 'PARTIAL'
+      ? [...allClinicianReasons].filter(
+          (reason) => reason === 'CONSECUTIVE_USE' || reason === 'RECURRENT_USE',
+        )
+      : [...allClinicianReasons],
+  );
 
   const previous = previousAdjacent(input.history, input.periodStartAt);
   const candidatePatientInterventions = resolveCandidates(
@@ -743,6 +775,25 @@ export function evaluateWeeklyAssessment(
     trigger: input.trigger,
     candidatePatientInterventions,
     candidateClinicianReasonFamilies: [...clinicianReasons],
+    candidateClinicianReasons: [...clinicianReasons].map((reasonFamily) => ({
+      reasonFamily,
+      effect:
+        input.trigger === 'STAFF_CORRECTION' ||
+        input.trigger === 'ADMINISTRATIVE_RECOMPUTE' ||
+        input.trigger === 'POLICY_MIGRATION'
+          ? 'SUPPRESSED_TRIGGER'
+          : input.effectScope === 'HISTORICAL'
+            ? 'HISTORICAL_ONLY'
+            : 'ELIGIBLE',
+      suppressionReason:
+        input.trigger === 'STAFF_CORRECTION' ||
+        input.trigger === 'ADMINISTRATIVE_RECOMPUTE' ||
+        input.trigger === 'POLICY_MIGRATION'
+          ? input.trigger
+          : input.effectScope === 'HISTORICAL'
+            ? 'HISTORICAL_EFFECT_SCOPE'
+            : null,
+    })),
     suppressedEffects: candidatePatientInterventions
       .filter((candidate) => candidate.effect !== 'ELIGIBLE')
       .map((candidate) => ({

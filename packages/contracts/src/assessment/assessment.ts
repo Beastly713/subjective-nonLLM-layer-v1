@@ -62,6 +62,9 @@ export const AssessmentRevisionCompletionStatusSchema = z.enum([
 export const AssessmentSubmissionClassificationSchema = z.enum([
   'CURRENT',
   'LATE_CURRENT',
+  'HISTORICAL_BACKFILL',
+  'PATIENT_CORRECTION',
+  'STAFF_CORRECTION',
 ]);
 
 export const SubmittedWeeklyAssessmentProjectionSchema = z.object({
@@ -73,7 +76,7 @@ export const SubmittedWeeklyAssessmentProjectionSchema = z.object({
   completionStatus: AssessmentRevisionCompletionStatusSchema,
   submissionClassification: AssessmentSubmissionClassificationSchema,
   submittedAt: z.iso.datetime(),
-  sourceDraftVersion: z.number().int().nonnegative(),
+  sourceDraftVersion: z.number().int().nonnegative().nullable(),
 });
 
 export const WeeklyCheckInInstrumentItemProjectionSchema = z.discriminatedUnion(

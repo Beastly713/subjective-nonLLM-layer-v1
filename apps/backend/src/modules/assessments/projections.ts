@@ -26,7 +26,9 @@ function asNumber(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export function periodLocalDates(period: AssessmentPeriodRecord) {
+export function periodLocalDates(
+  period: Pick<AssessmentPeriodRecord, 'periodStartAt' | 'monitoringTimezone'>,
+) {
   const start = DateTime.fromJSDate(period.periodStartAt, {
     zone: period.monitoringTimezone,
   });
@@ -184,7 +186,7 @@ export function projectSubmitted(assessment: {
     completionStatus: string;
     submissionClassification: string;
     submittedAt: Date;
-    sourceDraftVersion: number;
+    sourceDraftVersion: number | null;
   } | null;
 }) {
   if (!assessment.authoritativeRevision) {

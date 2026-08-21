@@ -28,11 +28,10 @@ import {
   type AssessmentPeriodRecord,
 } from './service.js';
 import {
-  evaluateWeeklyAssessment,
   loadHistoricalWeeklyObservations,
   finalizeReductionWeek,
-  persistMonitoringEvaluation,
 } from '../monitoring/service.js';
+import { recomputePatientMonitoringFromPeriod } from './recompute-service.js';
 import type { WeeklyAnswers } from '../monitoring/types.js';
 
 type Tx = Prisma.TransactionClient;
@@ -155,8 +154,17 @@ export async function submitWeeklyAssessment(input: {
   assessmentId: string;
   request: SubmitWeeklyAssessmentRequest;
   requestId: string;
+  allowHistoricalBackfill?: boolean;
 }): Promise<CheckInStateResponse> {
-  const { tx, clock, patientId, assessmentId, request, requestId } = input;
+  const {
+    tx,
+    clock,
+    patientId,
+    assessmentId,
+    request,
+    requestId,
+    allowHistoricalBackfill = false,
+  } = input;
   await lockPatientForProcessing(tx, patientId);
   const assessment = await tx.weeklyAssessment.findUnique({
     where: { id: assessmentId },
@@ -207,6 +215,7 @@ export async function submitWeeklyAssessment(input: {
     patientId,
     period,
     now,
+    { allowHistoricalBackfill },
   );
   const [goal, preference] = await Promise.all([
     resolveRecoveryGoalForPeriod(tx, patientId, period),
@@ -340,7 +349,7 @@ export async function submitWeeklyAssessment(input: {
       : answers.U1 === false
         ? ('NEGATIVE' as const)
         : ('UNKNOWN' as const);
-  const useObservation = await tx.useObservationLedger.create({
+  await tx.useObservationLedger.create({
     data: {
       patientId,
       assessmentId: assessment.id,
@@ -404,54 +413,6 @@ export async function submitWeeklyAssessment(input: {
     });
   }
 
-  const evaluationInput = {
-    patientId,
-    assessmentId: assessment.id,
-    revisionId: revision.id,
-    periodId: period.id,
-    periodStartAt: period.periodStartAt,
-    periodEndAt: period.periodEndAt,
-    evaluatedAt: now,
-    trigger: 'CURRENT_PATIENT_SUBMISSION' as const,
-    goal: goal?.goal ?? 'UNSURE',
-    targetWeeklyStandardDrinks:
-      goal?.targetWeeklyStandardDrinks === null || goal?.targetWeeklyStandardDrinks === undefined
-        ? null
-        : Number(goal.targetWeeklyStandardDrinks),
-    baselineAverageWeeklyDrinks:
-      goal?.baselineAverageWeeklyDrinks === null || goal?.baselineAverageWeeklyDrinks === undefined
-        ? null
-        : Number(goal.baselineAverageWeeklyDrinks),
-    preferences: {
-      mutualHelpPreference: preference?.mutualHelpPreference ?? null,
-      spiritualContentPreference: preference?.spiritualContentPreference ?? null,
-    },
-    answers,
-    history: historical,
-    consumption: finalizedReduction?.summary ?? null,
-    safety: {
-      safetyState: safety.safetyState,
-      requiresSafetyShell: safety.requiresSafetyShell,
-      monitoringPromptPolicy: safety.monitoringPromptPolicy,
-      allowedSubjectiveInterventions: safety.allowedSubjectiveInterventions,
-      reassessmentDueAt: safety.reassessmentDueAt
-        ? new Date(safety.reassessmentDueAt)
-        : null,
-    },
-  };
-  const result = evaluateWeeklyAssessment(evaluationInput);
-  const evaluation = await persistMonitoringEvaluation({
-    tx,
-    evaluationInput,
-    result,
-    recoveryGoalVersionId: goal?.id ?? null,
-    preferenceVersionId: preference?.id ?? null,
-  });
-  await tx.useObservationLedger.update({
-    where: { id: useObservation.id },
-    data: { evaluationId: evaluation.id },
-  });
-
   const updated = await tx.weeklyAssessment.update({
     where: { id: assessment.id },
     data: {
@@ -472,10 +433,25 @@ export async function submitWeeklyAssessment(input: {
       },
     },
   });
+  const recomputation = await recomputePatientMonitoringFromPeriod({
+    tx,
+    clock,
+    patientId,
+    periodId: period.id,
+    authoritativeTrigger:
+      submissionClassification === 'HISTORICAL_BACKFILL'
+        ? 'HISTORICAL_BACKFILL'
+        : 'CURRENT_PATIENT_SUBMISSION',
+    actorId: patientId,
+    requestId,
+  });
   await tx.auditEvent.create({
     data: {
       actorId: patientId,
-      action: 'WEEKLY_ASSESSMENT_SUBMITTED',
+      action:
+        submissionClassification === 'HISTORICAL_BACKFILL'
+          ? 'WEEKLY_ASSESSMENT_BACKFILLED'
+          : 'WEEKLY_ASSESSMENT_SUBMITTED',
       entityType: 'ASSESSMENT_REVISION',
       entityId: revision.id,
       patientId,
@@ -494,7 +470,7 @@ export async function submitWeeklyAssessment(input: {
         sourceDraftVersion: assessment.draftVersion,
         recoveryGoalVersionId: goal?.id ?? null,
         preferenceVersionId: preference?.id ?? null,
-        evaluationId: evaluation.id,
+        evaluationIds: recomputation.evaluationIds,
       },
     },
   });

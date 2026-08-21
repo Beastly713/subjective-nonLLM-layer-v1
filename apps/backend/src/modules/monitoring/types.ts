@@ -1,5 +1,6 @@
 import type {
   AssessmentEvaluationTrigger,
+  ClinicianReasonEffect,
   ClinicalReasonFamily,
   CurrentStateFlagState,
   PatientInterventionIntentEffect,
@@ -65,12 +66,19 @@ export type HistoricalWeeklyObservation = {
   periodStartAt: Date;
   periodEndAt: Date;
   authoritative: boolean;
+  completionStatus: 'PARTIAL' | 'COMPLETE' | null;
+  goal: 'ABSTINENCE' | 'REDUCTION' | 'UNSURE' | null;
+  goalVersionId: string | null;
+  preferenceVersionId: string | null;
+  preferences: MonitoringPreferenceContext | null;
   answers: WeeklyAnswers | null;
   useStatus: UseObservationStatus;
   riskScore: number | null;
   rawProtectionScore: number | null;
   recoveryProgress: number | null;
   consumption: ReductionWeeklySummaryInput | null;
+  reasonLifecycle?: Record<string, ReasonLifecycleSnapshot>;
+  persistenceStreakSnapshot?: Record<string, number>;
 };
 
 export type EvaluationSafetyContext = {
@@ -95,6 +103,10 @@ export type EvaluateWeeklyAssessmentInput = {
   periodEndAt: Date;
   evaluatedAt: Date;
   trigger: AssessmentEvaluationTrigger;
+  completionStatus: 'PARTIAL' | 'COMPLETE';
+  goalVersionId: string | null;
+  preferenceVersionId: string | null;
+  effectScope: 'CURRENT' | 'HISTORICAL';
   goal: 'ABSTINENCE' | 'REDUCTION' | 'UNSURE';
   targetWeeklyStandardDrinks: number | null;
   baselineAverageWeeklyDrinks: number | null;
@@ -180,6 +192,11 @@ export type EffectPlan = {
   trigger: AssessmentEvaluationTrigger;
   candidatePatientInterventions: CandidatePatientIntervention[];
   candidateClinicianReasonFamilies: ClinicalReasonFamily[];
+  candidateClinicianReasons: Array<{
+    reasonFamily: ClinicalReasonFamily;
+    effect: ClinicianReasonEffect;
+    suppressionReason: string | null;
+  }>;
   suppressedEffects: Array<{
     interventionClass: CandidatePatientIntervention['interventionClass'];
     reason: string;

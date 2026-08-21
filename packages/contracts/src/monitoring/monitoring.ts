@@ -67,6 +67,12 @@ export const PatientInterventionIntentEffectSchema = z.enum([
   'HISTORICAL_ONLY',
 ]);
 
+export const ClinicianReasonEffectSchema = z.enum([
+  'ELIGIBLE',
+  'SUPPRESSED_TRIGGER',
+  'HISTORICAL_ONLY',
+]);
+
 export const WeeklyConsumptionTargetStatusSchema = z.enum([
   'MET',
   'NOT_MET',
@@ -100,6 +106,7 @@ export type ClinicalReasonFamily = z.infer<typeof ClinicalReasonFamilySchema>;
 export type PatientInterventionIntentEffect = z.infer<
   typeof PatientInterventionIntentEffectSchema
 >;
+export type ClinicianReasonEffect = z.infer<typeof ClinicianReasonEffectSchema>;
 export type WeeklyConsumptionTargetStatus = z.infer<
   typeof WeeklyConsumptionTargetStatusSchema
 >;

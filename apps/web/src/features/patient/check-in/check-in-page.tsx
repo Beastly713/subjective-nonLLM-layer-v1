@@ -742,9 +742,14 @@ function SubmittedState({ data }: { data: CheckInStateResponse }) {
             <div>
               <dt className="text-muted-foreground">Timing</dt>
               <dd className="m-0 font-semibold">
-                {assessment.submissionClassification === 'LATE_CURRENT'
+                {assessment.submissionClassification === 'HISTORICAL_BACKFILL'
+                  ? 'Past check-in'
+                  : assessment.submissionClassification === 'PATIENT_CORRECTION' ||
+                      assessment.submissionClassification === 'STAFF_CORRECTION'
+                    ? 'Corrected record'
+                    : assessment.submissionClassification === 'LATE_CURRENT'
                   ? 'Submitted late'
-                  : 'Submitted during the current window'}
+                    : 'Submitted during the current window'}
               </dd>
             </div>
           </dl>
@@ -752,6 +757,9 @@ function SubmittedState({ data }: { data: CheckInStateResponse }) {
             This page shows the submitted period and record status. It does not
             change the submitted answers.
           </p>
+          <Link className="mt-4 inline-flex" to="/patient/check-in/history">
+            <Button variant="outline">Review history or correct this check-in</Button>
+          </Link>
         </div>
       </div>
     </PatientShell>
@@ -800,7 +808,7 @@ function NonActionableState({ data }: { data: CheckInStateResponse }) {
     UPCOMING:
       'The next persisted monitoring period will become available at its scheduled opening time.',
     HISTORICAL:
-      'Historical check-in workflows are not available in this draft release.',
+      'Open Check-in history to complete a past period or review a correction without changing the current check-in.',
     SAFETY_PAUSED:
       'The backend safety state has paused weekly prompts. This page cannot override that state.',
     SAFETY_REASSESSMENT_REQUIRED:

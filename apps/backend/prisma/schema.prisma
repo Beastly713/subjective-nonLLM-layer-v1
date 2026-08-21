@@ -740,7 +740,7 @@ model AssessmentRevision {
   assessmentId             String                           @map("assessment_id") @db.Uuid
   revisionNumber           Int                              @map("revision_number")
   completionStatus         AssessmentRevisionCompletionStatus @map("completion_status")
-  sourceDraftVersion       Int                              @map("source_draft_version")
+  sourceDraftVersion       Int?                             @map("source_draft_version")
   submittedAt              DateTime                         @default(now()) @map("submitted_at") @db.Timestamptz(6)
   submittedBy              AssessmentActorType              @map("submitted_by")
   submittedByUserId        String                           @map("submitted_by_user_id") @db.Uuid
@@ -855,6 +855,9 @@ model AssessmentEvaluation {
   scheduledPeriodId          String                         @map("scheduled_period_id") @db.Uuid
   trigger                    AssessmentEvaluationTrigger
   lifecycle                  AssessmentEvaluationLifecycle  @default(ACTIVE)
+  derivationFingerprint      String                         @map("derivation_fingerprint") @db.VarChar(64)
+  supersededByEvaluationId   String?                        @map("superseded_by_evaluation_id") @db.Uuid
+  supersededAt               DateTime?                      @map("superseded_at") @db.Timestamptz(6)
   ruleSetVersion             String                         @map("rule_set_version") @db.VarChar(128)
   configurationVersion       String                         @map("configuration_version") @db.VarChar(128)
   instrumentVersion          String                         @map("instrument_version") @db.VarChar(64)
@@ -878,8 +881,10 @@ model AssessmentEvaluation {
   aggregateContext            AggregateContextRecord?
   longitudinalFeature         LongitudinalFeatureRecord?
   currentStateFlags            CurrentStateFlag[] @relation("CurrentFlagSourceEvaluation")
+  supersededByEvaluation       AssessmentEvaluation? @relation("AssessmentEvaluationSupersession", fields: [supersededByEvaluationId], references: [id], onDelete: Restrict)
+  supersedesEvaluations        AssessmentEvaluation[] @relation("AssessmentEvaluationSupersession")
 
-  @@unique([assessmentRevisionId, trigger], map: "assessment_evaluations_revision_trigger_key")
+  @@unique([assessmentRevisionId, derivationFingerprint], map: "assessment_evaluations_revision_derivation_key")
   @@index([patientId, evaluatedAt], map: "assessment_evaluations_patient_evaluated_idx")
   @@index([scheduledPeriodId, lifecycle], map: "assessment_evaluations_period_lifecycle_idx")
   @@map("assessment_evaluations")
