@@ -16,9 +16,12 @@ describe('code-owned permission table', () => {
         'PATIENT_ONBOARDING_READ',
         'PATIENT_ONBOARDING_UPDATE',
         'PATIENT_SAFETY_READ',
+        'PATIENT_ASSESSMENT_READ',
+        'PATIENT_ASSESSMENT_UPDATE',
       ],
       scope: 'OWN_PATIENT',
     });
+
     expect(ROLE_ACCESS.CLINICIAN).toEqual({
       workspace: 'CLINICIAN',
       permissions: [
@@ -27,10 +30,13 @@ describe('code-owned permission table', () => {
         'SAFETY_CASE_READ',
         'SAFETY_CASE_ACKNOWLEDGE',
         'SAFETY_CASE_DISPOSITION',
+        'PATIENT_ASSESSMENT_STAFF_CORRECT',
       ],
       scope: 'ASSIGNED_PATIENTS',
     });
+
     expect(ROLE_ACCESS.ADMIN.permissions).not.toContain('PATIENT_PROFILE_READ');
+
     expect(ROLE_ACCESS.ADMIN.permissions).toEqual(
       expect.arrayContaining([
         'ROUTING_CONFIG_READ',
@@ -40,7 +46,9 @@ describe('code-owned permission table', () => {
         'SAFETY_CASE_READ',
       ]),
     );
+
     expect(ROLE_ACCESS.OPERATIONS.workspace).toBe('ADMIN');
+
     expect(ROLE_ACCESS.OPERATIONS.permissions).toEqual(['USER_ACCESS_READ']);
   });
 

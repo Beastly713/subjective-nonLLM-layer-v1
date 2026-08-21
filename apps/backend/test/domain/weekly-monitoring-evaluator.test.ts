@@ -358,9 +358,12 @@ describe('delta, persistence, and clearance semantics', () => {
       status: 'ACTIVE',
       clearanceCount: 0,
     };
+
     const history = [
       historical(0, completeAnswers({ R3: 7, P1: 1 }), {
-        reasonLifecycle: { CRAVING_LOW_CONFIDENCE: active },
+        reasonLifecycle: {
+          CRAVING_LOW_CONFIDENCE: active,
+        },
       }),
     ];
 
@@ -398,6 +401,7 @@ describe('delta, persistence, and clearance semantics', () => {
         periodEndAt: atWeek(2),
       }),
     );
+
     expect(reasonState(firstClear, 'CRAVING_LOW_CONFIDENCE')).toEqual({
       status: 'CLEARANCE_PENDING',
       clearanceCount: 1,
@@ -417,6 +421,7 @@ describe('delta, persistence, and clearance semantics', () => {
         periodEndAt: atWeek(3),
       }),
     );
+
     expect(reasonState(secondClear, 'CRAVING_LOW_CONFIDENCE')).toEqual({
       status: 'RESOLVED',
       clearanceCount: 2,
@@ -472,6 +477,28 @@ describe('abstinence recurrence semantics', () => {
     );
   });
 
+  it('does not evaluate recurrent use before a full four-period window exists', () => {
+    const result = evaluateWeeklyAssessment(
+      current(completeAnswers({ U1: true }), {
+        history: [historical(0, completeAnswers({ U1: true }))],
+        periodStartAt: atWeek(1),
+        periodEndAt: atWeek(2),
+      }),
+    );
+
+    expect(result.longitudinal.consecutiveUse).toBe(true);
+    expect(result.longitudinal.recurrentUse).toBe(false);
+    expect(result.longitudinal.recurrentUseObservedPeriods).toBe(0);
+
+    expect(result.candidateClinicianReasonFamilies).toContain(
+      'CONSECUTIVE_USE',
+    );
+
+    expect(result.candidateClinicianReasonFamilies).not.toContain(
+      'RECURRENT_USE',
+    );
+  });
+
   it('counts UNKNOWN/missing prior periods as neither positive nor negative', () => {
     const history = [
       historical(0, completeAnswers({ U1: true })),
@@ -494,7 +521,9 @@ describe('abstinence recurrence semantics', () => {
 
   it('does not reinterpret a REDUCTION positive week as abstinence recurrence', () => {
     const history = [
-      historical(0, completeAnswers({ U1: true }), { goal: 'REDUCTION' }),
+      historical(0, completeAnswers({ U1: true }), {
+        goal: 'REDUCTION',
+      }),
       historical(1, { R3: 2 }),
       historical(2, completeAnswers({ U1: false })),
     ];
@@ -571,6 +600,7 @@ describe('abstinence recurrence semantics', () => {
     expect(result.longitudinal.useAfterStability).toBe(true);
 
     const withUnknown = [...history];
+
     withUnknown[5] = historical(5, { R3: 2 });
 
     const unknownResult = evaluateWeeklyAssessment(
@@ -597,6 +627,7 @@ describe('abstinence recurrence semantics', () => {
 
       expect(result.longitudinal.consecutiveUse).toBe(false);
       expect(result.longitudinal.recurrentUse).toBe(false);
+
       expect(result.candidateClinicianReasonFamilies).not.toContain(
         'RECURRENT_USE',
       );
@@ -614,7 +645,9 @@ describe('completion and effect-plan policy', () => {
           R3: 7,
           P1: 1,
         },
-        { completionStatus: 'PARTIAL' },
+        {
+          completionStatus: 'PARTIAL',
+        },
       ),
     );
 
@@ -624,11 +657,21 @@ describe('completion and effect-plan policy', () => {
   it('allows U1 recurrence reasons to survive PARTIAL when the explicit U1 history supports them', () => {
     const result = evaluateWeeklyAssessment(
       current(
-        { U1: true },
+        {
+          U1: true,
+        },
         {
           completionStatus: 'PARTIAL',
           history: [
-            historical(0, { U1: true }, { completionStatus: 'PARTIAL' }),
+            historical(
+              0,
+              {
+                U1: true,
+              },
+              {
+                completionStatus: 'PARTIAL',
+              },
+            ),
           ],
           periodStartAt: atWeek(1),
           periodEndAt: atWeek(2),
@@ -638,6 +681,10 @@ describe('completion and effect-plan policy', () => {
 
     expect(result.candidateClinicianReasonFamilies).toContain(
       'CONSECUTIVE_USE',
+    );
+
+    expect(result.candidateClinicianReasonFamilies).not.toContain(
+      'RECURRENT_USE',
     );
   });
 
@@ -649,6 +696,7 @@ describe('completion and effect-plan policy', () => {
     );
 
     expect(result.candidatePatientInterventions.length).toBeGreaterThan(0);
+
     expect(
       result.candidatePatientInterventions.every(
         (candidate) => candidate.effect === 'SUPPRESSED_TRIGGER',
@@ -675,6 +723,7 @@ describe('completion and effect-plan policy', () => {
         (candidate) => candidate.effect === 'HISTORICAL_ONLY',
       ),
     ).toBe(true);
+
     expect(
       result.effectPlan.candidateClinicianReasons.every(
         (reason) => reason.effect === 'HISTORICAL_ONLY',
@@ -694,6 +743,7 @@ describe('completion and effect-plan policy', () => {
     );
 
     expect(flag(result, 'HIGH_CRAVING')?.state).toBe('ACTIVE');
+
     expect(result.candidatePatientInterventions[0]?.effect).toBe(
       'SUPPRESSED_SAFETY',
     );

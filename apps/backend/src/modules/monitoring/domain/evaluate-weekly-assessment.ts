@@ -358,11 +358,14 @@ function recurrenceWindowStats(
   history: readonly HistoricalWeeklyObservation[],
   periodStartAt: Date,
 ) {
-  const previous = history.slice(
-    -(SUBJECTIVE_MONITORING_V1.recurrenceWindowPeriods - 1),
-  );
+  const windowSize = SUBJECTIVE_MONITORING_V1.recurrenceWindowPeriods - 1;
 
-  if (!windowIsAdjacent(previous, periodStartAt)) {
+  const previous = history.slice(-windowSize);
+
+  if (
+    previous.length !== windowSize ||
+    !windowIsAdjacent(previous, periodStartAt)
+  ) {
     return {
       valid: false,
       positiveCount: 0,

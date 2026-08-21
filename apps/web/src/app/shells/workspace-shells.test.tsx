@@ -46,7 +46,11 @@ describe('workspace shells', () => {
   });
 
   it.each([
-    [PatientShell, 'Patient space', ['Profile']],
+    [
+      PatientShell,
+      'Patient space',
+      ['Setup', 'Check-in', 'History', 'Profile'],
+    ],
     [ClinicianShell, 'Clinician workspace', ['Patients', 'Safety']],
     [AdminShell, 'Administrative console', ['Users & Access']],
   ] as const)(
