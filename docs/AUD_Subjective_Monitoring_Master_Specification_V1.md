@@ -8,7 +8,7 @@
 **Primary population:** Adults using an Alcohol Use Disorder support solution  
 **Decision model:** Deterministic, auditable, non-LLM
 
-**Implementation status:** Phase 4 weekly assessment and deterministic subjective-monitoring core is implemented in the repository at `a16c1bd`. Patient content delivery, clinician review cases/tasks, engagement workflows, durable workers, backup/retention controls, and real-patient operation remain later implementation phases. This document remains the target V1 product and clinical specification; the current implementation boundary is recorded in `AUD_V1_Phase_4_Weekly_Monitoring_Core_Implementation_Guide.md`.
+**Implementation status:** Phases 1–5 are implemented in the repository, with the validated Phase 5 implementation head at `f6bc02b` (`fix: close phase 5 patient support and clinical review`). The current codebase includes the weekly assessment and deterministic subjective-monitoring core, governed patient support resolution, Level-2 clinician visibility, Level-3 clinical review cases, durable in-app clinician tasks, and the corresponding patient/clinician workflow surfaces. Engagement workflows, auxiliary/external delivery, background workers, backup/retention controls, and real-patient operation remain later implementation phases. This document remains the target V1 product and clinical specification; the current implementation boundary is recorded in `AUD_V1_Phase_5_Patient_Support_and_Clinical_Review_Implementation_Guide.md`.
 
 ---
 

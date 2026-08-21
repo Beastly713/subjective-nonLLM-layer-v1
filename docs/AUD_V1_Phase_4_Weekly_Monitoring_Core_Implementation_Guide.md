@@ -56,7 +56,7 @@ Phase 4 is implemented and accepted at the closeout head above. The current code
 - immutable evaluation history, weekly U1 interval observations, current-state projections, forward recomputation from historical changes, superseded/revoked history, and trigger-derived effect scopes;
 - patient-level processing locks, optimistic version checks, idempotent consequential actions, transactional audit, and provenance across assessment mutations;
 - patient Check-in, history, correction, and historical-backfill flows with accessible 0–7 controls and narrow-layout coverage;
-- no patient content resolver/delivery, clinician review-case lifecycle, engagement workflow, durable worker, or pg-boss implementation. Those remain later-phase consumers of the persisted Phase 4 outputs.
+- a Phase 4 boundary that deliberately stops before patient content resolution, clinician review-case lifecycle, engagement workflow, durable workers, or pg-boss. Phase 5 now consumes the persisted Phase 4 outputs for governed patient support, clinical review, and durable in-app clinician tasks; engagement, auxiliary delivery, and background workers remain later-phase work.
 
 The Phase 4 migration additions are, in order:
 
@@ -73,7 +73,7 @@ The implemented Phase 4 HTTP surface is:
 | Patient assessment mutations | `PUT /api/v1/patient/assessments/:assessmentId/draft`, `POST /api/v1/patient/assessments/:assessmentId/submit`, `POST /api/v1/patient/assessments/:assessmentId/backfill-submit`, and `POST /api/v1/patient/assessments/:assessmentId/corrections` |
 | Assigned-clinician correction | `POST /api/v1/clinician/patients/:patientId/assessments/:assessmentId/corrections` |
 
-Phase 4 validation is represented by the focused domain tests, real-PostgreSQL integration test, web scale test, browser Check-in suite, and database invariant query listed in `PHASE4_CLOSEOUT_TESTS.md`. The root CI path also runs formatting, lint, typecheck, migration deployment, web/backend tests, production build, Chromium smoke/accessibility coverage, and the Docker build.
+Phase 4 validation is represented by the focused domain tests, real-PostgreSQL integration test, web scale test, browser Check-in suite, and committed database invariant query in `validation/phase4_invariants.sql`. Phase 5 closeout validation is recorded in the Phase 5 guide and `validation/phase5_invariants.sql`. The root CI path also runs formatting, lint, typecheck, migration deployment, web/backend tests, production build, Chromium smoke/accessibility coverage, and the Docker build.
 
 ---
 
@@ -102,7 +102,7 @@ The completed phase provides:
 - a polished patient Check-in experience for current, late, partial, historical, and correction states;
 - a stable backend foundation that later content, clinical, engagement, delivery, and worker phases can consume without reimplementing weekly interpretation.
 
-Phase 4 does **not** turn candidate clinician reasons into `ClinicalReviewCase` records, select or deliver patient content, create durable clinician tasks, run missed-check-in engagement workflows, or introduce background workers. Those later systems must consume the authoritative outputs created here.
+Phase 4 does **not** turn candidate clinician reasons into `ClinicalReviewCase` records, select or deliver patient content, create durable clinician tasks, run missed-check-in engagement workflows, or introduce background workers. Phase 5 now consumes the authoritative outputs created here for governed support, clinical review, and durable in-app clinician tasks; engagement and background delivery remain later systems.
 
 The governing implementation principle for this phase is:
 
@@ -1790,7 +1790,7 @@ correct concurrency/idempotency/audit
 
 as one coherent weekly monitoring core.
 
-The criteria are satisfied by the committed Phase 4 implementation and closeout validation recorded in `PHASE4_CLOSEOUT_TESTS.md`.
+The criteria are satisfied by the committed Phase 4 implementation, focused regression coverage, and the closeout invariant query in `validation/phase4_invariants.sql`.
 
 ---
 
@@ -1987,9 +1987,9 @@ Throughout Phase 4:
 - monitoring owns deterministic interpretation and candidate outputs;
 - safety owns safety;
 - profiles own recovery-goal/preference history;
-- later clinical code will own clinical reason/case lifecycle;
-- later content code will own approved resource selection;
-- later delivery code will own durable tasks/notifications;
+- Phase 5 clinical-review code owns clinical reason/case lifecycle;
+- Phase 5 content code owns approved resource selection;
+- Phase 5 owns durable in-app clinician tasks; later delivery code owns notifications;
 - later engagement code will own missed-check-in state.
 
 The following separations must remain explicit:
@@ -2073,7 +2073,7 @@ Avoid complexity that does not serve those invariants:
 
 # 13. Phase completion handoff to Phase 5
 
-Phase 4 should hand the next phase a complete weekly monitoring **interpretation core**, not a partially implemented content or clinician-delivery system.
+Phase 4 handed the next phase a complete weekly monitoring **interpretation core**, not a partially implemented content or clinician-delivery system. Phase 5 has now completed that handoff by consuming the persisted outputs below.
 
 Later phases may rely on:
 

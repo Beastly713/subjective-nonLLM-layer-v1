@@ -12,7 +12,7 @@ The authoritative V1 behavior remains defined by:
 - instrument: `AUD_WEEKLY_CHECKIN` version `1.0`
 - system version: `subjective_monitoring_v1`
 
-**Current implementation note:** Phases 1–4 are complete on `main` at `a16c1bd`. The implemented web surface currently includes authentication, patient onboarding, reduction setup, profile/status, safety-controlled states, weekly Check-in, Check-in history, correction/backfill actions, clinician patients and safety views, admin users/regional-routing/safety views, and the development foundation reference. Patient Home/Progress/Support, clinician subjective-monitoring/review/engagement surfaces, content management, delivery, and broader operations remain locked product design for later implementation; they are not current routes.
+**Current implementation note:** Phases 1–5 are complete, with the validated Phase 5 implementation head at `f6bc02b`. The implemented web surface currently includes authentication, patient onboarding, reduction setup, profile/status, safety-controlled states, weekly Check-in, Check-in history, correction/backfill actions, patient Support and post-check-in support, clinician patients and safety views, clinician subjective-monitoring visibility and Review Queue/detail views, admin users/regional-routing/safety views, and the development foundation reference. Patient Home/Progress, engagement, content management, auxiliary delivery, and broader operations remain locked product design for later implementation; they are not current routes.
 
 ---
 
@@ -1968,7 +1968,7 @@ The current prototype can be demonstrated through this flow:
 15. Demonstrate that prototype activation remains separate from real-patient readiness
 ```
 
-The weekly check-in, history, correction, and historical-backfill journey is now current. Support/content, progress, engagement, and longitudinal-monitoring presentation remain the later implementation path described by the product lock; those screens are not current routes.
+The weekly check-in, history, correction, historical-backfill, patient Support, and clinician subjective-review journeys are now current. Patient Home/Progress, engagement, and longitudinal-monitoring presentation remain the later implementation path described by the product lock; those screens are not current routes.
 
 The current evaluator should be able to see that the application is doing more than storing questionnaire answers: authoritative revisions, safety state, reduction provenance, goal status, schedule activation, access boundaries, and audit effects are all backend-controlled.
 
