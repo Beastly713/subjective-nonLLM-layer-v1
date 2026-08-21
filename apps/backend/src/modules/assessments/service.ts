@@ -6,12 +6,18 @@ import {
 } from '@aud-subjective/contracts';
 import { z } from 'zod';
 
-import type { Prisma } from '../../generated/prisma/client.js';
-import { AUD_WEEKLY_CHECKIN_INSTRUMENT_ID, AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION } from '../../policy/instruments/aud-weekly-checkin-v1.js';
+import { Prisma } from '../../generated/prisma/client.js';
+import {
+  AUD_WEEKLY_CHECKIN_INSTRUMENT_ID,
+  AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION,
+} from '../../policy/instruments/aud-weekly-checkin-v1.js';
 import { lockPatientForProcessing } from '../../shared/authz/patient-processing-lock.js';
 import type { Clock } from '../../shared/clock/clock.js';
 import { DomainError } from '../../shared/errors/domain-error.js';
-import { resolvePreferencesForPeriod, resolveRecoveryGoalForPeriod } from '../profiles/period-context.js';
+import {
+  resolvePreferencesForPeriod,
+  resolveRecoveryGoalForPeriod,
+} from '../profiles/period-context.js';
 import { loadPatientSafetyProjection } from '../safety/projections.js';
 import { ensureRelevantPeriodsInTransaction } from '../scheduling/service.js';
 import {
@@ -21,7 +27,11 @@ import {
   safetyAvailability,
 } from './projections.js';
 import { reconcileCurrentStateProjection } from '../monitoring/service.js';
-import type { AssessmentContext, AssessmentDatabase, AssessmentPeriodRecord } from './types.js';
+import type {
+  AssessmentContext,
+  AssessmentDatabase,
+  AssessmentPeriodRecord,
+} from './types.js';
 
 type Tx = Prisma.TransactionClient;
 
@@ -32,18 +42,33 @@ const DraftWriteEnvelopeSchema = z.object({
   weeklyConsumptionDays: z.unknown().optional(),
 });
 
-function notFound() {
-  throw new DomainError(404, 'NOT_FOUND', 'The requested resource was not found.');
+function notFound(): never {
+  throw new DomainError(
+    404,
+    'NOT_FOUND',
+    'The requested resource was not found.',
+  );
 }
 
 function periodInclude() {
-  return { scheduleVersion: { select: { version: true } } } as const;
+  return {
+    scheduleVersion: {
+      select: {
+        version: true,
+      },
+    },
+  } as const;
 }
 
 async function activeSchedule(db: AssessmentDatabase, patientId: string) {
   return db.monitoringScheduleVersion.findFirst({
-    where: { patientId, lifecycle: 'ACTIVE' },
-    select: { id: true },
+    where: {
+      patientId,
+      lifecycle: 'ACTIVE',
+    },
+    select: {
+      id: true,
+    },
   });
 }
 
@@ -53,17 +78,32 @@ async function targetPeriod(
   now: Date,
 ) {
   const open = await db.scheduledPeriod.findFirst({
-    where: { patientId, openAt: { lte: now } },
-    orderBy: { periodStartAt: 'desc' },
+    where: {
+      patientId,
+      openAt: {
+        lte: now,
+      },
+    },
+    orderBy: {
+      periodStartAt: 'desc',
+    },
     include: periodInclude(),
   });
-  if (open) return open as AssessmentPeriodRecord;
+
+  if (open) {
+    return open as AssessmentPeriodRecord;
+  }
 
   const upcoming = await db.scheduledPeriod.findFirst({
-    where: { patientId },
-    orderBy: { periodStartAt: 'asc' },
+    where: {
+      patientId,
+    },
+    orderBy: {
+      periodStartAt: 'asc',
+    },
     include: periodInclude(),
   });
+
   return (upcoming as AssessmentPeriodRecord | null) ?? null;
 }
 
@@ -77,13 +117,20 @@ export async function hasNewerAuthoritativeAssessment(
       patientId,
       instrumentId: AUD_WEEKLY_CHECKIN_INSTRUMENT_ID,
       instrumentVersion: AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION,
-      authoritativeRevisionId: { not: null },
+      authoritativeRevisionId: {
+        not: null,
+      },
       scheduledPeriod: {
-        periodStartAt: { gt: period.periodStartAt },
+        periodStartAt: {
+          gt: period.periodStartAt,
+        },
       },
     },
-    select: { id: true },
+    select: {
+      id: true,
+    },
   });
+
   return Boolean(newer);
 }
 
@@ -92,7 +139,9 @@ export async function classifyFirstWeeklyAssessmentSubmission(
   patientId: string,
   period: AssessmentPeriodRecord,
   now: Date,
-  options: { allowHistoricalBackfill?: boolean } = {},
+  options: {
+    allowHistoricalBackfill?: boolean;
+  } = {},
 ) {
   if (now < period.openAt) {
     throw new DomainError(
@@ -101,15 +150,22 @@ export async function classifyFirstWeeklyAssessmentSubmission(
       'This weekly assessment cannot be submitted before its scheduled opening.',
     );
   }
+
   if (await hasNewerAuthoritativeAssessment(db, patientId, period)) {
-    if (options.allowHistoricalBackfill) return 'HISTORICAL_BACKFILL' as const;
+    if (options.allowHistoricalBackfill) {
+      return 'HISTORICAL_BACKFILL' as const;
+    }
+
     throw new DomainError(
       409,
       'HISTORICAL_BACKFILL_REQUIRED',
       'This assessment is historical because a newer weekly submission is already authoritative.',
     );
   }
-  return now <= period.effectiveDueAt ? ('CURRENT' as const) : ('LATE_CURRENT' as const);
+
+  return now <= period.effectiveDueAt
+    ? ('CURRENT' as const)
+    : ('LATE_CURRENT' as const);
 }
 
 async function eligibleDraft(
@@ -124,11 +180,21 @@ async function eligibleDraft(
       instrumentVersion: AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION,
       completionStatus: 'DRAFT',
       authoritativeRevisionId: null,
-      scheduledPeriod: { openAt: { lte: now } },
+      scheduledPeriod: {
+        openAt: {
+          lte: now,
+        },
+      },
     },
-    orderBy: { scheduledPeriod: { periodStartAt: 'desc' } },
+    orderBy: {
+      scheduledPeriod: {
+        periodStartAt: 'desc',
+      },
+    },
     include: {
-      scheduledPeriod: periodInclude(),
+      scheduledPeriod: {
+        include: periodInclude(),
+      },
       authoritativeRevision: {
         select: {
           id: true,
@@ -141,12 +207,15 @@ async function eligibleDraft(
       },
     },
   });
+
   for (const draft of drafts) {
     const period = draft.scheduledPeriod as AssessmentPeriodRecord;
+
     if (!(await hasNewerAuthoritativeAssessment(db, patientId, period))) {
       return draft;
     }
   }
+
   return null;
 }
 
@@ -159,7 +228,12 @@ async function contextForPeriod(
     resolveRecoveryGoalForPeriod(db, patientId, period),
     resolvePreferencesForPeriod(db, patientId, period),
   ]);
-  return { period, goal, preference };
+
+  return {
+    period,
+    goal,
+    preference,
+  };
 }
 
 function enforceSafety(
@@ -167,6 +241,7 @@ function enforceSafety(
   now: Date,
 ) {
   const availability = safetyAvailability(safety, now);
+
   if (availability === 'SAFETY_PAUSED') {
     throw new DomainError(
       409,
@@ -174,6 +249,7 @@ function enforceSafety(
       'Weekly check-ins are paused while the safety handoff is active.',
     );
   }
+
   if (availability === 'SAFETY_REASSESSMENT_REQUIRED') {
     throw new DomainError(
       409,
@@ -193,18 +269,24 @@ export async function startOrResumeWeeklyCheckIn(
   patientId: string,
 ): Promise<CheckInStateResponse> {
   await lockPatientForProcessing(tx, patientId);
+
   const now = clock.now();
+
   const safety = await loadPatientSafetyProjection(tx, patientId);
+
   const safetyState = safetyAvailability(safety, now);
 
   if (safetyState) {
     await reconcileCurrentStateProjection(tx, patientId, now);
+
     const period = (await activeSchedule(tx, patientId))
       ? await targetPeriod(tx, patientId, now)
       : null;
+
     const context = period
       ? await contextForPeriod(tx, patientId, period)
       : emptyContext();
+
     return projectCheckInState({
       availability: safetyState,
       period,
@@ -227,11 +309,15 @@ export async function startOrResumeWeeklyCheckIn(
   }
 
   await ensureRelevantPeriodsInTransaction(tx, clock, patientId);
+
   await reconcileCurrentStateProjection(tx, patientId, now);
+
   const existingDraft = await eligibleDraft(tx, patientId, now);
+
   const period = existingDraft
     ? (existingDraft.scheduledPeriod as AssessmentPeriodRecord)
     : await targetPeriod(tx, patientId, now);
+
   if (!period) {
     throw new DomainError(
       409,
@@ -241,7 +327,9 @@ export async function startOrResumeWeeklyCheckIn(
   }
 
   const availability = periodAvailability(period, now);
+
   const context = await contextForPeriod(tx, patientId, period);
+
   if (availability === 'UPCOMING') {
     return projectCheckInState({
       availability,
@@ -253,26 +341,28 @@ export async function startOrResumeWeeklyCheckIn(
     });
   }
 
-  let assessment = existingDraft ?? (await tx.weeklyAssessment.findFirst({
-    where: {
-      patientId,
-      scheduledPeriodId: period.id,
-      instrumentId: AUD_WEEKLY_CHECKIN_INSTRUMENT_ID,
-      instrumentVersion: AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION,
-    },
-    include: {
-      authoritativeRevision: {
-        select: {
-          id: true,
-          revisionNumber: true,
-          completionStatus: true,
-          submissionClassification: true,
-          submittedAt: true,
-          sourceDraftVersion: true,
+  let assessment =
+    existingDraft ??
+    (await tx.weeklyAssessment.findFirst({
+      where: {
+        patientId,
+        scheduledPeriodId: period.id,
+        instrumentId: AUD_WEEKLY_CHECKIN_INSTRUMENT_ID,
+        instrumentVersion: AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION,
+      },
+      include: {
+        authoritativeRevision: {
+          select: {
+            id: true,
+            revisionNumber: true,
+            completionStatus: true,
+            submissionClassification: true,
+            submittedAt: true,
+            sourceDraftVersion: true,
+          },
         },
       },
-    },
-  }));
+    }));
 
   if (!assessment) {
     assessment = await tx.weeklyAssessment.create({
@@ -288,6 +378,18 @@ export async function startOrResumeWeeklyCheckIn(
         completionStatus: 'DRAFT',
         createdByUserId: patientId,
         updatedByUserId: patientId,
+      },
+      include: {
+        authoritativeRevision: {
+          select: {
+            id: true,
+            revisionNumber: true,
+            completionStatus: true,
+            submissionClassification: true,
+            submittedAt: true,
+            sourceDraftVersion: true,
+          },
+        },
       },
     });
   }
@@ -309,7 +411,9 @@ function validateWeeklyConsumption(
   const days = WeeklyAlcoholDayInputSetSchema.parse(
     body.weeklyConsumptionDays ?? [],
   );
+
   const required = context.goal?.goal === 'REDUCTION';
+
   if (!required && days.length > 0) {
     throw new DomainError(
       400,
@@ -317,9 +421,13 @@ function validateWeeklyConsumption(
       'Weekly consumption days are only available for an effective reduction goal.',
     );
   }
-  if (!required) return null;
+
+  if (!required) {
+    return null;
+  }
 
   const expectedDates = new Set(periodLocalDates(context.period));
+
   if (days.some((day) => !expectedDates.has(day.localDate))) {
     throw new DomainError(
       400,
@@ -327,6 +435,7 @@ function validateWeeklyConsumption(
       'Every weekly consumption day must belong to the persisted assessment period.',
     );
   }
+
   return days.length > 0 ? days : null;
 }
 
@@ -338,22 +447,51 @@ export async function saveWeeklyAssessmentDraft(
   rawBody: unknown,
 ): Promise<CheckInStateResponse> {
   const envelope = DraftWriteEnvelopeSchema.parse(rawBody);
+
   await lockPatientForProcessing(tx, patientId);
+
   const assessment = await tx.weeklyAssessment.findUnique({
-    where: { id: assessmentId },
-    include: { scheduledPeriod: { include: periodInclude() } },
+    where: {
+      id: assessmentId,
+    },
+    include: {
+      scheduledPeriod: {
+        include: periodInclude(),
+      },
+    },
   });
-  if (!assessment) notFound();
-  if (assessment.patientId !== patientId) notFound();
-  if (assessment.instrumentId !== AUD_WEEKLY_CHECKIN_INSTRUMENT_ID || assessment.instrumentVersion !== AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION) {
-    throw new DomainError(409, 'ASSESSMENT_STATE_INVALID', 'The assessment policy is not supported.');
+
+  if (!assessment) {
+    notFound();
   }
+
+  if (assessment.patientId !== patientId) {
+    notFound();
+  }
+
+  if (
+    assessment.instrumentId !== AUD_WEEKLY_CHECKIN_INSTRUMENT_ID ||
+    assessment.instrumentVersion !== AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION
+  ) {
+    throw new DomainError(
+      409,
+      'ASSESSMENT_STATE_INVALID',
+      'The assessment policy is not supported.',
+    );
+  }
+
   if (assessment.completionStatus !== 'DRAFT') {
-    throw new DomainError(409, 'ASSESSMENT_STATE_INVALID', 'The weekly assessment is not an editable draft.');
+    throw new DomainError(
+      409,
+      'ASSESSMENT_STATE_INVALID',
+      'The weekly assessment is not an editable draft.',
+    );
   }
 
   const period = assessment.scheduledPeriod as AssessmentPeriodRecord;
+
   const now = clock.now();
+
   if (now < period.openAt) {
     throw new DomainError(
       409,
@@ -361,8 +499,11 @@ export async function saveWeeklyAssessmentDraft(
       'This weekly assessment cannot be edited before its scheduled opening.',
     );
   }
+
   const context = await contextForPeriod(tx, patientId, period);
+
   const safety = await loadPatientSafetyProjection(tx, patientId);
+
   enforceSafety(safety, now);
 
   if (assessment.draftVersion !== envelope.expectedDraftVersion) {
@@ -374,9 +515,13 @@ export async function saveWeeklyAssessmentDraft(
   }
 
   const body = SaveWeeklyAssessmentDraftRequestSchema.parse(rawBody);
+
   const weeklyConsumptionDays = validateWeeklyConsumption(body, context);
+
   const updated = await tx.weeklyAssessment.update({
-    where: { id: assessment.id },
+    where: {
+      id: assessment.id,
+    },
     data: {
       draftCurrentStep: body.currentStep,
       draftAnswerSnapshot: body.answers as Prisma.InputJsonValue,
@@ -384,7 +529,9 @@ export async function saveWeeklyAssessmentDraft(
         weeklyConsumptionDays === null
           ? Prisma.DbNull
           : (weeklyConsumptionDays as Prisma.InputJsonValue),
-      draftVersion: { increment: 1 },
+      draftVersion: {
+        increment: 1,
+      },
       updatedByUserId: patientId,
     },
   });

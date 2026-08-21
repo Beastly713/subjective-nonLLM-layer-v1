@@ -1,6 +1,4 @@
-import type {
-  WeeklyConsumptionDraftDay,
-} from '@aud-subjective/contracts';
+import type { WeeklyConsumptionDraftDay } from '@aud-subjective/contracts';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,7 +32,11 @@ export function WeeklyConsumptionCalendar({
       delete next.standardDrinks;
     }
     const rest = days.filter((day) => day.localDate !== localDate);
-    onChange([...rest, next].sort((left, right) => left.localDate.localeCompare(right.localDate)));
+    onChange(
+      [...rest, next].sort((left, right) =>
+        left.localDate.localeCompare(right.localDate),
+      ),
+    );
   };
 
   const setStatus = (
@@ -60,8 +62,8 @@ export function WeeklyConsumptionCalendar({
           Add any alcohol days you want to record
         </h2>
         <p className="mb-0 mt-2 text-sm leading-6 text-muted-foreground">
-          Each day is optional while you are drafting. Unknown is different
-          from zero drinks.
+          Each day is optional while you are drafting. Unknown is different from
+          zero drinks.
         </p>
       </div>
       <div className="grid gap-3">
@@ -75,7 +77,9 @@ export function WeeklyConsumptionCalendar({
               key={localDate}
             >
               <div>
-                <p className="m-0 font-semibold">{formatLocalDate(localDate)}</p>
+                <p className="m-0 font-semibold">
+                  {formatLocalDate(localDate)}
+                </p>
                 <p className="m-0 text-xs text-muted-foreground">{localDate}</p>
               </div>
               <div className="grid gap-2 sm:justify-items-end">

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import type { Prisma } from '../../generated/prisma/client.js';
+import { Prisma } from '../../generated/prisma/client.js';
 import {
   AUD_WEEKLY_CHECKIN_INSTRUMENT_ID,
   AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION,
@@ -26,8 +26,12 @@ import type {
 type Tx = Prisma.TransactionClient;
 
 function asNumber(value: unknown) {
-  if (value === null || value === undefined) return null;
+  if (value === null || value === undefined) {
+    return null;
+  }
+
   const parsed = Number(value);
+
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -37,6 +41,7 @@ function dateKey(value: Date) {
 
 function round(value: number, decimalPlaces = 4) {
   const factor = 10 ** decimalPlaces;
+
   return Math.round((value + Number.EPSILON) * factor) / factor;
 }
 
@@ -48,6 +53,7 @@ function answersFromResponses(
   }>,
 ): WeeklyAnswers {
   const answers: WeeklyAnswers = {};
+
   for (const response of responses) {
     if (response.itemId === 'U1' && response.booleanValue !== null) {
       answers.U1 = response.booleanValue;
@@ -64,17 +70,25 @@ function answersFromResponses(
         response.itemId === 'P4' ||
         response.itemId === 'P5'
       ) {
-        (answers as Record<string, number | boolean | undefined>)[response.itemId] =
-          response.integerValue;
+        (answers as Record<string, number | boolean | undefined>)[
+          response.itemId
+        ] = response.integerValue;
       }
     }
   }
+
   return answers;
 }
 
 function useStatus(answers: WeeklyAnswers) {
-  if (answers.U1 === true) return 'POSITIVE' as const;
-  if (answers.U1 === false) return 'NEGATIVE' as const;
+  if (answers.U1 === true) {
+    return 'POSITIVE' as const;
+  }
+
+  if (answers.U1 === false) {
+    return 'NEGATIVE' as const;
+  }
+
   return 'UNKNOWN' as const;
 }
 
@@ -123,7 +137,9 @@ export function summaryInputFromRow(
     unknownDayCount: row.unknownDayCount,
     coverageRatio: Number(row.coverageRatio),
     knownStandardDrinksTotal: Number(row.knownStandardDrinksTotal),
-    completeWeekTotalStandardDrinks: asNumber(row.completeWeekTotalStandardDrinks),
+    completeWeekTotalStandardDrinks: asNumber(
+      row.completeWeekTotalStandardDrinks,
+    ),
     completeWeekEthanolGrams: asNumber(row.completeWeekEthanolGrams),
     drinkingDays: row.drinkingDays,
     alcoholFreeDays: row.alcoholFreeDays,
@@ -157,54 +173,98 @@ export async function loadHistoricalWeeklyObservations(
   periodStartAt: Date,
 ): Promise<HistoricalWeeklyObservation[]> {
   const periods = await tx.scheduledPeriod.findMany({
-    where: { patientId, periodStartAt: { lt: periodStartAt } },
-    orderBy: { periodStartAt: 'asc' },
+    where: {
+      patientId,
+      periodStartAt: {
+        lt: periodStartAt,
+      },
+    },
+    orderBy: {
+      periodStartAt: 'asc',
+    },
   });
-  if (periods.length === 0) return [];
+
+  if (periods.length === 0) {
+    return [];
+  }
+
   const periodIds = periods.map((period) => period.id);
+
   const assessments = await tx.weeklyAssessment.findMany({
     where: {
       patientId,
-      scheduledPeriodId: { in: periodIds },
+      scheduledPeriodId: {
+        in: periodIds,
+      },
       instrumentId: AUD_WEEKLY_CHECKIN_INSTRUMENT_ID,
       instrumentVersion: AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION,
-      authoritativeRevisionId: { not: null },
+      authoritativeRevisionId: {
+        not: null,
+      },
     },
     include: {
-      authoritativeRevision: { include: { itemResponses: true } },
+      authoritativeRevision: {
+        include: {
+          itemResponses: true,
+        },
+      },
     },
   });
+
   const revisionIds = assessments
     .map((assessment) => assessment.authoritativeRevision?.id)
     .filter((id): id is string => Boolean(id));
+
   const [summaries, consumptionDays, evaluations] = await Promise.all([
     tx.weeklyConsumptionSummary.findMany({
-      where: { assessmentRevisionId: { in: revisionIds } },
+      where: {
+        assessmentRevisionId: {
+          in: revisionIds,
+        },
+      },
     }),
     tx.alcoholConsumptionDay.findMany({
-      where: { assessmentRevisionId: { in: revisionIds } },
-      orderBy: { localDate: 'asc' },
+      where: {
+        assessmentRevisionId: {
+          in: revisionIds,
+        },
+      },
+      orderBy: {
+        localDate: 'asc',
+      },
     }),
     tx.assessmentEvaluation.findMany({
       where: {
-        assessmentRevisionId: { in: revisionIds },
+        assessmentRevisionId: {
+          in: revisionIds,
+        },
         lifecycle: 'ACTIVE',
       },
-      include: { aggregateContext: true, longitudinalFeature: true },
+      include: {
+        aggregateContext: true,
+        longitudinalFeature: true,
+      },
     }),
   ]);
+
   const assessmentByPeriod = new Map(
     assessments.map((assessment) => [assessment.scheduledPeriodId, assessment]),
   );
+
   const summaryByRevision = new Map(
     summaries.map((summary) => [summary.assessmentRevisionId, summary]),
   );
+
   const daysByRevision = new Map<string, typeof consumptionDays>();
+
   for (const day of consumptionDays) {
     const existing = daysByRevision.get(day.assessmentRevisionId) ?? [];
+
     existing.push(day);
+
     daysByRevision.set(day.assessmentRevisionId, existing);
   }
+
   const aggregateByRevision = new Map(
     evaluations
       .filter((evaluation) => evaluation.aggregateContext)
@@ -214,90 +274,138 @@ export async function loadHistoricalWeeklyObservations(
       ]),
   );
 
-  const observations = await Promise.all(periods.map(async (period) => {
-    const assessment = assessmentByPeriod.get(period.id);
-    const revision = assessment?.authoritativeRevision;
-    const [goal, preference] = await Promise.all([
-      resolveRecoveryGoalForPeriod(tx, patientId, period),
-      resolvePreferencesForPeriod(tx, patientId, period),
-    ]);
-    if (!revision) {
+  const observations = await Promise.all(
+    periods.map(async (period) => {
+      const assessment = assessmentByPeriod.get(period.id);
+
+      const revision = assessment?.authoritativeRevision;
+
+      const [goal, preference] = await Promise.all([
+        resolveRecoveryGoalForPeriod(tx, patientId, period),
+        resolvePreferencesForPeriod(tx, patientId, period),
+      ]);
+
+      if (!revision) {
+        return {
+          periodId: period.id,
+          periodStartAt: period.periodStartAt,
+          periodEndAt: period.periodEndAt,
+          authoritative: false,
+          completionStatus: null,
+          goal: goal?.goal ?? null,
+          goalVersionId: goal?.id ?? null,
+          preferenceVersionId: preference?.id ?? null,
+          preferences: preferenceContextFromVersion(preference),
+          answers: null,
+          useStatus: 'UNKNOWN' as const,
+          riskScore: null,
+          rawProtectionScore: null,
+          recoveryProgress: null,
+          reasonLifecycle: {},
+          persistenceStreakSnapshot: {},
+          consumption: null,
+        };
+      }
+
+      const answers = answersFromResponses(revision.itemResponses);
+
+      const summary = summaryByRevision.get(revision.id);
+
+      const days = daysByRevision.get(revision.id);
+
+      const aggregate = aggregateByRevision.get(revision.id);
+
       return {
         periodId: period.id,
         periodStartAt: period.periodStartAt,
         periodEndAt: period.periodEndAt,
-        authoritative: false,
-        completionStatus: null,
-        goal: goal?.goal ?? null,
+        authoritative: true,
+        completionStatus: revision.completionStatus,
+        goal: goal?.goal ?? 'UNSURE',
         goalVersionId: goal?.id ?? null,
         preferenceVersionId: preference?.id ?? null,
         preferences: preferenceContextFromVersion(preference),
-        answers: null,
-        useStatus: 'UNKNOWN' as const,
-        riskScore: null,
-        rawProtectionScore: null,
-        recoveryProgress: null,
-        consumption: null,
+        answers,
+        useStatus: useStatus(answers),
+        riskScore: aggregate?.riskScore ?? null,
+        rawProtectionScore: aggregate?.rawProtectionScore ?? null,
+        recoveryProgress: aggregate?.recoveryProgress ?? null,
+        reasonLifecycle:
+          (evaluations.find(
+            (evaluation) => evaluation.assessmentRevisionId === revision.id,
+          )?.longitudinalFeature?.clearanceReasonStateSnapshot as
+            | HistoricalWeeklyObservation['reasonLifecycle']
+            | null
+            | undefined) ?? {},
+        persistenceStreakSnapshot:
+          (evaluations.find(
+            (evaluation) => evaluation.assessmentRevisionId === revision.id,
+          )?.longitudinalFeature?.persistenceStreakSnapshot as
+            Record<string, number> | null | undefined) ?? {},
+        consumption:
+          goal?.goal === 'REDUCTION' && summary
+            ? summaryInputFromRow(summary, days)
+            : null,
       };
-    }
-    const answers = answersFromResponses(revision.itemResponses);
-    const summary = summaryByRevision.get(revision.id);
-    const days = daysByRevision.get(revision.id);
-    const aggregate = aggregateByRevision.get(revision.id);
-    return {
-      periodId: period.id,
-      periodStartAt: period.periodStartAt,
-      periodEndAt: period.periodEndAt,
-      authoritative: true,
-      completionStatus: revision.completionStatus,
-      goal: goal?.goal ?? 'UNSURE',
-      goalVersionId: goal?.id ?? null,
-      preferenceVersionId: preference?.id ?? null,
-      preferences: preferenceContextFromVersion(preference),
-      answers,
-      useStatus: useStatus(answers),
-      riskScore: aggregate?.riskScore ?? null,
-      rawProtectionScore: aggregate?.rawProtectionScore ?? null,
-      recoveryProgress: aggregate?.recoveryProgress ?? null,
-      reasonLifecycle: evaluations
-        .find((evaluation) => evaluation.assessmentRevisionId === revision.id)
-        ?.longitudinalFeature?.clearanceReasonStateSnapshot as
-        | HistoricalWeeklyObservation['reasonLifecycle']
-        | undefined,
-      persistenceStreakSnapshot: evaluations
-        .find((evaluation) => evaluation.assessmentRevisionId === revision.id)
-        ?.longitudinalFeature?.persistenceStreakSnapshot as
-        | Record<string, number>
-        | undefined,
-      consumption: goal?.goal === 'REDUCTION' && summary
-        ? summaryInputFromRow(summary, days)
-        : null,
-    };
-  }));
-  let carriedReasonLifecycle = observations[0]?.reasonLifecycle;
+    }),
+  );
+
+  let carriedReasonLifecycle = observations[0]?.reasonLifecycle ?? {};
+
   for (const observation of observations) {
     if (!observation.authoritative) {
       observation.reasonLifecycle = carriedReasonLifecycle;
+
       observation.persistenceStreakSnapshot = {};
-    } else if (observation.reasonLifecycle) {
+    } else if (
+      observation.reasonLifecycle &&
+      Object.keys(observation.reasonLifecycle).length > 0
+    ) {
       carriedReasonLifecycle = observation.reasonLifecycle;
     }
   }
+
   return observations;
 }
 
-function whoRank(ethanolGrams: number, thresholdProfile: 'LOWER_THRESHOLD' | 'HIGHER_THRESHOLD') {
+function whoRank(
+  ethanolGrams: number,
+  thresholdProfile: 'LOWER_THRESHOLD' | 'HIGHER_THRESHOLD',
+) {
   const daily = ethanolGrams / 28;
-  if (daily === 0) return 0;
+
+  if (daily === 0) {
+    return 0;
+  }
+
   if (thresholdProfile === 'HIGHER_THRESHOLD') {
-    if (daily <= 40) return 1;
-    if (daily <= 60) return 2;
-    if (daily <= 100) return 3;
+    if (daily <= 40) {
+      return 1;
+    }
+
+    if (daily <= 60) {
+      return 2;
+    }
+
+    if (daily <= 100) {
+      return 3;
+    }
+
     return 4;
   }
-  if (daily <= 20) return 1;
-  if (daily <= 40) return 2;
-  if (daily <= 60) return 3;
+
+  if (daily <= 20) {
+    return 1;
+  }
+
+  if (daily <= 40) {
+    return 2;
+  }
+
+  if (daily <= 60) {
+    return 3;
+  }
+
   return 4;
 }
 
@@ -320,18 +428,27 @@ function whoContext(
   baselineDays: ReductionWeeklySummaryInput['days'] | undefined,
 ) {
   const previous = history.slice(-3);
+
   const adjacent = previous.every((item, index) => {
-    const nextStart = index === previous.length - 1
-      ? currentPeriodStartAt
-      : previous[index + 1]?.periodStartAt;
-    return Boolean(nextStart && item.periodEndAt.getTime() === nextStart.getTime());
+    const nextStart =
+      index === previous.length - 1
+        ? currentPeriodStartAt
+        : previous[index + 1]?.periodStartAt;
+
+    return Boolean(
+      nextStart && item.periodEndAt.getTime() === nextStart.getTime(),
+    );
   });
+
   const complete =
     currentDays !== undefined &&
     previous.length === 3 &&
     adjacent &&
     knownDays(currentDays) &&
-    previous.every((item) => item.consumption?.days && knownDays(item.consumption.days));
+    previous.every(
+      (item) => item.consumption?.days && knownDays(item.consumption.days),
+    );
+
   if (!complete || !currentDays) {
     return {
       whoWindowComplete: false,
@@ -340,18 +457,29 @@ function whoContext(
       whoTwoLevelReduction: null,
     };
   }
+
   const currentTotal = [
     ...previous.flatMap((item) => item.consumption!.days!),
     ...currentDays,
   ].reduce((total, day) => total + (day.ethanolGrams ?? 0), 0);
+
   const currentRank = whoRank(currentTotal, thresholdProfile);
-  const baselineComplete = Boolean(baselineDays && baselineDays.length === 28 && baselineDays.every((day) => day.status !== 'UNKNOWN'));
+
+  const baselineComplete = Boolean(
+    baselineDays &&
+    baselineDays.length === 28 &&
+    baselineDays.every((day) => day.status !== 'UNKNOWN'),
+  );
+
   const baselineTotal = baselineComplete
     ? baselineDays!.reduce((total, day) => total + (day.ethanolGrams ?? 0), 0)
     : null;
-  const change = baselineTotal === null
-    ? null
-    : whoRank(baselineTotal, thresholdProfile) - currentRank;
+
+  const change =
+    baselineTotal === null
+      ? null
+      : whoRank(baselineTotal, thresholdProfile) - currentRank;
+
   return {
     whoWindowComplete: true,
     whoRiskRank: currentRank,
@@ -363,20 +491,30 @@ function whoContext(
 export function finalizeReductionWeek(input: {
   dates: readonly string[];
   periodStartAt: Date;
+
   draftDays: ReadonlyArray<{
     localDate: string;
     status: 'KNOWN_ZERO' | 'KNOWN_QUANTITY' | 'UNKNOWN';
-    standardDrinks?: number | null;
+    standardDrinks?: number | null | undefined;
   }>;
+
   targetWeeklyStandardDrinks: number | null;
+
   baselineAverageWeeklyDrinks: number | null;
+
   thresholdProfile: 'LOWER_THRESHOLD' | 'HIGHER_THRESHOLD';
-  baselineDays?: ReductionWeeklySummaryInput['days'];
+
+  baselineDays?: ReductionWeeklySummaryInput['days'] | undefined;
+
   history: readonly HistoricalWeeklyObservation[];
 }) {
-  const draftByDate = new Map(input.draftDays.map((day) => [day.localDate, day]));
+  const draftByDate = new Map(
+    input.draftDays.map((day) => [day.localDate, day]),
+  );
+
   const days = input.dates.map((localDate) => {
     const day = draftByDate.get(localDate);
+
     if (!day || day.status === 'UNKNOWN') {
       return {
         localDate,
@@ -385,31 +523,54 @@ export function finalizeReductionWeek(input: {
         ethanolGrams: null,
       };
     }
-    const standardDrinks = day.status === 'KNOWN_ZERO' ? 0 : day.standardDrinks ?? 0;
+
+    const standardDrinks =
+      day.status === 'KNOWN_ZERO' ? 0 : (day.standardDrinks ?? 0);
+
     return {
       localDate,
       status: day.status,
       standardDrinks,
-      ethanolGrams: standardDrinks === 0 ? 0 : standardDrinksToEthanolGrams(standardDrinks),
+      ethanolGrams:
+        standardDrinks === 0 ? 0 : standardDrinksToEthanolGrams(standardDrinks),
     };
   });
+
   const known = days.filter((day) => day.status !== 'UNKNOWN');
+
   const quantities = known.map((day) => day.standardDrinks ?? 0);
+
   const observedDayCount = known.length;
+
   const unknownDayCount = days.length - observedDayCount;
-  const knownTotal = round(quantities.reduce((total, value) => total + value, 0));
+
+  const knownTotal = round(
+    quantities.reduce((total, value) => total + value, 0),
+  );
+
   const drinkingDays = quantities.filter((value) => value > 0).length;
+
   const complete = observedDayCount === 7;
+
   const completeTotal = complete ? knownTotal : null;
+
   const completeEthanol = complete
     ? round(days.reduce((total, day) => total + (day.ethanolGrams ?? 0), 0))
     : null;
+
   const target = input.targetWeeklyStandardDrinks;
-  const targetStatus: ReductionWeeklySummaryInput['targetStatus'] = target === null
-    ? 'UNRESOLVED'
-    : complete
-      ? knownTotal <= target ? 'MET' : 'NOT_MET'
-      : knownTotal > target ? 'NOT_MET' : 'UNRESOLVED';
+
+  const targetStatus: ReductionWeeklySummaryInput['targetStatus'] =
+    target === null
+      ? 'UNRESOLVED'
+      : complete
+        ? knownTotal <= target
+          ? 'MET'
+          : 'NOT_MET'
+        : knownTotal > target
+          ? 'NOT_MET'
+          : 'UNRESOLVED';
+
   const reductionFromBaselinePercent =
     complete &&
     input.baselineAverageWeeklyDrinks !== null &&
@@ -420,6 +581,7 @@ export function finalizeReductionWeek(input: {
             100,
         )
       : null;
+
   const who = whoContext(
     days,
     input.history,
@@ -427,6 +589,7 @@ export function finalizeReductionWeek(input: {
     input.thresholdProfile,
     input.baselineDays,
   );
+
   return {
     days,
     summary: {
@@ -447,7 +610,8 @@ export function finalizeReductionWeek(input: {
       maximumDailyStandardDrinks:
         quantities.length === 0 ? null : Math.max(...quantities),
       heavyDrinkingDays: quantities.filter(
-        (value) => value * 10 >= heavyDayThresholdTenths(input.thresholdProfile),
+        (value) =>
+          value * 10 >= heavyDayThresholdTenths(input.thresholdProfile),
       ).length,
       targetWeeklyStandardDrinks: target,
       targetStatus,
@@ -459,8 +623,14 @@ export function finalizeReductionWeek(input: {
 }
 
 function canonicalize(value: unknown): unknown {
-  if (value instanceof Date) return value.toISOString();
-  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(canonicalize);
+  }
+
   if (value && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
@@ -468,6 +638,7 @@ function canonicalize(value: unknown): unknown {
         .map(([key, entry]) => [key, canonicalize(entry)]),
     );
   }
+
   return value;
 }
 
@@ -497,7 +668,9 @@ export function monitoringDerivationFingerprint(
       safetyState: input.safety.safetyState,
       requiresSafetyShell: input.safety.requiresSafetyShell,
       monitoringPromptPolicy: input.safety.monitoringPromptPolicy,
-      allowedSubjectiveInterventions: [...input.safety.allowedSubjectiveInterventions],
+      allowedSubjectiveInterventions: [
+        ...input.safety.allowedSubjectiveInterventions,
+      ],
       reassessmentDueAt: input.safety.reassessmentDueAt,
     },
     history: input.history.map((observation) => ({
@@ -520,7 +693,10 @@ export function monitoringDerivationFingerprint(
       persistenceStreakSnapshot: observation.persistenceStreakSnapshot ?? null,
     })),
   });
-  return createHash('sha256').update(JSON.stringify(primitiveSnapshot)).digest('hex');
+
+  return createHash('sha256')
+    .update(JSON.stringify(primitiveSnapshot))
+    .digest('hex');
 }
 
 export async function persistMonitoringEvaluationHistory(input: {
@@ -531,8 +707,12 @@ export async function persistMonitoringEvaluationHistory(input: {
   preferenceVersionId: string | null;
 }) {
   const { tx, evaluationInput, result } = input;
+
   const json = (value: unknown) => value as Prisma.InputJsonValue;
-  const derivationFingerprint = monitoringDerivationFingerprint(evaluationInput);
+
+  const derivationFingerprint =
+    monitoringDerivationFingerprint(evaluationInput);
+
   const existing = await tx.assessmentEvaluation.findUnique({
     where: {
       assessmentRevisionId_derivationFingerprint: {
@@ -541,13 +721,16 @@ export async function persistMonitoringEvaluationHistory(input: {
       },
     },
   });
+
   if (existing) {
     if (existing.lifecycle === 'SUPERSEDED_BY_REVISION') {
       await tx.assessmentEvaluation.updateMany({
         where: {
           assessmentRevisionId: evaluationInput.revisionId,
           lifecycle: 'ACTIVE',
-          id: { not: existing.id },
+          id: {
+            not: existing.id,
+          },
         },
         data: {
           lifecycle: 'SUPERSEDED_BY_REVISION',
@@ -555,17 +738,28 @@ export async function persistMonitoringEvaluationHistory(input: {
           supersededAt: evaluationInput.evaluatedAt,
         },
       });
+
       const restored = await tx.assessmentEvaluation.update({
-        where: { id: existing.id },
+        where: {
+          id: existing.id,
+        },
         data: {
           lifecycle: 'ACTIVE',
           supersededByEvaluationId: null,
           supersededAt: null,
         },
       });
-      return { evaluation: restored, created: false };
+
+      return {
+        evaluation: restored,
+        created: false,
+      };
     }
-    return { evaluation: existing, created: false };
+
+    return {
+      evaluation: existing,
+      created: false,
+    };
   }
 
   const evaluation = await tx.assessmentEvaluation.create({
@@ -634,7 +828,9 @@ export async function persistMonitoringEvaluationHistory(input: {
     where: {
       assessmentRevisionId: evaluationInput.revisionId,
       lifecycle: 'ACTIVE',
-      id: { not: evaluation.id },
+      id: {
+        not: evaluation.id,
+      },
     },
     data: {
       lifecycle: 'SUPERSEDED_BY_REVISION',
@@ -677,27 +873,43 @@ export async function persistMonitoringEvaluationHistory(input: {
       interactionTags: json(result.aggregate.interactionTags),
     },
   });
+
   await tx.longitudinalFeatureRecord.create({
     data: {
       patientId: evaluationInput.patientId,
       assessmentRevisionId: evaluationInput.revisionId,
       scheduledPeriodId: evaluationInput.periodId,
       evaluationId: evaluation.id,
+
       cravingDelta: result.longitudinal.cravingDelta,
+
       confidenceDelta: result.longitudinal.confidenceDelta,
+
       negativeMoodDelta: result.longitudinal.negativeMoodDelta,
+
       riskScoreDelta: result.longitudinal.riskScoreDelta,
+
       rawProtectionScoreDelta: result.longitudinal.rawProtectionScoreDelta,
+
       recoveryProgressDelta: result.longitudinal.recoveryProgressDelta,
-      persistenceStreakSnapshot: json(result.longitudinal.persistenceStreakSnapshot),
+
+      persistenceStreakSnapshot: json(
+        result.longitudinal.persistenceStreakSnapshot,
+      ),
+
       clearanceReasonStateSnapshot: json(
         result.longitudinal.clearanceReasonStateSnapshot,
       ),
+
       consecutiveUse: result.longitudinal.consecutiveUse,
+
       recurrentUse: result.longitudinal.recurrentUse,
+
       recurrentUseObservedPeriods:
         result.longitudinal.recurrentUseObservedPeriods,
+
       useAfterStability: result.longitudinal.useAfterStability,
+
       trendDataValid: result.longitudinal.trendDataValid,
     },
   });
@@ -711,14 +923,20 @@ export async function persistMonitoringEvaluationHistory(input: {
         evaluationId: evaluation.id,
         interventionClass: candidate.interventionClass,
         sourceReasons: json(candidate.sourceReasons),
-        resolverMetadata: json({ resolverPriority: candidate.resolverPriority }),
+        resolverMetadata: json({
+          resolverPriority: candidate.resolverPriority,
+        }),
         effect: candidate.effect,
         suppressionReason: candidate.suppressionReason,
         trigger: evaluationInput.trigger,
       })),
     });
   }
-  return { evaluation, created: true };
+
+  return {
+    evaluation,
+    created: true,
+  };
 }
 
 export async function revokeEvaluationsForRevision(
@@ -727,7 +945,10 @@ export async function revokeEvaluationsForRevision(
   at = new Date(),
 ) {
   await tx.assessmentEvaluation.updateMany({
-    where: { assessmentRevisionId: revisionId, lifecycle: 'ACTIVE' },
+    where: {
+      assessmentRevisionId: revisionId,
+      lifecycle: 'ACTIVE',
+    },
     data: {
       lifecycle: 'REVOKED_BY_REVISION',
       supersededAt: at,
@@ -741,39 +962,67 @@ export async function reconcileCurrentStateProjection(
   now: Date,
 ) {
   const periods = await tx.scheduledPeriod.findMany({
-    where: { patientId },
-    orderBy: { periodStartAt: 'asc' },
+    where: {
+      patientId,
+    },
+    orderBy: {
+      periodStartAt: 'asc',
+    },
   });
+
   const assessments = await tx.weeklyAssessment.findMany({
     where: {
       patientId,
-      scheduledPeriodId: { in: periods.map((period) => period.id) },
-      authoritativeRevisionId: { not: null },
+      scheduledPeriodId: {
+        in: periods.map((period) => period.id),
+      },
+      authoritativeRevisionId: {
+        not: null,
+      },
     },
     include: {
       authoritativeRevision: {
-        include: { itemResponses: true },
+        include: {
+          itemResponses: true,
+        },
       },
     },
   });
+
   const revisionIds = assessments
     .map((assessment) => assessment.authoritativeRevision?.id)
     .filter((id): id is string => Boolean(id));
+
   const evaluations = await tx.assessmentEvaluation.findMany({
     where: {
       patientId,
-      assessmentRevisionId: { in: revisionIds },
+      assessmentRevisionId: {
+        in: revisionIds,
+      },
       lifecycle: 'ACTIVE',
     },
-    include: { stateFlagObservations: true },
-    orderBy: { evaluatedAt: 'desc' },
+    include: {
+      stateFlagObservations: true,
+    },
+    orderBy: {
+      evaluatedAt: 'desc',
+    },
   });
-  const current = await tx.currentStateFlag.findMany({ where: { patientId } });
+
+  const current = await tx.currentStateFlag.findMany({
+    where: {
+      patientId,
+    },
+  });
+
   const currentByFlag = new Map(current.map((flag) => [flag.flagKey, flag]));
+
   const assessmentByPeriod = new Map(
     assessments.map((assessment) => [assessment.scheduledPeriodId, assessment]),
   );
+
   const evaluationByRevision = new Map<string, (typeof evaluations)[number]>();
+
   for (const evaluation of evaluations) {
     if (!evaluationByRevision.has(evaluation.assessmentRevisionId)) {
       evaluationByRevision.set(evaluation.assessmentRevisionId, evaluation);
@@ -789,7 +1038,10 @@ export async function reconcileCurrentStateProjection(
   }) => {
     const result = await tx.currentStateFlag.upsert({
       where: {
-        patientId_flagKey: { patientId, flagKey: input.flagKey },
+        patientId_flagKey: {
+          patientId,
+          flagKey: input.flagKey,
+        },
       },
       create: {
         patientId,
@@ -808,15 +1060,19 @@ export async function reconcileCurrentStateProjection(
         updatedAt: now,
       },
     });
+
     currentByFlag.set(input.flagKey, result);
   };
 
   for (const period of periods) {
     const assessment = assessmentByPeriod.get(period.id);
+
     const revision = assessment?.authoritativeRevision;
+
     const evaluation = revision
       ? evaluationByRevision.get(revision.id)
       : undefined;
+
     if (!revision || !evaluation) {
       if (now >= period.effectiveDueAt) {
         for (const existing of currentByFlag.values()) {
@@ -829,11 +1085,16 @@ export async function reconcileCurrentStateProjection(
           });
         }
       }
+
       continue;
     }
+
     for (const observation of evaluation.stateFlagObservations) {
       if (observation.state === 'UNKNOWN') {
-        if (now < period.effectiveDueAt) continue;
+        if (now < period.effectiveDueAt) {
+          continue;
+        }
+
         await write({
           flagKey: observation.flagKey,
           state: 'STALE_DATA_UNAVAILABLE',
@@ -841,14 +1102,14 @@ export async function reconcileCurrentStateProjection(
           revisionId: revision.id,
           periodId: period.id,
         });
+
         continue;
       }
+
       await write({
         flagKey: observation.flagKey,
         state:
-          observation.state === 'ACTIVE'
-            ? 'CURRENT_ACTIVE'
-            : 'CURRENT_CLEARED',
+          observation.state === 'ACTIVE' ? 'CURRENT_ACTIVE' : 'CURRENT_CLEARED',
         evaluationId: evaluation.id,
         revisionId: revision.id,
         periodId: period.id,

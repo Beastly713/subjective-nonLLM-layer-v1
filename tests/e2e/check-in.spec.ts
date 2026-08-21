@@ -280,6 +280,15 @@ test('correction renders backend dates and reuses the same idempotency key after
       return fulfillJson(route, correctionSuccess());
     }
 
+    if (
+      request.method() === 'GET' &&
+      pathname === '/api/v1/patient/check-in/history'
+    ) {
+      return fulfillJson(route, {
+        items: [],
+      });
+    }
+
     throw new Error(`Unexpected API request: ${request.method()} ${pathname}`);
   });
 
@@ -294,7 +303,7 @@ test('correction renders backend dates and reuses the same idempotency key after
   ).toBeVisible();
 
   for (const localDate of dates) {
-    await expect(page.getByText(localDate)).toBeVisible();
+    await expect(page.getByText(localDate, { exact: true })).toBeVisible();
   }
 
   expect(await page.getByRole('radio').count()).toBeGreaterThanOrEqual(82);
@@ -408,6 +417,15 @@ test('historical backfill uses the backend recall dates and reuses its final-sub
       });
     }
 
+    if (
+      request.method() === 'GET' &&
+      pathname === '/api/v1/patient/check-in/history'
+    ) {
+      return fulfillJson(route, {
+        items: [],
+      });
+    }
+
     throw new Error(`Unexpected API request: ${request.method()} ${pathname}`);
   });
 
@@ -420,7 +438,7 @@ test('historical backfill uses the backend recall dates and reuses its final-sub
   ).toBeVisible();
 
   for (const localDate of dates) {
-    await expect(page.getByText(localDate)).toBeVisible();
+    await expect(page.getByText(localDate, { exact: true })).toBeVisible();
   }
 
   await page
@@ -435,9 +453,7 @@ test('historical backfill uses the backend recall dates and reuses its final-sub
       .getByRole('radiogroup', {
         name: `${itemId} response`,
       })
-      .getByRole('radio', {
-        name: /score 1/i,
-      })
+      .locator(`label[for="${itemId}-1"]`)
       .click();
   }
 

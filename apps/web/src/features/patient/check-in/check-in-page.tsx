@@ -9,12 +9,21 @@ import {
   type WeeklyConsumptionDraftDay,
 } from '@aud-subjective/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, ChevronLeft, ChevronRight, ShieldAlert } from 'lucide-react';
+import {
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  ShieldAlert,
+} from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 
 import { WorkspaceBoundary } from '@/app/shells/workspace-boundary';
-import { ErrorState, LoadingState, RestrictedState } from '@/components/patterns/system-state';
+import {
+  ErrorState,
+  LoadingState,
+  RestrictedState,
+} from '@/components/patterns/system-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -56,6 +65,7 @@ export function PatientCheckInPage() {
 function PatientCheckInContent() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+
   const query = useQuery({
     queryKey: ['patient', 'check-in'],
     queryFn: ({ signal }) =>
@@ -63,18 +73,24 @@ function PatientCheckInContent() {
         '/api/v1/patient/check-in/start',
         'POST',
         {},
-        { schema: CheckInStateResponseSchema, signal },
+        {
+          schema: CheckInStateResponseSchema,
+          signal,
+        },
       ),
   });
+
   const [local, setLocal] = useState<LocalDraft | null>(null);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [draftDirty, setDraftDirty] = useState(false);
   const [confirmingSubmit, setConfirmingSubmit] = useState(false);
+
   const [submissionAttempt, setSubmissionAttempt] = useState<{
     fingerprint: string;
     key: string;
   } | null>(null);
+
   const [message, setMessage] = useState<string>();
 
   if (query.isLoading) {
@@ -96,23 +112,29 @@ function PatientCheckInContent() {
         </PatientShell>
       );
     }
+
     return (
       <PatientShell>
         <ErrorState
-          action={<Button onClick={() => void query.refetch()}>Try again</Button>}
+          action={
+            <Button onClick={() => void query.refetch()}>Try again</Button>
+          }
         />
       </PatientShell>
     );
   }
 
   const data = query.data;
+
   if (data.assessment && data.assessment.completionStatus !== 'DRAFT') {
     return <SubmittedState data={data} />;
   }
+
   const serverDraft =
     data.assessment && data.assessment.completionStatus === 'DRAFT'
       ? data.assessment
       : null;
+
   const currentDraft =
     local &&
     serverDraft &&
@@ -130,7 +152,9 @@ function PatientCheckInContent() {
   if (!currentDraft || !data.period) {
     return (
       <PatientShell>
-        <ErrorState action={<Button onClick={() => void query.refetch()}>Reload</Button>} />
+        <ErrorState
+          action={<Button onClick={() => void query.refetch()}>Reload</Button>}
+        />
       </PatientShell>
     );
   }
@@ -148,6 +172,7 @@ function PatientCheckInContent() {
         ...changes,
       },
     }));
+
     setDraftDirty(true);
     setSubmissionAttempt(null);
     setMessage(undefined);
@@ -161,6 +186,7 @@ function PatientCheckInContent() {
         : {}),
       weeklyConsumptionDays: days,
     }));
+
     setDraftDirty(true);
     setSubmissionAttempt(null);
     setMessage(undefined);
@@ -171,8 +197,10 @@ function PatientCheckInContent() {
       local && local.assessmentId === currentDraft.assessmentId
         ? local
         : currentDraft;
+
     setSaving(true);
     setMessage(undefined);
+
     try {
       const request = SaveWeeklyAssessmentDraftRequestSchema.parse({
         expectedDraftVersion: draft.draftVersion,
@@ -180,20 +208,27 @@ function PatientCheckInContent() {
         answers: draft.answers,
         weeklyConsumptionDays: draft.weeklyConsumptionDays,
       });
+
       const response = await apiMutate<CheckInStateResponse>(
         `/api/v1/patient/assessments/${draft.assessmentId}/draft` as `/api/v1/${string}`,
         'PUT',
         request,
-        { schema: CheckInStateResponseSchema },
+        {
+          schema: CheckInStateResponseSchema,
+        },
       );
+
       queryClient.setQueryData(['patient', 'check-in'], response);
+
       setLocal(
         response.assessment && response.assessment.completionStatus === 'DRAFT'
           ? fromServerDraft(response.assessment)
           : null,
       );
+
       setDraftDirty(false);
       setSubmissionAttempt(null);
+
       return response;
     } catch (error) {
       if (
@@ -203,6 +238,7 @@ function PatientCheckInContent() {
         setMessage(
           'This check-in changed in another session. The latest saved draft has been reloaded.',
         );
+
         setLocal(null);
         await query.refetch();
       } else if (
@@ -213,6 +249,7 @@ function PatientCheckInContent() {
         setMessage(
           'This check-in is now safety-controlled. Your draft was not changed.',
         );
+
         await query.refetch();
       } else if (
         error instanceof ApiClientError &&
@@ -221,6 +258,7 @@ function PatientCheckInContent() {
         setMessage(
           'This period is now historical because a newer check-in was recorded. The latest state has been reloaded.',
         );
+
         setLocal(null);
         await query.refetch();
       } else if (
@@ -231,6 +269,7 @@ function PatientCheckInContent() {
       } else {
         setMessage('Your draft could not be saved. Please try again.');
       }
+
       return null;
     } finally {
       setSaving(false);
@@ -243,36 +282,55 @@ function PatientCheckInContent() {
 
   const saveAndExit = async () => {
     const response = await saveDraft(currentDraft.currentStep);
-    if (response) navigate('/patient/profile');
+
+    if (response) {
+      navigate('/patient/profile');
+    }
   };
 
   const submitAssessment = async () => {
     let draft = currentDraft;
+
     if (draftDirty) {
       const saved = await saveDraft('REVIEW');
+
       if (!saved?.assessment || saved.assessment.completionStatus !== 'DRAFT') {
         return;
       }
+
       draft = fromServerDraft(saved.assessment);
     }
+
     const unanswered = data.instrument.items.filter((item) =>
       item.itemId === 'U1'
         ? draft.answers.U1 === undefined
         : draft.answers[item.itemId] === undefined,
     );
+
     const completionIntent = unanswered.length === 0 ? 'COMPLETE' : 'PARTIAL';
+
     const request = SubmitWeeklyAssessmentRequestSchema.parse({
       expectedDraftVersion: draft.draftVersion,
       completionIntent,
     });
-    const fingerprint = JSON.stringify({ assessmentId: draft.assessmentId, ...request });
+
+    const fingerprint = JSON.stringify({
+      assessmentId: draft.assessmentId,
+      ...request,
+    });
+
     const attempt =
       submissionAttempt?.fingerprint === fingerprint
         ? submissionAttempt
-        : { fingerprint, key: globalThis.crypto.randomUUID() };
+        : {
+            fingerprint,
+            key: globalThis.crypto.randomUUID(),
+          };
+
     setSubmissionAttempt(attempt);
     setSubmitting(true);
     setMessage(undefined);
+
     try {
       const response = await apiMutate<CheckInStateResponse>(
         `/api/v1/patient/assessments/${draft.assessmentId}/submit` as `/api/v1/${string}`,
@@ -280,10 +338,14 @@ function PatientCheckInContent() {
         request,
         {
           schema: CheckInStateResponseSchema,
-          headers: { 'Idempotency-Key': attempt.key },
+          headers: {
+            'Idempotency-Key': attempt.key,
+          },
         },
       );
+
       queryClient.setQueryData(['patient', 'check-in'], response);
+
       setLocal(null);
       setDraftDirty(false);
       setSubmissionAttempt(null);
@@ -301,21 +363,29 @@ function PatientCheckInContent() {
         setMessage(
           'This period is now historical because a newer check-in was recorded. Historical backfill is not available here.',
         );
+
         setLocal(null);
         await query.refetch();
       } else if (
         error instanceof ApiClientError &&
         error.response?.error.code === 'COMPLETE_REQUIRES_ALL_ITEMS'
       ) {
-        setMessage('Answer every question before choosing the complete submission option.');
+        setMessage(
+          'Answer every question before choosing the complete submission option.',
+        );
       } else if (
         error instanceof ApiClientError &&
         error.response?.error.code === 'SAFETY_PAUSED'
       ) {
-        setMessage('This check-in is now safety-controlled. Your draft was not submitted.');
+        setMessage(
+          'This check-in is now safety-controlled. Your draft was not submitted.',
+        );
+
         await query.refetch();
       } else {
-        setMessage('The check-in could not be submitted. Your saved draft remains available.');
+        setMessage(
+          'The check-in could not be submitted. Your saved draft remains available.',
+        );
       }
     } finally {
       setSubmitting(false);
@@ -323,19 +393,32 @@ function PatientCheckInContent() {
   };
 
   const stepIndex = steps.indexOf(currentDraft.currentStep);
-  const item = (itemId: string) =>
-    data.instrument.items.find((candidate) => candidate.itemId === itemId);
+
+  const alcoholUseItem = data.instrument.items.find(
+    (
+      candidate,
+    ): candidate is Extract<
+      CheckInStateResponse['instrument']['items'][number],
+      { type: 'BOOLEAN' }
+    > => candidate.type === 'BOOLEAN' && candidate.itemId === 'U1',
+  );
 
   return (
     <PatientShell>
       <div className="grid gap-6">
         <CheckInHeader data={data} />
+
         <StepProgress currentStep={currentDraft.currentStep} />
+
         {message ? (
-          <div className="rounded-lg border border-warning-border bg-warning-surface/60 p-4 text-sm text-foreground" role="status">
+          <div
+            className="rounded-lg border border-warning-border bg-warning-surface/60 p-4 text-sm text-foreground"
+            role="status"
+          >
             {message}
           </div>
         ) : null}
+
         {data.availability === 'LATE' ? (
           <div className="rounded-lg border border-warning-border bg-warning-surface/50 p-4 text-sm">
             This check-in is still for the completed period shown above. It is
@@ -347,13 +430,15 @@ function PatientCheckInContent() {
           <AlcoholUseStep
             data={data}
             draft={currentDraft}
-            item={item('U1')}
+            item={alcoholUseItem}
             onAnswers={updateAnswers}
             onConsumptionDays={updateConsumptionDays}
           />
         ) : null}
+
         {currentDraft.currentStep === 'CHALLENGES' ? (
           <ScaleStep
+            data={data}
             description="Tell us what felt difficult during this completed period."
             draft={currentDraft}
             itemIds={['R1', 'R2', 'R3', 'R4', 'R5']}
@@ -361,8 +446,10 @@ function PatientCheckInContent() {
             title="Challenges"
           />
         ) : null}
+
         {currentDraft.currentStep === 'RECOVERY_SUPPORT' ? (
           <ScaleStep
+            data={data}
             description="Reflect on the support and recovery resources that were present."
             draft={currentDraft}
             itemIds={['P1', 'P2', 'P3', 'P4', 'P5']}
@@ -370,6 +457,7 @@ function PatientCheckInContent() {
             title="Recovery / support"
           />
         ) : null}
+
         {currentDraft.currentStep === 'REVIEW' ? (
           <ReviewStep
             confirming={confirmingSubmit}
@@ -394,6 +482,7 @@ function PatientCheckInContent() {
                 Back
               </Button>
             ) : null}
+
             <Button
               disabled={saving || submitting}
               onClick={() => void saveAndExit()}
@@ -402,12 +491,18 @@ function PatientCheckInContent() {
               Save and exit
             </Button>
           </div>
+
           {stepIndex < steps.length - 1 ? (
             <Button
               disabled={saving || submitting}
               onClick={() => void moveTo(steps[stepIndex + 1]!)}
             >
-              {saving ? 'Saving…' : stepIndex === steps.length - 2 ? 'Review' : 'Continue'}
+              {saving
+                ? 'Saving…'
+                : stepIndex === steps.length - 2
+                  ? 'Review'
+                  : 'Continue'}
+
               <ChevronRight className="size-4" />
             </Button>
           ) : null}
@@ -419,6 +514,7 @@ function PatientCheckInContent() {
 
 function CheckInHeader({ data }: { data: CheckInStateResponse }) {
   const period = data.period;
+
   return (
     <header className="grid gap-4 border-b pb-6">
       <div className="flex items-start justify-between gap-4">
@@ -426,21 +522,26 @@ function CheckInHeader({ data }: { data: CheckInStateResponse }) {
           <p className="m-0 text-xs font-bold uppercase tracking-[0.14em] text-primary">
             Weekly monitoring
           </p>
+
           <h1 className="mb-0 mt-2 text-3xl font-semibold tracking-[-0.03em]">
             Weekly Recovery Check-In
           </h1>
         </div>
+
         <CalendarDays aria-hidden="true" className="mt-1 size-7 text-primary" />
       </div>
+
       {period ? (
         <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
           <p className="m-0 text-xs font-bold uppercase tracking-[0.12em] text-primary">
             Recall period
           </p>
+
           <p className="mb-0 mt-1 text-lg font-semibold">
             {formatRecallDate(period.displayRecallStartDate)} –{' '}
             {formatRecallDate(period.displayRecallEndDate)}
           </p>
+
           <p className="mb-0 mt-2 text-sm leading-6 text-muted-foreground">
             Think only about the completed 7-day period from{' '}
             {formatRecallDate(period.displayRecallStartDate)} through{' '}
@@ -449,6 +550,7 @@ function CheckInHeader({ data }: { data: CheckInStateResponse }) {
           </p>
         </div>
       ) : null}
+
       {data.goalContext.goal === 'REDUCTION' ? (
         <Badge variant="information">Reduction calendar included</Badge>
       ) : null}
@@ -456,7 +558,11 @@ function CheckInHeader({ data }: { data: CheckInStateResponse }) {
   );
 }
 
-function StepProgress({ currentStep }: { currentStep: WeeklyAssessmentDraftStep }) {
+function StepProgress({
+  currentStep,
+}: {
+  currentStep: WeeklyAssessmentDraftStep;
+}) {
   return (
     <nav aria-label="Check-in sections" className="grid gap-2 sm:grid-cols-4">
       {steps.map((step, index) => (
@@ -469,6 +575,7 @@ function StepProgress({ currentStep }: { currentStep: WeeklyAssessmentDraftStep 
           key={step}
         >
           <span className="mr-2 text-xs opacity-70">0{index + 1}</span>
+
           {stepLabels[step]}
         </div>
       ))}
@@ -485,30 +592,44 @@ function AlcoholUseStep({
 }: {
   data: CheckInStateResponse;
   draft: LocalDraft;
+
   item:
-    | Extract<CheckInStateResponse['instrument']['items'][number], { type: 'BOOLEAN' }>
+    | Extract<
+        CheckInStateResponse['instrument']['items'][number],
+        { type: 'BOOLEAN' }
+      >
     | undefined;
+
   onAnswers: (changes: Partial<WeeklyAssessmentDraftAnswers>) => void;
+
   onConsumptionDays: (days: WeeklyConsumptionDraftDay[]) => void;
 }) {
   return (
     <section className="grid gap-5">
       <div>
         <p className="m-0 text-sm font-semibold text-success">Section 1 of 4</p>
+
         <h2 className="mb-0 mt-2 text-2xl font-semibold">Alcohol use</h2>
+
         <p className="mb-0 mt-2 text-sm leading-6 text-muted-foreground">
           Start with the overall alcohol-use question, then add optional daily
           entries when your active goal calls for them.
         </p>
       </div>
+
       {item ? (
         <BooleanChoice
           labels={item.responseLabels}
-          onChange={(value) => onAnswers({ U1: value })}
+          onChange={(value) =>
+            onAnswers({
+              U1: value,
+            })
+          }
           prompt={item.prompt}
           value={draft.answers.U1}
         />
       ) : null}
+
       {data.weeklyConsumptionRequired ? (
         <WeeklyConsumptionCalendar
           dates={data.weeklyConsumptionDates}
@@ -531,7 +652,9 @@ function ScaleStep({
   data: CheckInStateResponse;
   draft: LocalDraft;
   itemIds: string[];
+
   onAnswers: (changes: Partial<WeeklyAssessmentDraftAnswers>) => void;
+
   title: string;
   description: string;
 }) {
@@ -541,22 +664,31 @@ function ScaleStep({
         <p className="m-0 text-sm font-semibold text-success">
           Section {title === 'Challenges' ? '2' : '3'} of 4
         </p>
+
         <h2 className="mb-0 mt-2 text-2xl font-semibold">{title}</h2>
+
         <p className="mb-0 mt-2 text-sm leading-6 text-muted-foreground">
           {description}
         </p>
       </div>
+
       {itemIds.map((itemId) => {
         const candidate = data.instrument.items.find(
           (item) => item.itemId === itemId,
         );
-        if (!candidate || candidate.type !== 'INTEGER_0_7') return null;
+
+        if (!candidate || candidate.type !== 'INTEGER_0_7') {
+          return null;
+        }
+
         return (
           <WeeklyScale
             item={candidate}
             key={candidate.itemId}
             onChange={(value) =>
-              onAnswers({ [candidate.itemId]: value } as Partial<WeeklyAssessmentDraftAnswers>)
+              onAnswers({
+                [candidate.itemId]: value,
+              } as Partial<WeeklyAssessmentDraftAnswers>)
             }
             value={draft.answers[candidate.itemId]}
           />
@@ -584,7 +716,10 @@ function ReviewStep({
   onConfirmSubmit: () => void;
 }) {
   const unanswered = data.instrument.items.filter((item) => {
-    if (item.itemId === 'U1') return draft.answers.U1 === undefined;
+    if (item.itemId === 'U1') {
+      return draft.answers.U1 === undefined;
+    }
+
     return draft.answers[item.itemId] === undefined;
   });
 
@@ -592,29 +727,35 @@ function ReviewStep({
     <section className="grid gap-5">
       <div>
         <p className="m-0 text-sm font-semibold text-success">Section 4 of 4</p>
+
         <h2 className="mb-0 mt-2 text-2xl font-semibold">Review your draft</h2>
+
         <p className="mb-0 mt-2 text-sm leading-6 text-muted-foreground">
           Check what has been saved so far. Unanswered items remain visibly
           unanswered; this draft is not a submitted assessment.
         </p>
       </div>
+
       {unanswered.length > 0 ? (
         <div className="rounded-xl border border-warning-border bg-warning-surface/50 p-5">
           <p className="m-0 font-semibold">Still unanswered</p>
+
           <p className="mb-0 mt-2 text-sm text-muted-foreground">
             {unanswered.map((item) => item.itemId).join(', ')}
           </p>
         </div>
       ) : (
         <div className="rounded-xl border border-success-border bg-success-surface/50 p-5 text-sm">
-          All eleven questions have an answer. You can submit this check-in as
-          a complete authoritative weekly record.
+          All eleven questions have an answer. You can submit this check-in as a
+          complete authoritative weekly record.
         </div>
       )}
+
       <Card>
         <CardHeader>
           <h3 className="m-0 text-lg font-semibold">Answers</h3>
         </CardHeader>
+
         <CardContent className="grid gap-2">
           {data.instrument.items.map((item) => {
             const value =
@@ -627,31 +768,42 @@ function ReviewStep({
                 : draft.answers[item.itemId] === undefined
                   ? 'Unanswered'
                   : String(draft.answers[item.itemId]);
+
             return (
               <div
                 className="flex items-start justify-between gap-4 border-b py-3 last:border-b-0"
                 key={item.itemId}
               >
                 <span className="text-sm font-semibold">{item.itemId}</span>
-                <span className="text-right text-sm text-muted-foreground">{value}</span>
+
+                <span className="text-right text-sm text-muted-foreground">
+                  {value}
+                </span>
               </div>
             );
           })}
         </CardContent>
       </Card>
+
       {data.weeklyConsumptionRequired ? (
         <Card>
           <CardHeader>
             <h3 className="m-0 text-lg font-semibold">Alcohol days</h3>
           </CardHeader>
+
           <CardContent className="grid gap-2">
             {data.weeklyConsumptionDates.map((date) => {
               const day = draft.weeklyConsumptionDays.find(
                 (candidate) => candidate.localDate === date,
               );
+
               return (
-                <div className="flex justify-between border-b py-2 text-sm last:border-b-0" key={date}>
+                <div
+                  className="flex justify-between border-b py-2 text-sm last:border-b-0"
+                  key={date}
+                >
                   <span>{date}</span>
+
                   <span className="text-muted-foreground">
                     {!day || day.status === 'UNKNOWN'
                       ? !day
@@ -667,31 +819,44 @@ function ReviewStep({
           </CardContent>
         </Card>
       ) : null}
+
       <div className="rounded-xl border border-primary/20 bg-primary/5 p-5">
         <p className="m-0 font-semibold">
-          {unanswered.length === 0 ? 'Submit check-in' : 'Submit available answers'}
+          {unanswered.length === 0
+            ? 'Submit check-in'
+            : 'Submit available answers'}
         </p>
+
         <p className="mb-0 mt-2 text-sm leading-6 text-muted-foreground">
           This creates a real submitted check-in for the period above. Any
           unanswered questions remain unknown and are not filled in for you.
         </p>
+
         {!confirming ? (
           <Button
             className="mt-4"
             disabled={submitting}
             onClick={onRequestSubmit}
           >
-            {unanswered.length === 0 ? 'Submit check-in' : 'Submit available answers'}
+            {unanswered.length === 0
+              ? 'Submit check-in'
+              : 'Submit available answers'}
           </Button>
         ) : (
           <div className="mt-4 flex flex-col gap-3 rounded-lg border bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="m-0 text-sm">
               Confirm that you want to create this submitted weekly record.
             </p>
+
             <div className="flex gap-2">
-              <Button disabled={submitting} onClick={onCancelSubmit} variant="outline">
+              <Button
+                disabled={submitting}
+                onClick={onCancelSubmit}
+                variant="outline"
+              >
                 Cancel
               </Button>
+
               <Button disabled={submitting} onClick={onConfirmSubmit}>
                 {submitting ? 'Submitting…' : 'Confirm submission'}
               </Button>
@@ -699,6 +864,7 @@ function ReviewStep({
           </div>
         )}
       </div>
+
       <p className="m-0 text-sm text-muted-foreground">
         Use Back to make changes or Save and exit to keep this draft for later.
       </p>
@@ -708,57 +874,79 @@ function ReviewStep({
 
 function SubmittedState({ data }: { data: CheckInStateResponse }) {
   const assessment = data.assessment;
+
   if (!assessment || assessment.completionStatus === 'DRAFT') {
     return <NonActionableState data={data} />;
   }
+
   return (
     <PatientShell>
       <div className="grid gap-6">
         <CheckInHeader data={data} />
-        <div className="rounded-xl border border-success-border bg-success-surface/50 p-6" role="status">
+
+        <div
+          className="rounded-xl border border-success-border bg-success-surface/50 p-6"
+          role="status"
+        >
           <p className="m-0 text-xs font-bold uppercase tracking-[0.12em] text-success">
             Check-in recorded
           </p>
+
           <h1 className="mb-0 mt-2 text-2xl font-semibold">
             Your weekly check-in was submitted.
           </h1>
+
           <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
             <div>
               <dt className="text-muted-foreground">Completion</dt>
+
               <dd className="m-0 font-semibold">
-                {assessment.completionStatus === 'COMPLETE' ? 'Complete' : 'Partial'}
+                {assessment.completionStatus === 'COMPLETE'
+                  ? 'Complete'
+                  : 'Partial'}
               </dd>
             </div>
+
             <div>
               <dt className="text-muted-foreground">Submitted</dt>
+
               <dd className="m-0 font-semibold">
                 {new Date(assessment.submittedAt).toLocaleString()}
               </dd>
             </div>
+
             <div>
               <dt className="text-muted-foreground">Revision</dt>
+
               <dd className="m-0 font-semibold">{assessment.revisionNumber}</dd>
             </div>
+
             <div>
               <dt className="text-muted-foreground">Timing</dt>
+
               <dd className="m-0 font-semibold">
                 {assessment.submissionClassification === 'HISTORICAL_BACKFILL'
                   ? 'Past check-in'
-                  : assessment.submissionClassification === 'PATIENT_CORRECTION' ||
+                  : assessment.submissionClassification ===
+                        'PATIENT_CORRECTION' ||
                       assessment.submissionClassification === 'STAFF_CORRECTION'
                     ? 'Corrected record'
                     : assessment.submissionClassification === 'LATE_CURRENT'
-                  ? 'Submitted late'
-                    : 'Submitted during the current window'}
+                      ? 'Submitted late'
+                      : 'Submitted during the current window'}
               </dd>
             </div>
           </dl>
+
           <p className="mb-0 mt-5 text-sm leading-6 text-muted-foreground">
             This page shows the submitted period and record status. It does not
             change the submitted answers.
           </p>
+
           <Link className="mt-4 inline-flex" to="/patient/check-in/history">
-            <Button variant="outline">Review history or correct this check-in</Button>
+            <Button variant="outline">
+              Review history or correct this check-in
+            </Button>
           </Link>
         </div>
       </div>
@@ -773,19 +961,22 @@ function alcoholConflictMessage(draft: LocalDraft) {
       : draft.answers.U1
         ? 'Yes'
         : 'No';
+
   const enteredDays = draft.weeklyConsumptionDays
     .filter(
-      (day) =>
-        day.status === 'KNOWN_QUANTITY' && (day.standardDrinks ?? 0) > 0,
+      (day) => day.status === 'KNOWN_QUANTITY' && (day.standardDrinks ?? 0) > 0,
     )
     .map((day) => day.localDate)
     .join(', ');
+
   const allKnownZero =
     draft.weeklyConsumptionDays.length === 7 &&
     draft.weeklyConsumptionDays.every((day) => day.status === 'KNOWN_ZERO');
+
   if (draft.answers.U1 === true && allKnownZero) {
     return 'Your U1 answer is Yes, but the weekly calendar records zero drinks for all seven days. Correct the U1 answer or the calendar entries before submitting.';
   }
+
   return enteredDays
     ? `Your U1 answer is ${answer}, but the calendar shows positive quantities on ${enteredDays}. Correct the U1 answer or those calendar entries before submitting.`
     : `Your U1 answer is ${answer}, but it conflicts with the weekly calendar. Correct one of the sources before submitting.`;
@@ -793,41 +984,73 @@ function alcoholConflictMessage(draft: LocalDraft) {
 
 function NonActionableState({ data }: { data: CheckInStateResponse }) {
   const period = data.period;
-  const title: Record<CheckInAvailability, string> = {
+
+  const titles: Record<CheckInAvailability, string> = {
     NOT_ACTIVATED: 'Finish setup before your first check-in',
+
     UPCOMING: 'Your next check-in is not open yet',
+
     HISTORICAL: 'This check-in is historical',
+
     SAFETY_PAUSED: 'Check-ins are paused for safety',
+
     SAFETY_REASSESSMENT_REQUIRED: 'A safety reassessment is required',
+
     OPEN: 'Weekly Recovery Check-In',
+
     LATE: 'Weekly Recovery Check-In',
-  }[data.availability];
-  const description: Record<CheckInAvailability, string> = {
+  };
+
+  const descriptions: Record<CheckInAvailability, string> = {
     NOT_ACTIVATED:
       'Your weekly monitoring schedule is not active yet. Complete the patient setup flow before starting a check-in.',
+
     UPCOMING:
       'The next persisted monitoring period will become available at its scheduled opening time.',
+
     HISTORICAL:
       'Open Check-in history to complete a past period or review a correction without changing the current check-in.',
+
     SAFETY_PAUSED:
       'The backend safety state has paused weekly prompts. This page cannot override that state.',
+
     SAFETY_REASSESSMENT_REQUIRED:
       'The backend requires a safety reassessment before weekly monitoring can continue. There is no self-service bypass.',
+
     OPEN: '',
+
     LATE: '',
-  }[data.availability];
+  };
+
+  const title = titles[data.availability];
+
+  const description = descriptions[data.availability];
 
   return (
-    <PatientShell navigation={data.availability !== 'SAFETY_PAUSED' && data.availability !== 'SAFETY_REASSESSMENT_REQUIRED'}>
+    <PatientShell
+      navigation={
+        data.availability !== 'SAFETY_PAUSED' &&
+        data.availability !== 'SAFETY_REASSESSMENT_REQUIRED'
+      }
+    >
       <div className="grid gap-6">
         {period ? <CheckInHeader data={data} /> : null}
-        <div className="flex items-start gap-4 rounded-xl border border-restricted-border bg-restricted-surface/50 p-6" role="status">
+
+        <div
+          className="flex items-start gap-4 rounded-xl border border-restricted-border bg-restricted-surface/50 p-6"
+          role="status"
+        >
           <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-restricted-surface text-restricted">
             <ShieldAlert aria-hidden="true" />
           </span>
+
           <div>
             <h1 className="m-0 text-2xl font-semibold">{title}</h1>
-            <p className="mb-0 mt-3 text-sm leading-6 text-muted-foreground">{description}</p>
+
+            <p className="mb-0 mt-3 text-sm leading-6 text-muted-foreground">
+              {description}
+            </p>
+
             {period && data.availability === 'UPCOMING' ? (
               <p className="mb-0 mt-4 text-sm font-semibold">
                 Opens at {period.openAt}.
@@ -835,11 +1058,13 @@ function NonActionableState({ data }: { data: CheckInStateResponse }) {
             ) : null}
           </div>
         </div>
+
         {data.availability === 'NOT_ACTIVATED' ? (
           <Link to="/patient/onboarding">
             <Button>Continue setup</Button>
           </Link>
         ) : null}
+
         {(data.availability === 'SAFETY_PAUSED' ||
           data.availability === 'SAFETY_REASSESSMENT_REQUIRED') &&
         data.safety.patientRouteActions.length > 0 ? (
@@ -847,6 +1072,7 @@ function NonActionableState({ data }: { data: CheckInStateResponse }) {
             <CardHeader>
               <h2 className="m-0 text-lg font-semibold">Configured support</h2>
             </CardHeader>
+
             <CardContent className="grid gap-3">
               {data.safety.patientRouteActions.map((action) =>
                 action.href ? (
@@ -858,7 +1084,10 @@ function NonActionableState({ data }: { data: CheckInStateResponse }) {
                     {action.label}
                   </a>
                 ) : (
-                  <p className="m-0 rounded-lg border p-3 text-sm" key={action.label}>
+                  <p
+                    className="m-0 rounded-lg border p-3 text-sm"
+                    key={action.label}
+                  >
                     {action.label}
                   </p>
                 ),
@@ -874,7 +1103,9 @@ function NonActionableState({ data }: { data: CheckInStateResponse }) {
 function fromServerDraft(
   draft: Extract<
     NonNullable<CheckInStateResponse['assessment']>,
-    { completionStatus: 'DRAFT' }
+    {
+      completionStatus: 'DRAFT';
+    }
   >,
 ): LocalDraft {
   return {

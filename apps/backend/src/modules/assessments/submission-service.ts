@@ -16,32 +16,43 @@ import { REDUCTION_UNIT_POLICY_VERSION } from '../consumption/reduction-domain.j
 import type { Clock } from '../../shared/clock/clock.js';
 import { lockPatientForProcessing } from '../../shared/authz/patient-processing-lock.js';
 import { DomainError } from '../../shared/errors/domain-error.js';
-import { resolvePreferencesForPeriod, resolveRecoveryGoalForPeriod } from '../profiles/period-context.js';
+import {
+  resolvePreferencesForPeriod,
+  resolveRecoveryGoalForPeriod,
+} from '../profiles/period-context.js';
 import { loadPatientSafetyProjection } from '../safety/projections.js';
 import {
   periodAvailability,
   periodLocalDates,
   projectCheckInState,
 } from './projections.js';
+import { classifyFirstWeeklyAssessmentSubmission } from './service.js';
+import type { AssessmentPeriodRecord } from './types.js';
 import {
-  classifyFirstWeeklyAssessmentSubmission,
-  type AssessmentPeriodRecord,
-} from './service.js';
-import {
-  loadHistoricalWeeklyObservations,
   finalizeReductionWeek,
+  loadHistoricalWeeklyObservations,
 } from '../monitoring/service.js';
 import { recomputePatientMonitoringFromPeriod } from './recompute-service.js';
 import type { WeeklyAnswers } from '../monitoring/types.js';
 
 type Tx = Prisma.TransactionClient;
 
-function notFound() {
-  throw new DomainError(404, 'NOT_FOUND', 'The requested resource was not found.');
+function notFound(): never {
+  throw new DomainError(
+    404,
+    'NOT_FOUND',
+    'The requested resource was not found.',
+  );
 }
 
 function periodInclude() {
-  return { scheduleVersion: { select: { version: true } } } as const;
+  return {
+    scheduleVersion: {
+      select: {
+        version: true,
+      },
+    },
+  } as const;
 }
 
 function hasAnswer(answers: WeeklyAnswers, itemId: keyof WeeklyAnswers) {
@@ -49,9 +60,9 @@ function hasAnswer(answers: WeeklyAnswers, itemId: keyof WeeklyAnswers) {
 }
 
 function allRequiredAnswersPresent(answers: WeeklyAnswers) {
-  return (['U1', 'R1', 'R2', 'R3', 'R4', 'R5', 'P1', 'P2', 'P3', 'P4', 'P5'] as const).every(
-    (itemId) => hasAnswer(answers, itemId),
-  );
+  return (
+    ['U1', 'R1', 'R2', 'R3', 'R4', 'R5', 'P1', 'P2', 'P3', 'P4', 'P5'] as const
+  ).every((itemId) => hasAnswer(answers, itemId));
 }
 
 function enforceSubmissionSafety(
@@ -65,6 +76,7 @@ function enforceSubmissionSafety(
       'Weekly check-ins are paused while the safety handoff is active.',
     );
   }
+
   if (safety.reassessmentDueAt && now >= new Date(safety.reassessmentDueAt)) {
     throw new DomainError(
       409,
@@ -85,7 +97,8 @@ function baselineDaysInput(
   return days.map((day) => ({
     localDate: day.localDate.toISOString().slice(0, 10),
     status: day.status,
-    standardDrinks: day.standardDrinks === null ? null : Number(day.standardDrinks),
+    standardDrinks:
+      day.standardDrinks === null ? null : Number(day.standardDrinks),
     ethanolGrams: day.ethanolGrams === null ? null : Number(day.ethanolGrams),
   }));
 }
@@ -100,6 +113,7 @@ function responseRows(answers: WeeklyAnswers) {
     wordingVersion: string;
     scaleVersion: string;
   }> = [];
+
   const items = [
     ['U1', 'alcohol_use_reported'],
     ['R1', 'sleep_difficulty'],
@@ -113,20 +127,30 @@ function responseRows(answers: WeeklyAnswers) {
     ['P4', 'productive_recreational_activity'],
     ['P5', 'family_friend_support'],
   ] as const;
+
   for (const [itemId, itemKey] of items) {
-    if (!Object.prototype.hasOwnProperty.call(answers, itemId)) continue;
+    if (!Object.prototype.hasOwnProperty.call(answers, itemId)) {
+      continue;
+    }
+
     const value = answers[itemId];
+
     rows.push({
       itemId,
       itemKey,
       ...(itemId === 'U1'
-        ? { booleanValue: value as boolean }
-        : { integerValue: value as number }),
+        ? {
+            booleanValue: value as boolean,
+          }
+        : {
+            integerValue: value as number,
+          }),
       instrumentVersion: AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION,
       wordingVersion: AUD_WEEKLY_CHECKIN_WORDING_VERSION,
       scaleVersion: AUD_WEEKLY_CHECKIN_SCALE_VERSION,
     });
   }
+
   return rows;
 }
 
@@ -140,10 +164,18 @@ function reductionConflict(
   const hasPositiveQuantity = days.some(
     (day) => day.status === 'KNOWN_QUANTITY' && (day.standardDrinks ?? 0) > 0,
   );
+
   const allKnownZero =
     days.length === 7 && days.every((day) => day.status === 'KNOWN_ZERO');
-  if (answers.U1 === false && hasPositiveQuantity) return true;
-  if (answers.U1 === true && allKnownZero) return true;
+
+  if (answers.U1 === false && hasPositiveQuantity) {
+    return true;
+  }
+
+  if (answers.U1 === true && allKnownZero) {
+    return true;
+  }
+
   return false;
 }
 
@@ -165,11 +197,17 @@ export async function submitWeeklyAssessment(input: {
     requestId,
     allowHistoricalBackfill = false,
   } = input;
+
   await lockPatientForProcessing(tx, patientId);
+
   const assessment = await tx.weeklyAssessment.findUnique({
-    where: { id: assessmentId },
+    where: {
+      id: assessmentId,
+    },
     include: {
-      scheduledPeriod: { include: periodInclude() },
+      scheduledPeriod: {
+        include: periodInclude(),
+      },
       authoritativeRevision: {
         select: {
           id: true,
@@ -182,7 +220,11 @@ export async function submitWeeklyAssessment(input: {
       },
     },
   });
-  if (!assessment || assessment.patientId !== patientId) notFound();
+
+  if (!assessment || assessment.patientId !== patientId) {
+    notFound();
+  }
+
   if (
     assessment.instrumentId !== AUD_WEEKLY_CHECKIN_INSTRUMENT_ID ||
     assessment.instrumentVersion !== AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION
@@ -193,13 +235,18 @@ export async function submitWeeklyAssessment(input: {
       'The assessment policy is not supported.',
     );
   }
-  if (assessment.authoritativeRevisionId || assessment.completionStatus !== 'DRAFT') {
+
+  if (
+    assessment.authoritativeRevisionId ||
+    assessment.completionStatus !== 'DRAFT'
+  ) {
     throw new DomainError(
       409,
       'ASSESSMENT_ALREADY_SUBMITTED',
       'This weekly assessment already has an authoritative submission.',
     );
   }
+
   if (assessment.draftVersion !== request.expectedDraftVersion) {
     throw new DomainError(
       409,
@@ -209,25 +256,29 @@ export async function submitWeeklyAssessment(input: {
   }
 
   const period = assessment.scheduledPeriod as AssessmentPeriodRecord;
+
   const now = clock.now();
-  const submissionClassification = await classifyFirstWeeklyAssessmentSubmission(
-    tx,
-    patientId,
-    period,
-    now,
-    { allowHistoricalBackfill },
-  );
+
+  const submissionClassification =
+    await classifyFirstWeeklyAssessmentSubmission(tx, patientId, period, now, {
+      allowHistoricalBackfill,
+    });
+
   const [goal, preference] = await Promise.all([
     resolveRecoveryGoalForPeriod(tx, patientId, period),
     resolvePreferencesForPeriod(tx, patientId, period),
   ]);
+
   const safety = await loadPatientSafetyProjection(tx, patientId);
+
   enforceSubmissionSafety(safety, now);
 
   const answers = WeeklyAssessmentDraftAnswersSchema.parse(
     assessment.draftAnswerSnapshot,
   ) as WeeklyAnswers;
+
   const allAnswered = allRequiredAnswersPresent(answers);
+
   if (request.completionIntent === 'COMPLETE' && !allAnswered) {
     throw new DomainError(
       400,
@@ -235,6 +286,7 @@ export async function submitWeeklyAssessment(input: {
       'Complete submission requires an answer for every weekly check-in item.',
     );
   }
+
   if (request.completionIntent === 'PARTIAL' && allAnswered) {
     throw new DomainError(
       400,
@@ -246,15 +298,26 @@ export async function submitWeeklyAssessment(input: {
   const draftDays = WeeklyAlcoholDayInputSetSchema.parse(
     assessment.draftConsumptionSnapshot ?? [],
   );
-  let finalizedReduction: ReturnType<typeof finalizeReductionWeek> | null = null;
+
+  let finalizedReduction: ReturnType<typeof finalizeReductionWeek> | null =
+    null;
+
   let baseline: Prisma.ReductionBaselineRevisionGetPayload<{
-    include: { days: { orderBy: { localDate: 'asc' } } };
+    include: {
+      days: {
+        orderBy: {
+          localDate: 'asc';
+        };
+      };
+    };
   }> | null = null;
+
   const historical = await loadHistoricalWeeklyObservations(
     tx,
     patientId,
     period.periodStartAt,
   );
+
   if (goal?.goal === 'REDUCTION') {
     if (!goal.baselineRevisionId) {
       throw new DomainError(
@@ -263,10 +326,20 @@ export async function submitWeeklyAssessment(input: {
         'A confirmed reduction baseline is required before this check-in can be submitted.',
       );
     }
+
     baseline = await tx.reductionBaselineRevision.findUnique({
-      where: { id: goal.baselineRevisionId },
-      include: { days: { orderBy: { localDate: 'asc' } } },
+      where: {
+        id: goal.baselineRevisionId,
+      },
+      include: {
+        days: {
+          orderBy: {
+            localDate: 'asc',
+          },
+        },
+      },
     });
+
     if (!baseline || baseline.lifecycle !== 'CONFIRMED') {
       throw new DomainError(
         409,
@@ -274,6 +347,7 @@ export async function submitWeeklyAssessment(input: {
         'The period-effective reduction baseline is not confirmed.',
       );
     }
+
     finalizedReduction = finalizeReductionWeek({
       dates: periodLocalDates(period),
       periodStartAt: period.periodStartAt,
@@ -290,6 +364,7 @@ export async function submitWeeklyAssessment(input: {
       baselineDays: baselineDaysInput(baseline.days),
       history: historical,
     });
+
     if (reductionConflict(answers, finalizedReduction.days)) {
       throw new DomainError(
         400,
@@ -328,6 +403,7 @@ export async function submitWeeklyAssessment(input: {
       },
     },
   });
+
   if (revision.assessmentId !== assessment.id) {
     throw new DomainError(
       500,
@@ -335,12 +411,16 @@ export async function submitWeeklyAssessment(input: {
       'The authoritative revision did not remain bound to its logical assessment.',
     );
   }
+
   const rows = responseRows(answers).map((row) => ({
     ...row,
     assessmentRevisionId: revision.id,
   }));
+
   if (rows.length > 0) {
-    await tx.assessmentItemResponse.createMany({ data: rows });
+    await tx.assessmentItemResponse.createMany({
+      data: rows,
+    });
   }
 
   const weeklyUseStatus =
@@ -349,6 +429,7 @@ export async function submitWeeklyAssessment(input: {
       : answers.U1 === false
         ? ('NEGATIVE' as const)
         : ('UNKNOWN' as const);
+
   await tx.useObservationLedger.create({
     data: {
       patientId,
@@ -382,7 +463,9 @@ export async function submitWeeklyAssessment(input: {
         unitPolicyVersion: REDUCTION_UNIT_POLICY_VERSION,
       })),
     });
+
     const summary = finalizedReduction.summary;
+
     await tx.weeklyConsumptionSummary.create({
       data: {
         patientId,
@@ -394,7 +477,8 @@ export async function submitWeeklyAssessment(input: {
         unknownDayCount: summary.unknownDayCount,
         coverageRatio: summary.coverageRatio,
         knownStandardDrinksTotal: summary.knownStandardDrinksTotal,
-        completeWeekTotalStandardDrinks: summary.completeWeekTotalStandardDrinks,
+        completeWeekTotalStandardDrinks:
+          summary.completeWeekTotalStandardDrinks,
         completeWeekEthanolGrams: summary.completeWeekEthanolGrams,
         drinkingDays: summary.drinkingDays,
         alcoholFreeDays: summary.alcoholFreeDays,
@@ -414,7 +498,9 @@ export async function submitWeeklyAssessment(input: {
   }
 
   const updated = await tx.weeklyAssessment.update({
-    where: { id: assessment.id },
+    where: {
+      id: assessment.id,
+    },
     data: {
       authoritativeRevisionId: revision.id,
       completionStatus: request.completionIntent,
@@ -433,6 +519,7 @@ export async function submitWeeklyAssessment(input: {
       },
     },
   });
+
   const recomputation = await recomputePatientMonitoringFromPeriod({
     tx,
     clock,
@@ -445,6 +532,7 @@ export async function submitWeeklyAssessment(input: {
     actorId: patientId,
     requestId,
   });
+
   await tx.auditEvent.create({
     data: {
       actorId: patientId,
@@ -482,7 +570,11 @@ export async function submitWeeklyAssessment(input: {
         : periodAvailability(period, now),
     period,
     assessment: updated,
-    context: { period, goal, preference },
+    context: {
+      period,
+      goal,
+      preference,
+    },
     safety,
     now,
   });

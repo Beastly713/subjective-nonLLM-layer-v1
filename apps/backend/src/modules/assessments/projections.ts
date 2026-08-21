@@ -32,7 +32,8 @@ export function periodLocalDates(
   const start = DateTime.fromJSDate(period.periodStartAt, {
     zone: period.monitoringTimezone,
   });
-  if (!start.isValid) throw new Error('The persisted monitoring timezone is invalid.');
+  if (!start.isValid)
+    throw new Error('The persisted monitoring timezone is invalid.');
   return Array.from({ length: 7 }, (_, index) =>
     start.plus({ days: index }).toISODate(),
   ).filter((date): date is string => date !== null);
@@ -91,15 +92,18 @@ export function projectInstrument(goal: WeeklyCheckInGoal) {
 export function periodAvailability(
   period: AssessmentPeriodRecord,
   now: Date,
-): Exclude<CheckInAvailability, 'NOT_ACTIVATED' | 'HISTORICAL' | 'SAFETY_PAUSED' | 'SAFETY_REASSESSMENT_REQUIRED'> {
+): Exclude<
+  CheckInAvailability,
+  | 'NOT_ACTIVATED'
+  | 'HISTORICAL'
+  | 'SAFETY_PAUSED'
+  | 'SAFETY_REASSESSMENT_REQUIRED'
+> {
   if (now < period.openAt) return 'UPCOMING';
   return now <= period.effectiveDueAt ? 'OPEN' : 'LATE';
 }
 
-export function projectPeriod(
-  period: AssessmentPeriodRecord,
-  now: Date,
-) {
+export function projectPeriod(period: AssessmentPeriodRecord, now: Date) {
   const localStart = DateTime.fromJSDate(period.periodStartAt, {
     zone: period.monitoringTimezone,
   });
@@ -190,7 +194,9 @@ export function projectSubmitted(assessment: {
   } | null;
 }) {
   if (!assessment.authoritativeRevision) {
-    throw new Error('A submitted assessment is missing its authoritative revision.');
+    throw new Error(
+      'A submitted assessment is missing its authoritative revision.',
+    );
   }
   return SubmittedWeeklyAssessmentProjectionSchema.parse({
     assessmentId: assessment.id,
@@ -199,15 +205,20 @@ export function projectSubmitted(assessment: {
     revisionId: assessment.authoritativeRevision.id,
     revisionNumber: assessment.authoritativeRevision.revisionNumber,
     completionStatus: assessment.authoritativeRevision.completionStatus,
-    submissionClassification: assessment.authoritativeRevision.submissionClassification,
+    submissionClassification:
+      assessment.authoritativeRevision.submissionClassification,
     submittedAt: assessment.authoritativeRevision.submittedAt.toISOString(),
     sourceDraftVersion: assessment.authoritativeRevision.sourceDraftVersion,
   });
 }
 
-function projectAssessment(assessment: Parameters<typeof projectDraft>[0] & {
-  authoritativeRevision?: Parameters<typeof projectSubmitted>[0]['authoritativeRevision'];
-}) {
+function projectAssessment(
+  assessment: Parameters<typeof projectDraft>[0] & {
+    authoritativeRevision?: Parameters<
+      typeof projectSubmitted
+    >[0]['authoritativeRevision'];
+  },
+) {
   if (assessment.completionStatus === 'DRAFT') return projectDraft(assessment);
   return projectSubmitted({
     id: assessment.id,
@@ -220,15 +231,21 @@ function projectAssessment(assessment: Parameters<typeof projectDraft>[0] & {
 export function projectCheckInState(input: {
   availability: CheckInAvailability;
   period: AssessmentPeriodRecord | null;
-  assessment: (Parameters<typeof projectDraft>[0] & {
-    authoritativeRevision?: Parameters<typeof projectSubmitted>[0]['authoritativeRevision'];
-  }) | null;
+  assessment:
+    | (Parameters<typeof projectDraft>[0] & {
+        authoritativeRevision?: Parameters<
+          typeof projectSubmitted
+        >[0]['authoritativeRevision'];
+      })
+    | null;
   context: AssessmentContext | null;
   safety: PatientSafetyProjection;
   now: Date;
 }) {
   const goal = projectGoalContext(input.context?.goal ?? null);
-  const preference = projectPreferenceContext(input.context?.preference ?? null);
+  const preference = projectPreferenceContext(
+    input.context?.preference ?? null,
+  );
   const weeklyConsumptionRequired = goal.goal === 'REDUCTION';
   const weeklyConsumptionDates =
     weeklyConsumptionRequired && input.period
@@ -251,7 +268,10 @@ export function projectCheckInState(input: {
 export function safetyAvailability(
   safety: PatientSafetyProjection,
   now: Date,
-): Extract<CheckInAvailability, 'SAFETY_PAUSED' | 'SAFETY_REASSESSMENT_REQUIRED'> | null {
+): Extract<
+  CheckInAvailability,
+  'SAFETY_PAUSED' | 'SAFETY_REASSESSMENT_REQUIRED'
+> | null {
   if (safety.requiresSafetyShell || safety.monitoringPromptPolicy === 'PAUSE') {
     return 'SAFETY_PAUSED';
   }

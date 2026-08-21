@@ -215,9 +215,7 @@ export type ReductionProposalKind = z.infer<typeof ReductionProposalKindSchema>;
 export type ReductionBaselineDayInput = z.infer<
   typeof ReductionBaselineDayInputSchema
 >;
-export type WeeklyAlcoholDayInput = z.infer<
-  typeof WeeklyAlcoholDayInputSchema
->;
+export type WeeklyAlcoholDayInput = z.infer<typeof WeeklyAlcoholDayInputSchema>;
 export type ReductionSetupResponse = z.infer<
   typeof ReductionSetupResponseSchema
 >;

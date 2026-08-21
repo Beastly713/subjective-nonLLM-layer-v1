@@ -101,7 +101,10 @@ export const AUD_WEEKLY_CHECKIN_V1 = {
       direction: 'HIGHER_IS_WORSE',
       prompt:
         'During this 7-day period, how strong were your urges or cravings to drink alcohol?',
-      anchors: { zero: 'No urge or craving', seven: 'Extremely strong urge or craving' },
+      anchors: {
+        zero: 'No urge or craving',
+        seven: 'Extremely strong urge or craving',
+      },
     },
     {
       itemId: 'R4',
@@ -181,6 +184,7 @@ export function p1WordingForGoal(goal: WeeklyCheckInGoal) {
   const item = AUD_WEEKLY_CHECKIN_V1.items.find(
     (candidate) => candidate.itemId === 'P1',
   );
-  if (!item || item.itemId !== 'P1') throw new Error('P1 policy item is missing.');
+  if (!item || item.itemId !== 'P1')
+    throw new Error('P1 policy item is missing.');
   return item.wordingByGoal[goal];
 }

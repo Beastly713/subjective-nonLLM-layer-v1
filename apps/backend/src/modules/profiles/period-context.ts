@@ -38,9 +38,16 @@ export async function resolveRecoveryGoalForPeriod(
     orderBy: [{ goalVersion: 'desc' }, { id: 'desc' }],
   });
 
-  return candidates.sort((left, right) => {
-    const leftStart = left.effectiveFromPeriod?.periodStartAt.getTime() ?? 0;
-    const rightStart = right.effectiveFromPeriod?.periodStartAt.getTime() ?? 0;
-    return rightStart - leftStart || right.goalVersion - left.goalVersion || right.id.localeCompare(left.id);
-  })[0] ?? null;
+  return (
+    candidates.sort((left, right) => {
+      const leftStart = left.effectiveFromPeriod?.periodStartAt.getTime() ?? 0;
+      const rightStart =
+        right.effectiveFromPeriod?.periodStartAt.getTime() ?? 0;
+      return (
+        rightStart - leftStart ||
+        right.goalVersion - left.goalVersion ||
+        right.id.localeCompare(left.id)
+      );
+    })[0] ?? null
+  );
 }

@@ -39,9 +39,15 @@ const StaffAssessmentParamsSchema = z.object({
   assessmentId: z.uuid(),
 });
 
-function requireOwnPatient(actor: Awaited<ReturnType<typeof requirePermission>>) {
+function requireOwnPatient(
+  actor: Awaited<ReturnType<typeof requirePermission>>,
+) {
   if (!actor.access.scopeKinds.includes('OWN_PATIENT')) {
-    throw new DomainError(403, 'PERMISSION_DENIED', 'The action is not permitted.');
+    throw new DomainError(
+      403,
+      'PERMISSION_DENIED',
+      'The action is not permitted.',
+    );
   }
 }
 
@@ -94,191 +100,223 @@ export function registerAssessmentRoutes(
     return CheckInAssessmentDetailSchema.parse(detail);
   });
 
-  app.post('/api/v1/patient/check-in/backfill/:periodId/start', async (request) => {
-    const actor = await requirePermission(
-      request,
-      auth,
-      prisma,
-      config,
-      'PATIENT_ASSESSMENT_UPDATE',
-    );
-    requireOwnPatient(actor);
-    const { periodId } = PeriodParamsSchema.parse(request.params);
-    const key = requireIdempotencyKey(request.headers['idempotency-key']);
-    const result = await executeIdempotently(
-      prisma,
-      actor.userId,
-      'PATIENT_WEEKLY_ASSESSMENT_BACKFILL_START',
-      key,
-      { periodId },
-      (tx) => startWeeklyAssessmentBackfill(tx, clock, actor.userId, periodId),
-    );
-    return result.value;
-  });
-
-  app.put('/api/v1/patient/assessments/:assessmentId/draft', async (request) => {
-    const actor = await requirePermission(
-      request,
-      auth,
-      prisma,
-      config,
-      'PATIENT_ASSESSMENT_UPDATE',
-    );
-    requireOwnPatient(actor);
-    const { assessmentId } = AssessmentParamsSchema.parse(request.params);
-    return prisma.$transaction((tx) =>
-      saveWeeklyAssessmentDraft(
-        tx,
-        clock,
+  app.post(
+    '/api/v1/patient/check-in/backfill/:periodId/start',
+    async (request) => {
+      const actor = await requirePermission(
+        request,
+        auth,
+        prisma,
+        config,
+        'PATIENT_ASSESSMENT_UPDATE',
+      );
+      requireOwnPatient(actor);
+      const { periodId } = PeriodParamsSchema.parse(request.params);
+      const key = requireIdempotencyKey(request.headers['idempotency-key']);
+      const result = await executeIdempotently(
+        prisma,
         actor.userId,
-        assessmentId,
-        request.body,
-      ),
-    );
-  });
+        'PATIENT_WEEKLY_ASSESSMENT_BACKFILL_START',
+        key,
+        { periodId },
+        (tx) =>
+          startWeeklyAssessmentBackfill(tx, clock, actor.userId, periodId),
+      );
+      return result.value;
+    },
+  );
 
-  app.post('/api/v1/patient/assessments/:assessmentId/submit', async (request) => {
-    const actor = await requirePermission(
-      request,
-      auth,
-      prisma,
-      config,
-      'PATIENT_ASSESSMENT_UPDATE',
-    );
-    requireOwnPatient(actor);
-    const { assessmentId } = AssessmentParamsSchema.parse(request.params);
-    const body = SubmitWeeklyAssessmentRequestSchema.parse(request.body);
-    const key = requireIdempotencyKey(request.headers['idempotency-key']);
-    const idempotencyPayload = { assessmentId, ...body };
-    const result = await executeIdempotently(
-      prisma,
-      actor.userId,
-      'PATIENT_WEEKLY_ASSESSMENT_SUBMIT',
-      key,
-      idempotencyPayload,
-      (tx) =>
-        submitWeeklyAssessment({
+  app.put(
+    '/api/v1/patient/assessments/:assessmentId/draft',
+    async (request) => {
+      const actor = await requirePermission(
+        request,
+        auth,
+        prisma,
+        config,
+        'PATIENT_ASSESSMENT_UPDATE',
+      );
+      requireOwnPatient(actor);
+      const { assessmentId } = AssessmentParamsSchema.parse(request.params);
+      return prisma.$transaction((tx) =>
+        saveWeeklyAssessmentDraft(
           tx,
           clock,
-          patientId: actor.userId,
+          actor.userId,
           assessmentId,
-          request: body,
-          requestId: request.id,
-        }),
-    );
-    return SubmitWeeklyAssessmentResponseSchema.parse(result.value);
-  });
+          request.body,
+        ),
+      );
+    },
+  );
 
-  app.post('/api/v1/patient/assessments/:assessmentId/backfill-submit', async (request) => {
-    const actor = await requirePermission(
-      request,
-      auth,
-      prisma,
-      config,
-      'PATIENT_ASSESSMENT_UPDATE',
-    );
-    requireOwnPatient(actor);
-    const { assessmentId } = AssessmentParamsSchema.parse(request.params);
-    const body = SubmitWeeklyAssessmentRequestSchema.parse(request.body);
-    const key = requireIdempotencyKey(request.headers['idempotency-key']);
-    const result = await executeIdempotently(
-      prisma,
-      actor.userId,
-      'PATIENT_WEEKLY_ASSESSMENT_BACKFILL_SUBMIT',
-      key,
-      { assessmentId, ...body },
-      (tx) =>
-        submitWeeklyAssessment({
-          tx,
-          clock,
-          patientId: actor.userId,
-          assessmentId,
-          request: body,
-          requestId: request.id,
-          allowHistoricalBackfill: true,
-        }),
-    );
-    return SubmitWeeklyAssessmentResponseSchema.parse(result.value);
-  });
+  app.post(
+    '/api/v1/patient/assessments/:assessmentId/submit',
+    async (request) => {
+      const actor = await requirePermission(
+        request,
+        auth,
+        prisma,
+        config,
+        'PATIENT_ASSESSMENT_UPDATE',
+      );
+      requireOwnPatient(actor);
+      const { assessmentId } = AssessmentParamsSchema.parse(request.params);
+      const body = SubmitWeeklyAssessmentRequestSchema.parse(request.body);
+      const key = requireIdempotencyKey(request.headers['idempotency-key']);
+      const idempotencyPayload = { assessmentId, ...body };
+      const result = await executeIdempotently(
+        prisma,
+        actor.userId,
+        'PATIENT_WEEKLY_ASSESSMENT_SUBMIT',
+        key,
+        idempotencyPayload,
+        (tx) =>
+          submitWeeklyAssessment({
+            tx,
+            clock,
+            patientId: actor.userId,
+            assessmentId,
+            request: body,
+            requestId: request.id,
+          }),
+      );
+      return SubmitWeeklyAssessmentResponseSchema.parse(result.value);
+    },
+  );
 
-  app.post('/api/v1/patient/assessments/:assessmentId/corrections', async (request) => {
-    const actor = await requirePermission(
-      request,
-      auth,
-      prisma,
-      config,
-      'PATIENT_ASSESSMENT_UPDATE',
-    );
-    requireOwnPatient(actor);
-    const { assessmentId } = AssessmentParamsSchema.parse(request.params);
-    const body = WeeklyAssessmentCorrectionRequestSchema.parse(request.body);
-    const key = requireIdempotencyKey(request.headers['idempotency-key']);
-    const result = await executeIdempotently(
-      prisma,
-      actor.userId,
-      'PATIENT_WEEKLY_ASSESSMENT_CORRECTION',
-      key,
-      { assessmentId, ...body },
-      (tx) =>
-        correctWeeklyAssessment({
-          tx,
-          clock,
-          patientId: actor.userId,
-          assessmentId,
-          request: body,
-          requestId: request.id,
-          actorId: actor.userId,
-          actorType: 'PATIENT',
-        }),
-    );
-    return SubmitWeeklyAssessmentResponseSchema.parse(result.value);
-  });
+  app.post(
+    '/api/v1/patient/assessments/:assessmentId/backfill-submit',
+    async (request) => {
+      const actor = await requirePermission(
+        request,
+        auth,
+        prisma,
+        config,
+        'PATIENT_ASSESSMENT_UPDATE',
+      );
+      requireOwnPatient(actor);
+      const { assessmentId } = AssessmentParamsSchema.parse(request.params);
+      const body = SubmitWeeklyAssessmentRequestSchema.parse(request.body);
+      const key = requireIdempotencyKey(request.headers['idempotency-key']);
+      const result = await executeIdempotently(
+        prisma,
+        actor.userId,
+        'PATIENT_WEEKLY_ASSESSMENT_BACKFILL_SUBMIT',
+        key,
+        { assessmentId, ...body },
+        (tx) =>
+          submitWeeklyAssessment({
+            tx,
+            clock,
+            patientId: actor.userId,
+            assessmentId,
+            request: body,
+            requestId: request.id,
+            allowHistoricalBackfill: true,
+          }),
+      );
+      return SubmitWeeklyAssessmentResponseSchema.parse(result.value);
+    },
+  );
 
-  app.post('/api/v1/clinician/patients/:patientId/assessments/:assessmentId/corrections', async (request) => {
-    const actor = await requirePermission(
-      request,
-      auth,
-      prisma,
-      config,
-      'PATIENT_ASSESSMENT_STAFF_CORRECT',
-      { fresh: true },
-    );
-    if (!actor.access.scopeKinds.includes('ASSIGNED_PATIENTS')) {
-      throw new DomainError(403, 'PERMISSION_DENIED', 'The action is not permitted.');
-    }
-    const { patientId, assessmentId } = StaffAssessmentParamsSchema.parse(request.params);
-    const assignment = await prisma.clinicianPatientAssignment.findFirst({
-      where: {
-        clinicianUserId: actor.userId,
-        patientId,
-        endedAt: null,
-        patient: { applicationAccount: { is: { state: 'ACTIVE' } } },
-      },
-      select: { id: true },
-    });
-    if (!assignment) throw new DomainError(404, 'NOT_FOUND', 'The requested resource was not found.');
-    const body = StaffWeeklyAssessmentCorrectionRequestSchema.parse(request.body);
-    const key = requireIdempotencyKey(request.headers['idempotency-key']);
-    const result = await executeIdempotently(
-      prisma,
-      actor.userId,
-      'STAFF_WEEKLY_ASSESSMENT_CORRECTION',
-      key,
-      { patientId, assessmentId, ...body },
-      (tx) =>
-        correctWeeklyAssessment({
-          tx,
-          clock,
+  app.post(
+    '/api/v1/patient/assessments/:assessmentId/corrections',
+    async (request) => {
+      const actor = await requirePermission(
+        request,
+        auth,
+        prisma,
+        config,
+        'PATIENT_ASSESSMENT_UPDATE',
+      );
+      requireOwnPatient(actor);
+      const { assessmentId } = AssessmentParamsSchema.parse(request.params);
+      const body = WeeklyAssessmentCorrectionRequestSchema.parse(request.body);
+      const key = requireIdempotencyKey(request.headers['idempotency-key']);
+      const result = await executeIdempotently(
+        prisma,
+        actor.userId,
+        'PATIENT_WEEKLY_ASSESSMENT_CORRECTION',
+        key,
+        { assessmentId, ...body },
+        (tx) =>
+          correctWeeklyAssessment({
+            tx,
+            clock,
+            patientId: actor.userId,
+            assessmentId,
+            request: body,
+            requestId: request.id,
+            actorId: actor.userId,
+            actorType: 'PATIENT',
+          }),
+      );
+      return SubmitWeeklyAssessmentResponseSchema.parse(result.value);
+    },
+  );
+
+  app.post(
+    '/api/v1/clinician/patients/:patientId/assessments/:assessmentId/corrections',
+    async (request) => {
+      const actor = await requirePermission(
+        request,
+        auth,
+        prisma,
+        config,
+        'PATIENT_ASSESSMENT_STAFF_CORRECT',
+        { fresh: true },
+      );
+      if (!actor.access.scopeKinds.includes('ASSIGNED_PATIENTS')) {
+        throw new DomainError(
+          403,
+          'PERMISSION_DENIED',
+          'The action is not permitted.',
+        );
+      }
+      const { patientId, assessmentId } = StaffAssessmentParamsSchema.parse(
+        request.params,
+      );
+      const assignment = await prisma.clinicianPatientAssignment.findFirst({
+        where: {
+          clinicianUserId: actor.userId,
           patientId,
-          assessmentId,
-          request: body,
-          requestId: request.id,
-          actorId: actor.userId,
-          actorType: 'CLINICIAN',
-        }),
-    );
-    return CheckInMutationReceiptSchema.parse(result.value);
-  });
+          endedAt: null,
+          patient: { applicationAccount: { is: { state: 'ACTIVE' } } },
+        },
+        select: { id: true },
+      });
+      if (!assignment)
+        throw new DomainError(
+          404,
+          'NOT_FOUND',
+          'The requested resource was not found.',
+        );
+      const body = StaffWeeklyAssessmentCorrectionRequestSchema.parse(
+        request.body,
+      );
+      const key = requireIdempotencyKey(request.headers['idempotency-key']);
+      const result = await executeIdempotently(
+        prisma,
+        actor.userId,
+        'STAFF_WEEKLY_ASSESSMENT_CORRECTION',
+        key,
+        { patientId, assessmentId, ...body },
+        (tx) =>
+          correctWeeklyAssessment({
+            tx,
+            clock,
+            patientId,
+            assessmentId,
+            request: body,
+            requestId: request.id,
+            actorId: actor.userId,
+            actorType: 'CLINICIAN',
+          }),
+      );
+      return CheckInMutationReceiptSchema.parse(result.value);
+    },
+  );
 }
 
 async function readCheckInHistoryInTransaction(

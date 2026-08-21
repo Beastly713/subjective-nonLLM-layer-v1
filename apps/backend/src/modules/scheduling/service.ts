@@ -162,7 +162,11 @@ export async function ensureRelevantPeriodsInTransaction(
 
   if (!latest) return null;
 
-  for (let index = 0; index < maxPeriods && latest.openAt <= clock.now(); index += 1) {
+  for (
+    let index = 0;
+    index < maxPeriods && latest.openAt <= clock.now();
+    index += 1
+  ) {
     const next = await provisionNextPeriodInTransaction(tx, clock, patientId);
     if (next.id === latest.id) break;
     latest = next;

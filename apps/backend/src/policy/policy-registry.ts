@@ -12,9 +12,13 @@ export const POLICY_REGISTRY = {
   },
 } as const;
 
-export function getWeeklyCheckInPolicy(instrumentVersion = AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION) {
+export function getWeeklyCheckInPolicy(
+  instrumentVersion = AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION,
+) {
   if (instrumentVersion !== AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION) {
-    throw new Error(`Unsupported weekly check-in instrument version: ${instrumentVersion}`);
+    throw new Error(
+      `Unsupported weekly check-in instrument version: ${instrumentVersion}`,
+    );
   }
   return POLICY_REGISTRY[AUD_WEEKLY_CHECKIN_INSTRUMENT_ID];
 }
