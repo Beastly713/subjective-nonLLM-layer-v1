@@ -1,9 +1,13 @@
 import {
+  ClinicianEngagementItemSchema,
+  ClinicianEngagementResponseSchema,
+  EngagementCaseActionRequestSchema,
   PatientHomeResponseSchema,
   PatientMonitoringActionRequestSchema,
   PatientMonitoringResponseSchema,
 } from '@aud-subjective/contracts';
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 
 import type { PrismaClient } from '../../generated/prisma/client.js';
 import type { AppAuth } from '../../infrastructure/auth/auth.js';
@@ -17,10 +21,16 @@ import { DomainError } from '../../shared/errors/domain-error.js';
 import type { Clock } from '../../shared/clock/clock.js';
 import {
   optOutMonitoring,
+  readClinicianEngagementDetail,
+  readClinicianEngagementQueue,
   readPatientHome,
   readPatientMonitoring,
   reEnableMonitoring,
+  transitionEngagementCase,
 } from './service.js';
+
+const PatientParamsSchema = z.object({ patientId: z.uuid() });
+const CaseParamsSchema = z.object({ caseId: z.uuid() });
 
 function requireOwnPatient(
   actor: Awaited<ReturnType<typeof requirePermission>>,
@@ -110,5 +120,92 @@ export function registerEngagementRoutes(
       );
       return PatientMonitoringResponseSchema.parse(result.value);
     });
+  }
+
+  app.get('/api/v1/clinician/engagement', async (request) => {
+    const actor = await requirePermission(
+      request,
+      auth,
+      prisma,
+      config,
+      'ENGAGEMENT_READ',
+    );
+    if (!actor.access.scopeKinds.includes('ASSIGNED_PATIENTS')) {
+      throw new DomainError(403, 'PERMISSION_DENIED', 'The action is not permitted.');
+    }
+    return ClinicianEngagementResponseSchema.parse(
+      await readClinicianEngagementQueue(prisma, clock, actor.userId),
+    );
+  });
+
+  app.get('/api/v1/clinician/patients/:patientId/engagement', async (request) => {
+    const actor = await requirePermission(
+      request,
+      auth,
+      prisma,
+      config,
+      'ENGAGEMENT_READ',
+    );
+    if (!actor.access.scopeKinds.includes('ASSIGNED_PATIENTS')) {
+      throw new DomainError(403, 'PERMISSION_DENIED', 'The action is not permitted.');
+    }
+    const { patientId } = PatientParamsSchema.parse(request.params);
+    const response = await prisma.$transaction((tx) =>
+      readClinicianEngagementDetail({
+        tx,
+        clock,
+        clinicianId: actor.userId,
+        patientId,
+      }),
+    );
+    return ClinicianEngagementItemSchema.parse(response);
+  });
+
+  for (const action of ['acknowledge', 'outreach'] as const) {
+    app.post(
+      `/api/v1/clinician/engagement-cases/:caseId/${
+        action === 'outreach' ? 'start-outreach' : action
+      }`,
+      async (request) => {
+        const actor = await requirePermission(
+          request,
+          auth,
+          prisma,
+          config,
+          action === 'acknowledge'
+            ? 'ENGAGEMENT_CASE_ACKNOWLEDGE'
+            : 'ENGAGEMENT_CASE_OUTREACH',
+        );
+        if (!actor.access.scopeKinds.includes('ASSIGNED_PATIENTS')) {
+          throw new DomainError(403, 'PERMISSION_DENIED', 'The action is not permitted.');
+        }
+        const { caseId } = CaseParamsSchema.parse(request.params);
+        const body = EngagementCaseActionRequestSchema.parse(request.body);
+        const key = requireIdempotencyKey(request.headers['idempotency-key']);
+        const result = await executeIdempotently(
+          prisma,
+          actor.userId,
+          `ENGAGEMENT_CASE_${action.toUpperCase()}`,
+          key,
+          { caseId, ...body },
+          (tx) =>
+            transitionEngagementCase({
+              tx,
+              clock,
+              clinicianId: actor.userId,
+              caseId,
+              expectedCaseVersion: body.expectedCaseVersion,
+              target:
+                action === 'acknowledge'
+                  ? 'ACKNOWLEDGED'
+                  : 'OUTREACH_IN_PROGRESS',
+              requestId: request.id,
+            }),
+        );
+        return ClinicianEngagementItemSchema.parse(
+          result.value,
+        );
+      },
+    );
   }
 }

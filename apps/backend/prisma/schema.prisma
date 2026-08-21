@@ -258,6 +258,9 @@ model PatientProfile {
   patientInterventionIntents PatientInterventionIntent[]
   engagementState EngagementState?
   engagementReminders MissedCheckinReminder[]
+  engagementCases EngagementCase[]
+  engagementCaseEvents EngagementCaseEvent[]
+  technicalFailures TechnicalFailure[]
 
   @@map("patient_profiles")
 }
@@ -606,6 +609,8 @@ model ScheduledPeriod {
   patientInterventionIntents PatientInterventionIntent[]
   engagementStateSources EngagementState[] @relation("EngagementCyclePeriod")
   engagementReminders MissedCheckinReminder[]
+  engagementCases EngagementCase[]
+  technicalFailures TechnicalFailure[]
 
   @@unique([patientId, periodStartAt], map: "scheduled_periods_patient_start_key")
   @@index([patientId, periodEndAt], map: "scheduled_periods_patient_end_idx")
@@ -627,6 +632,7 @@ model EngagementState {
   state                         EngagementStateValue
   version                       Int                @default(1)
   missedCyclePeriodId           String?            @map("missed_cycle_period_id") @db.Uuid
+  sourceTechnicalFailureId      String?            @map("source_technical_failure_id") @db.Uuid
   cycleTrackingFromAt           DateTime?          @map("cycle_tracking_from_at") @db.Timestamptz(6)
   sourceEffectiveDueAt          DateTime?          @map("source_effective_due_at") @db.Timestamptz(6)
   lastValidAssessmentRevisionId String?            @map("last_valid_assessment_revision_id") @db.Uuid
@@ -661,6 +667,103 @@ model MissedCheckinReminder {
   @@index([patientId, eligibleAt], map: "missed_checkin_reminders_patient_eligible_idx")
   @@index([patientId, cancelledAt], map: "missed_checkin_reminders_patient_cancelled_idx")
   @@map("missed_checkin_reminders")
+}
+
+enum EngagementCaseLifecycle {
+  NEW
+  ACKNOWLEDGED
+  OUTREACH_IN_PROGRESS
+  RESOLVED_RETURNED
+  RESOLVED_OPT_OUT
+  RESOLVED_PROGRAM_CLOSED
+  RESOLVED_TECHNICAL_CORRECTION
+}
+
+enum EngagementCaseEventType {
+  CASE_CREATED
+  CASE_ACKNOWLEDGED
+  OUTREACH_STARTED
+  CASE_RESOLVED_RETURNED
+  CASE_RESOLVED_OPT_OUT
+  CASE_RESOLVED_PROGRAM_CLOSED
+  CASE_RESOLVED_TECHNICAL_CORRECTION
+}
+
+model EngagementCase {
+  id                    String                  @id @default(uuid()) @db.Uuid
+  patientId             String                  @map("patient_id") @db.Uuid
+  lifecycle             EngagementCaseLifecycle
+  caseVersion           Int                     @default(1) @map("case_version")
+  sourceMissedPeriodId  String                  @map("source_missed_period_id") @db.Uuid
+  sourceEffectiveDueAt  DateTime                @map("source_effective_due_at") @db.Timestamptz(6)
+  openedAt              DateTime                @default(now()) @map("opened_at") @db.Timestamptz(6)
+  acknowledgedAt        DateTime?               @map("acknowledged_at") @db.Timestamptz(6)
+  outreachStartedAt     DateTime?               @map("outreach_started_at") @db.Timestamptz(6)
+  resolvedAt            DateTime?                @map("resolved_at") @db.Timestamptz(6)
+  resolutionReason      String?                 @map("resolution_reason") @db.VarChar(128)
+  sourceTechnicalFailureId String?              @map("source_technical_failure_id") @db.Uuid
+  updatedAt             DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
+  profile               PatientProfile           @relation(fields: [patientId], references: [patientId], onDelete: Restrict)
+  sourceMissedPeriod    ScheduledPeriod         @relation(fields: [sourceMissedPeriodId], references: [id], onDelete: Restrict)
+  events                EngagementCaseEvent[]
+
+  @@index([patientId, lifecycle], map: "engagement_cases_patient_lifecycle_idx")
+  @@index([patientId, updatedAt], map: "engagement_cases_patient_updated_idx")
+  @@map("engagement_cases")
+}
+
+model EngagementCaseEvent {
+  id             String                    @id @default(uuid()) @db.Uuid
+  caseId         String                    @map("case_id") @db.Uuid
+  patientId      String                    @map("patient_id") @db.Uuid
+  eventType      EngagementCaseEventType   @map("event_type")
+  fromLifecycle  EngagementCaseLifecycle?  @map("from_lifecycle")
+  toLifecycle    EngagementCaseLifecycle?  @map("to_lifecycle")
+  actorId        String?                   @map("actor_id") @db.Uuid
+  metadata       Json?
+  occurredAt     DateTime                  @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  engagementCase EngagementCase             @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  profile        PatientProfile              @relation(fields: [patientId], references: [patientId], onDelete: Restrict)
+
+  @@index([caseId, occurredAt], map: "engagement_case_events_case_occurred_idx")
+  @@index([patientId, occurredAt], map: "engagement_case_events_patient_occurred_idx")
+  @@map("engagement_case_events")
+}
+
+enum TechnicalFailureStatus {
+  SUSPECTED
+  CONFIRMED
+  RESOLVED
+  CORRECTED_FALSE_POSITIVE
+}
+
+model TechnicalFailure {
+  id                         String                 @id @default(uuid()) @db.Uuid
+  patientId                 String                 @map("patient_id") @db.Uuid
+  failureType               String                 @map("failure_type") @db.VarChar(128)
+  affectedScope             Json                   @map("affected_scope")
+  startedAt                 DateTime               @map("started_at") @db.Timestamptz(6)
+  evidence                  Json
+  status                    TechnicalFailureStatus
+  confirmedBy               String?                @map("confirmed_by") @db.Uuid
+  confirmedAt               DateTime?              @map("confirmed_at") @db.Timestamptz(6)
+  resolvedBy                String?                @map("resolved_by") @db.Uuid
+  resolvedAt                DateTime?              @map("resolved_at") @db.Timestamptz(6)
+  correctedBy               String?                @map("corrected_by") @db.Uuid
+  correctedAt               DateTime?              @map("corrected_at") @db.Timestamptz(6)
+  reason                    String?                @db.Text
+  sourcePeriodId            String?                @map("source_period_id") @db.Uuid
+  previousEffectiveDueAt   DateTime?              @map("previous_effective_due_at") @db.Timestamptz(6)
+  recalculatedEffectiveDueAt DateTime?             @map("recalculated_effective_due_at") @db.Timestamptz(6)
+  version                   Int                    @default(1)
+  createdAt                 DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime               @updatedAt @map("updated_at") @db.Timestamptz(6)
+  profile                   PatientProfile         @relation(fields: [patientId], references: [patientId], onDelete: Restrict)
+  sourcePeriod              ScheduledPeriod?       @relation(fields: [sourcePeriodId], references: [id], onDelete: Restrict)
+
+  @@index([patientId, status, startedAt], map: "technical_failures_patient_status_started_idx")
+  @@index([sourcePeriodId], map: "technical_failures_source_period_idx")
+  @@map("technical_failures")
 }
 
 model PeriodRescheduleAudit {
@@ -985,6 +1088,7 @@ enum ClinicalCaseEventType {
 enum ClinicianTaskCaseType {
   CLINICAL
   SUBJECTIVE_LEVEL_3_REVIEW
+  ENGAGEMENT
 }
 
 enum ClinicianTaskRecipientType {
@@ -1494,7 +1598,8 @@ model ClinicianTask {
   recipientType         ClinicianTaskRecipientType @map("recipient_type")
   recipientId           String?                   @map("recipient_id") @db.Uuid
   deliveryStatus        ClinicianDeliveryStatus   @map("delivery_status")
-  createdReason         ClinicalReasonFamily      @map("created_reason")
+  createdReason         ClinicalReasonFamily?     @map("created_reason")
+  taskIdentity          String                    @map("task_identity") @db.VarChar(128)
   sourceEvaluationId    String?                   @map("source_evaluation_id") @db.Uuid
   sourceRevisionId      String?                   @map("source_revision_id") @db.Uuid
   sourcePeriodId        String?                   @map("source_period_id") @db.Uuid
@@ -1509,7 +1614,7 @@ model ClinicianTask {
   acknowledgedAt        DateTime?                 @map("acknowledged_at") @db.Timestamptz(6)
   updatedAt             DateTime                  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  @@unique([caseId, createdReason], map: "clinician_tasks_case_reason_key")
+  @@unique([caseType, caseId, taskIdentity], map: "clinician_tasks_case_type_identity_key")
   @@index([recipientId, deliveryStatus, createdAt], map: "clinician_tasks_recipient_status_idx")
   @@index([patientId, createdAt], map: "clinician_tasks_patient_created_idx")
   @@index([operationalIncidentId], map: "clinician_tasks_operational_incident_idx")

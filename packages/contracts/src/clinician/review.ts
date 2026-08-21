@@ -39,6 +39,12 @@ export const ClinicianTaskRecipientTypeSchema = z.enum([
   'SYSTEM_UNROUTED_QUEUE',
 ]);
 
+export const ClinicianTaskCaseTypeSchema = z.enum([
+  'CLINICAL',
+  'SUBJECTIVE_LEVEL_3_REVIEW',
+  'ENGAGEMENT',
+]);
+
 export const ClinicianDeliveryStatusSchema = z.enum([
   'DELIVERED',
   'UNROUTED',
@@ -71,7 +77,9 @@ export const ClinicianVisibilityFlagViewSchema = z.object({
 export const ClinicianTaskViewSchema = z.object({
   id: z.uuid(),
   caseId: z.uuid(),
-  createdReason: ClinicalReasonFamilySchema,
+  caseType: ClinicianTaskCaseTypeSchema,
+  taskIdentity: z.string().min(1),
+  createdReason: ClinicalReasonFamilySchema.nullable(),
   recipientType: ClinicianTaskRecipientTypeSchema,
   deliveryStatus: ClinicianDeliveryStatusSchema,
   title: z.string().min(1),

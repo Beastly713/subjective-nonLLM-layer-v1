@@ -437,9 +437,10 @@ async function routeTask(
 ) {
   const existing = await tx.clinicianTask.findUnique({
     where: {
-      caseId_createdReason: {
+      caseType_caseId_taskIdentity: {
+        caseType: 'CLINICAL',
         caseId: input.caseId,
-        createdReason: input.reasonFamily,
+        taskIdentity: input.reasonFamily,
       },
     },
   });
@@ -488,6 +489,7 @@ async function routeTask(
       recipientId: directClinician?.id ?? null,
       deliveryStatus: routed ? 'DELIVERED' : 'UNROUTED',
       createdReason: input.reasonFamily,
+      taskIdentity: input.reasonFamily,
       sourceEvaluationId: input.evaluationId,
       sourceRevisionId: input.revisionId,
       sourcePeriodId: input.periodId,
@@ -1073,7 +1075,9 @@ function reasonView(state: {
 function taskView(task: {
   id: string;
   caseId: string;
-  createdReason: ClinicalReasonFamily;
+  caseType: 'CLINICAL' | 'SUBJECTIVE_LEVEL_3_REVIEW' | 'ENGAGEMENT';
+  taskIdentity: string;
+  createdReason: ClinicalReasonFamily | null;
   recipientType: 'PRIMARY_CLINICIAN' | 'SYSTEM_UNROUTED_QUEUE';
   deliveryStatus: 'DELIVERED' | 'UNROUTED' | 'UPDATE_REQUIRED' | 'ACKNOWLEDGED';
   title: string;
@@ -1084,6 +1088,8 @@ function taskView(task: {
   return {
     id: task.id,
     caseId: task.caseId,
+    caseType: task.caseType,
+    taskIdentity: task.taskIdentity,
     createdReason: task.createdReason,
     recipientType: task.recipientType,
     deliveryStatus: task.deliveryStatus,

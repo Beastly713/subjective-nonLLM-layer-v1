@@ -1,11 +1,17 @@
 import {
   EngagementReminderViewSchema,
+  ClinicianEngagementItemSchema,
+  ClinicianEngagementResponseSchema,
+  type ClinicalReasonFamily,
+  type ClinicianEngagementItem,
+  type ClinicianEngagementResponse,
+  type ClinicianTaskView,
   PatientHomeResponseSchema,
   PatientMonitoringResponseSchema,
   type PatientHomeResponse,
   type PatientMonitoringResponse,
 } from '@aud-subjective/contracts';
-import type { Prisma } from '../../generated/prisma/client.js';
+import type { Prisma, PrismaClient } from '../../generated/prisma/client.js';
 import { SUBJECTIVE_MONITORING_V1 } from '../../policy/subjective-monitoring-v1.js';
 import { lockPatientForProcessing } from '../../shared/authz/patient-processing-lock.js';
 import type { Clock } from '../../shared/clock/clock.js';
@@ -30,6 +36,21 @@ type ReconcileInput = {
 type StateWithPeriod = Prisma.EngagementStateGetPayload<{
   include: { missedCyclePeriod: true };
 }>;
+
+const OPEN_ENGAGEMENT_CASE_LIFECYCLES = [
+  'NEW',
+  'ACKNOWLEDGED',
+  'OUTREACH_IN_PROGRESS',
+] as const;
+
+type EngagementCaseLifecycle =
+  | 'NEW'
+  | 'ACKNOWLEDGED'
+  | 'OUTREACH_IN_PROGRESS'
+  | 'RESOLVED_RETURNED'
+  | 'RESOLVED_OPT_OUT'
+  | 'RESOLVED_PROGRAM_CLOSED'
+  | 'RESOLVED_TECHNICAL_CORRECTION';
 
 type PeriodWithAssessment = Prisma.ScheduledPeriodGetPayload<{
   include: {
@@ -67,26 +88,6 @@ function periodWithAssessmentInclude() {
 
 function json(value: unknown) {
   return value as Prisma.InputJsonValue;
-}
-
-function periodView(period: {
-  id: string;
-  periodStartAt: Date;
-  periodEndAt: Date;
-  openAt: Date;
-  originalDueAt?: Date;
-  effectiveDueAt: Date;
-}) {
-  return {
-    periodId: period.id,
-    periodStartAt: period.periodStartAt.toISOString(),
-    periodEndAt: period.periodEndAt.toISOString(),
-    ...(period.originalDueAt
-      ? { originalDueAt: period.originalDueAt.toISOString() }
-      : {}),
-    openAt: period.openAt.toISOString(),
-    effectiveDueAt: period.effectiveDueAt.toISOString(),
-  };
 }
 
 async function loadState(tx: Tx, patientId: string) {
@@ -213,6 +214,254 @@ async function cancelReminders(
   });
 }
 
+async function loadActiveTechnicalFailure(tx: Tx, patientId: string) {
+  return tx.technicalFailure.findFirst({
+    where: { patientId, status: 'CONFIRMED' },
+    orderBy: [{ startedAt: 'asc' }, { id: 'asc' }],
+  });
+}
+
+async function addEngagementCaseEvent(
+  tx: Tx,
+  input: {
+    caseId: string;
+    patientId: string;
+    eventType:
+      | 'CASE_CREATED'
+      | 'CASE_ACKNOWLEDGED'
+      | 'OUTREACH_STARTED'
+      | 'CASE_RESOLVED_RETURNED'
+      | 'CASE_RESOLVED_OPT_OUT'
+      | 'CASE_RESOLVED_PROGRAM_CLOSED'
+      | 'CASE_RESOLVED_TECHNICAL_CORRECTION';
+    fromLifecycle?: EngagementCaseLifecycle | null;
+    toLifecycle?: EngagementCaseLifecycle | null;
+    actorId?: string | null;
+    metadata?: Prisma.InputJsonValue;
+    occurredAt: Date;
+  },
+) {
+  await tx.engagementCaseEvent.create({
+    data: {
+      caseId: input.caseId,
+      patientId: input.patientId,
+      eventType: input.eventType,
+      fromLifecycle: input.fromLifecycle ?? null,
+      toLifecycle: input.toLifecycle ?? null,
+      actorId: input.actorId ?? null,
+      ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
+      occurredAt: input.occurredAt,
+    },
+  });
+}
+
+async function routeEngagementTask(
+  tx: Tx,
+  input: {
+    caseId: string;
+    patientId: string;
+    periodId: string;
+    effectiveDueAt: Date;
+    now: Date;
+    requestId?: string;
+  },
+) {
+  const taskIdentity = 'DISENGAGEMENT_REVIEW';
+  const existing = await tx.clinicianTask.findUnique({
+    where: {
+      caseType_caseId_taskIdentity: {
+        caseType: 'ENGAGEMENT',
+        caseId: input.caseId,
+        taskIdentity,
+      },
+    },
+  });
+  if (existing) return existing;
+
+  const assignments = await tx.clinicianPatientAssignment.findMany({
+    where: { patientId: input.patientId, endedAt: null },
+    include: {
+      clinician: {
+        select: {
+          id: true,
+          applicationAccount: { select: { state: true } },
+          roleAssignments: {
+            where: {
+              workspace: 'CLINICIAN',
+              role: 'CLINICIAN',
+              revokedAt: null,
+            },
+            select: { id: true },
+          },
+        },
+      },
+    },
+  });
+  const eligibleClinicians = [
+    ...new Map(
+      assignments
+        .filter(
+          (assignment) =>
+            assignment.clinician.applicationAccount?.state === 'ACTIVE' &&
+            assignment.clinician.roleAssignments.length > 0,
+        )
+        .map((assignment) => [assignment.clinician.id, assignment.clinician]),
+    ).values(),
+  ];
+  const directClinician =
+    eligibleClinicians.length === 1 ? eligibleClinicians[0] : null;
+  const routed = Boolean(directClinician);
+  const task = await tx.clinicianTask.create({
+    data: {
+      patientId: input.patientId,
+      caseId: input.caseId,
+      caseType: 'ENGAGEMENT',
+      taskIdentity,
+      recipientType: routed ? 'PRIMARY_CLINICIAN' : 'SYSTEM_UNROUTED_QUEUE',
+      recipientId: directClinician?.id ?? null,
+      deliveryStatus: routed ? 'DELIVERED' : 'UNROUTED',
+      createdReason: null,
+      sourceEvaluationId: null,
+      sourceRevisionId: null,
+      sourcePeriodId: input.periodId,
+      eligibilityRecordedAt: input.now,
+      attemptCount: 1,
+      nextAttemptAt: null,
+      title: 'Missed check-in engagement review required',
+      detail: json({
+        taskIdentity,
+        effectiveDueAt: input.effectiveDueAt.toISOString(),
+      }),
+      createdAt: input.now,
+    },
+  });
+
+  if (!routed) {
+    const existingIncident = await tx.operationalIncident.findFirst({
+      where: {
+        code: 'ENGAGEMENT_UNROUTED',
+        provenanceReference: input.caseId,
+        status: { not: 'RESOLVED' },
+      },
+    });
+    const incident =
+      existingIncident ??
+      (await tx.operationalIncident.create({
+        data: {
+          incidentType: 'ENGAGEMENT',
+          code: 'ENGAGEMENT_UNROUTED',
+          status: 'OPEN',
+          summary: 'Missed check-in engagement review could not be directly assigned.',
+          metadata: json({ patientId: input.patientId, caseId: input.caseId }),
+          requestId: input.requestId ?? null,
+          provenanceReference: input.caseId,
+        },
+      }));
+    await tx.clinicianTask.update({
+      where: { id: task.id },
+      data: { operationalIncidentId: incident.id },
+    });
+  }
+  return task;
+}
+
+async function ensureEngagementCase(
+  input: ReconcileInput,
+  anchor: { id: string; effectiveDueAt: Date },
+  now: Date,
+) {
+  const existing = await input.tx.engagementCase.findFirst({
+    where: {
+      patientId: input.patientId,
+      lifecycle: { in: [...OPEN_ENGAGEMENT_CASE_LIFECYCLES] },
+    },
+    orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
+  });
+  const engagementCase =
+    existing ??
+    (await input.tx.engagementCase.create({
+      data: {
+        patientId: input.patientId,
+        lifecycle: 'NEW',
+        caseVersion: 1,
+        sourceMissedPeriodId: anchor.id,
+        sourceEffectiveDueAt: anchor.effectiveDueAt,
+        openedAt: now,
+        updatedAt: now,
+      },
+    }));
+
+  if (!existing) {
+    await addEngagementCaseEvent(input.tx, {
+      caseId: engagementCase.id,
+      patientId: input.patientId,
+      eventType: 'CASE_CREATED',
+      toLifecycle: 'NEW',
+      actorId: input.actorId ?? null,
+      metadata: json({
+        sourceMissedPeriodId: anchor.id,
+        sourceEffectiveDueAt: anchor.effectiveDueAt.toISOString(),
+      }),
+      occurredAt: now,
+    });
+  }
+
+  await routeEngagementTask(input.tx, {
+    caseId: engagementCase.id,
+    patientId: input.patientId,
+    periodId: anchor.id,
+    effectiveDueAt: anchor.effectiveDueAt,
+    now,
+    ...(input.requestId ? { requestId: input.requestId } : {}),
+  });
+  return engagementCase;
+}
+
+export async function resolveOpenEngagementCase(
+  input: ReconcileInput,
+  lifecycle: 'RESOLVED_RETURNED' | 'RESOLVED_OPT_OUT' | 'RESOLVED_TECHNICAL_CORRECTION',
+  eventType:
+    | 'CASE_RESOLVED_RETURNED'
+    | 'CASE_RESOLVED_OPT_OUT'
+    | 'CASE_RESOLVED_TECHNICAL_CORRECTION',
+  reason: string,
+  now: Date,
+  sourceTechnicalFailureId?: string | null,
+) {
+  const current = await input.tx.engagementCase.findFirst({
+    where: {
+      patientId: input.patientId,
+      lifecycle: { in: [...OPEN_ENGAGEMENT_CASE_LIFECYCLES] },
+    },
+    orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
+  });
+  if (!current) return null;
+  const updated = await input.tx.engagementCase.update({
+    where: { id: current.id },
+    data: {
+      lifecycle,
+      caseVersion: { increment: 1 },
+      resolvedAt: now,
+      resolutionReason: reason,
+      ...(sourceTechnicalFailureId === undefined
+        ? {}
+        : { sourceTechnicalFailureId }),
+      updatedAt: now,
+    },
+  });
+  await addEngagementCaseEvent(input.tx, {
+    caseId: current.id,
+    patientId: input.patientId,
+    eventType,
+    fromLifecycle: current.lifecycle,
+    toLifecycle: lifecycle,
+    actorId: input.actorId ?? null,
+    metadata: json({ reason }),
+    occurredAt: now,
+  });
+  return updated;
+}
+
 async function upsertReminderSlots(
   tx: Tx,
   input: {
@@ -271,6 +520,7 @@ async function transitionState(
     state: StateWithPeriod['state'];
     missedCyclePeriodId: string | null;
     sourceEffectiveDueAt: Date | null;
+    sourceTechnicalFailureId?: string | null;
     cycleTrackingFromAt?: Date | null;
     optedOutAt?: Date | null;
     returnedAfterGapAt?: Date | null;
@@ -284,6 +534,8 @@ async function transitionState(
     current.missedCyclePeriodId !== next.missedCyclePeriodId ||
     current.sourceEffectiveDueAt?.getTime() !==
       next.sourceEffectiveDueAt?.getTime() ||
+    (next.sourceTechnicalFailureId !== undefined &&
+      current.sourceTechnicalFailureId !== next.sourceTechnicalFailureId) ||
     (next.cycleTrackingFromAt !== undefined &&
       current.cycleTrackingFromAt?.getTime() !==
         next.cycleTrackingFromAt?.getTime()) ||
@@ -307,6 +559,9 @@ async function transitionState(
       version: { increment: 1 },
       missedCyclePeriodId: next.missedCyclePeriodId,
       sourceEffectiveDueAt: next.sourceEffectiveDueAt,
+      ...(next.sourceTechnicalFailureId !== undefined
+        ? { sourceTechnicalFailureId: next.sourceTechnicalFailureId }
+        : {}),
       ...(next.cycleTrackingFromAt !== undefined
         ? { cycleTrackingFromAt: next.cycleTrackingFromAt }
         : {}),
@@ -376,6 +631,7 @@ async function applyReturnAfterGap(
       state: 'RETURNED_AFTER_GAP',
       missedCyclePeriodId: current.missedCyclePeriodId,
       sourceEffectiveDueAt: current.sourceEffectiveDueAt,
+      sourceTechnicalFailureId: null,
       returnedAfterGapAt: now,
       lastValidAssessmentRevisionId: returning.authoritativeRevision.id,
       lastValidPeriodId: returning.scheduledPeriod.id,
@@ -399,6 +655,13 @@ async function applyReturnAfterGap(
       }),
     },
   });
+  await resolveOpenEngagementCase(
+    input,
+    'RESOLVED_RETURNED',
+    'CASE_RESOLVED_RETURNED',
+    'PATIENT_RETURNED_AFTER_GAP',
+    now,
+  );
   return transitionState(
     input,
     returned,
@@ -406,6 +669,7 @@ async function applyReturnAfterGap(
       state: 'ENGAGED',
       missedCyclePeriodId: null,
       sourceEffectiveDueAt: null,
+      sourceTechnicalFailureId: null,
       cycleTrackingFromAt: returning.scheduledPeriod.periodStartAt,
       returnedAfterGapAt: now,
       lastValidAssessmentRevisionId: returning.authoritativeRevision.id,
@@ -422,6 +686,10 @@ export async function reconcileEngagementForPatient(input: ReconcileInput) {
 
   let state = await ensureState(input, now);
   const safety = await loadPatientSafetyProjection(input.tx, input.patientId);
+  const activeTechnicalFailure = await loadActiveTechnicalFailure(
+    input.tx,
+    input.patientId,
+  );
 
   if (state.state === 'OPTED_OUT' || state.optedOutAt) {
     await cancelReminders(
@@ -452,7 +720,7 @@ export async function reconcileEngagementForPatient(input: ReconcileInput) {
     state,
   );
 
-  if (anchor && state.missedCyclePeriodId) {
+  if (anchor && state.missedCyclePeriodId && !activeTechnicalFailure) {
     const returning = await findReturningSubmission(
       input.tx,
       input.patientId,
@@ -479,11 +747,19 @@ export async function reconcileEngagementForPatient(input: ReconcileInput) {
     effectiveDueAt: anchor?.effectiveDueAt ?? null,
     hasMissedCycle: Boolean(anchor),
     safetyPaused: safety.monitoringPromptPolicy === 'PAUSE',
-    technicalFailureActive: false,
+    technicalFailureActive: Boolean(activeTechnicalFailure),
     optedOut: false,
   });
 
-  if (anchor && evaluation.pauseReason === null) {
+  if (activeTechnicalFailure) {
+    await cancelReminders(
+      input.tx,
+      input.patientId,
+      now,
+      'TECHNICAL_FAILURE',
+      anchor?.id,
+    );
+  } else if (anchor && evaluation.pauseReason === null) {
     await upsertReminderSlots(input.tx, {
       patientId: input.patientId,
       periodId: anchor.id,
@@ -500,9 +776,19 @@ export async function reconcileEngagementForPatient(input: ReconcileInput) {
       state: evaluation.state,
       missedCyclePeriodId: anchor?.id ?? null,
       sourceEffectiveDueAt: anchor?.effectiveDueAt ?? null,
+      sourceTechnicalFailureId: activeTechnicalFailure?.id ?? null,
     },
     now,
   );
+
+  if (
+    !activeTechnicalFailure &&
+    evaluation.pauseReason === null &&
+    evaluation.state === 'DISENGAGED' &&
+    anchor
+  ) {
+    await ensureEngagementCase(input, anchor, now);
+  }
 
   return { state, safety, anchor, evaluation };
 }
@@ -927,6 +1213,7 @@ export async function optOutMonitoring(input: {
         version: { increment: 1 },
         missedCyclePeriodId: null,
         sourceEffectiveDueAt: null,
+        sourceTechnicalFailureId: null,
         cycleTrackingFromAt: now,
         optedOutAt: now,
         lastTransitionAt: now,
@@ -946,6 +1233,19 @@ export async function optOutMonitoring(input: {
       },
     });
   }
+  await resolveOpenEngagementCase(
+    {
+      tx: input.tx,
+      clock: input.clock,
+      patientId: input.patientId,
+      actorId: input.actorId,
+      requestId: input.requestId,
+    },
+    'RESOLVED_OPT_OUT',
+    'CASE_RESOLVED_OPT_OUT',
+    'PATIENT_OPTED_OUT',
+    now,
+  );
   await cancelReminders(input.tx, input.patientId, now, 'MONITORING_OPTED_OUT');
   return readPatientMonitoring(
     input.tx,
@@ -987,6 +1287,7 @@ export async function reEnableMonitoring(input: {
         version: { increment: 1 },
         missedCyclePeriodId: null,
         sourceEffectiveDueAt: null,
+        sourceTechnicalFailureId: null,
         cycleTrackingFromAt: now,
         optedOutAt: null,
         lastTransitionAt: now,
@@ -1013,4 +1314,329 @@ export async function reEnableMonitoring(input: {
     input.actorId,
     input.requestId,
   );
+}
+
+async function assertAssignedPatient(
+  tx: Tx,
+  clinicianId: string,
+  patientId: string,
+) {
+  const assignment = await tx.clinicianPatientAssignment.findFirst({
+    where: { clinicianUserId: clinicianId, patientId, endedAt: null },
+    select: { id: true },
+  });
+  if (!assignment) {
+    throw new DomainError(
+      404,
+      'NOT_FOUND',
+      'The requested resource was not found.',
+    );
+  }
+}
+
+function engagementTaskView(task: {
+  id: string;
+  caseId: string;
+  caseType: 'CLINICAL' | 'SUBJECTIVE_LEVEL_3_REVIEW' | 'ENGAGEMENT';
+  taskIdentity: string;
+  createdReason: ClinicalReasonFamily | null;
+  recipientType: 'PRIMARY_CLINICIAN' | 'SYSTEM_UNROUTED_QUEUE';
+  deliveryStatus: 'DELIVERED' | 'UNROUTED' | 'UPDATE_REQUIRED' | 'ACKNOWLEDGED';
+  title: string;
+  alertUpdateRequired: boolean;
+  createdAt: Date;
+  acknowledgedAt: Date | null;
+}): ClinicianTaskView {
+  return {
+    id: task.id,
+    caseId: task.caseId,
+    caseType: task.caseType,
+    taskIdentity: task.taskIdentity,
+    createdReason: task.createdReason,
+    recipientType: task.recipientType,
+    deliveryStatus: task.deliveryStatus,
+    title: task.title,
+    alertUpdateRequired: task.alertUpdateRequired,
+    createdAt: task.createdAt.toISOString(),
+    acknowledgedAt: task.acknowledgedAt?.toISOString() ?? null,
+  };
+}
+
+async function latestCompletedCheckIn(tx: Tx, patientId: string) {
+  const assessments = await tx.weeklyAssessment.findMany({
+    where: {
+      patientId,
+      authoritativeRevisionId: { not: null },
+    },
+    select: {
+      scheduledPeriod: { select: { id: true } },
+      authoritativeRevision: {
+        select: {
+          completionStatus: true,
+          submissionClassification: true,
+          submittedAt: true,
+        },
+      },
+    },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: 20,
+  });
+  const completed = assessments.find((assessment) => {
+    const classification = assessment.authoritativeRevision?.submissionClassification;
+    return classification === 'CURRENT' || classification === 'LATE_CURRENT';
+  });
+  if (!completed?.authoritativeRevision) return null;
+  return {
+    periodId: completed.scheduledPeriod.id,
+    submittedAt: completed.authoritativeRevision.submittedAt.toISOString(),
+    completionStatus: completed.authoritativeRevision.completionStatus,
+  };
+}
+
+async function buildClinicianEngagementItem(
+  tx: Tx,
+  clock: Clock,
+  patientId: string,
+  result: Awaited<ReturnType<typeof reconcileEngagementForPatient>>,
+): Promise<ClinicianEngagementItem> {
+  const [patient, engagementCase, task, lastCompletedCheckIn] = await Promise.all([
+    tx.user.findUnique({ where: { id: patientId }, select: { name: true } }),
+    tx.engagementCase.findFirst({
+      where: {
+        patientId,
+        lifecycle: { in: [...OPEN_ENGAGEMENT_CASE_LIFECYCLES] },
+      },
+      orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
+    }),
+    tx.engagementCase
+      .findFirst({
+        where: {
+          patientId,
+          lifecycle: { in: [...OPEN_ENGAGEMENT_CASE_LIFECYCLES] },
+        },
+        select: { id: true },
+        orderBy: [{ openedAt: 'asc' }, { id: 'asc' }],
+      })
+      .then((caseRow) =>
+        caseRow
+          ? tx.clinicianTask.findUnique({
+              where: {
+                caseType_caseId_taskIdentity: {
+                  caseType: 'ENGAGEMENT',
+                  caseId: caseRow.id,
+                  taskIdentity: 'DISENGAGEMENT_REVIEW',
+                },
+              },
+            })
+          : null,
+      ),
+    latestCompletedCheckIn(tx, patientId),
+  ]);
+  if (!patient) {
+    throw new DomainError(
+      404,
+      'NOT_FOUND',
+      'The requested resource was not found.',
+    );
+  }
+  const anchor = result.anchor;
+  return ClinicianEngagementItemSchema.parse({
+    patientId,
+    patientName: patient.name,
+    engagementState: result.state.state,
+    missedCycle: anchor
+      ? {
+          periodId: anchor.id,
+          periodStartAt: anchor.periodStartAt.toISOString(),
+          periodEndAt: anchor.periodEndAt.toISOString(),
+          effectiveDueAt: anchor.effectiveDueAt.toISOString(),
+        }
+      : null,
+    effectiveDueAt: anchor?.effectiveDueAt.toISOString() ?? null,
+    daysOverdue: result.evaluation.overdueDays,
+    reminders: await loadReminders(
+      tx,
+      patientId,
+      clock.now(),
+      anchor?.id ?? null,
+    ),
+    pause: {
+      timingPaused: result.evaluation.timingPaused,
+      reason: result.evaluation.pauseReason,
+    },
+    engagementCase: engagementCase
+      ? {
+          id: engagementCase.id,
+          lifecycle: engagementCase.lifecycle,
+          caseVersion: engagementCase.caseVersion,
+          openedAt: engagementCase.openedAt.toISOString(),
+          acknowledgedAt: engagementCase.acknowledgedAt?.toISOString() ?? null,
+          outreachStartedAt: engagementCase.outreachStartedAt?.toISOString() ?? null,
+          resolvedAt: engagementCase.resolvedAt?.toISOString() ?? null,
+          resolutionReason: engagementCase.resolutionReason,
+        }
+      : null,
+    task: task ? engagementTaskView(task) : null,
+    lastCompletedCheckIn,
+  });
+}
+
+async function readClinicianEngagementForPatient(
+  tx: Tx,
+  clock: Clock,
+  clinicianId: string,
+  patientId: string,
+) {
+  await assertAssignedPatient(tx, clinicianId, patientId);
+  const result = await reconcileEngagementForPatient({
+    tx,
+    clock,
+    patientId,
+    actorId: clinicianId,
+  });
+  return buildClinicianEngagementItem(tx, clock, patientId, result);
+}
+
+export async function readClinicianEngagementQueue(
+  prisma: PrismaClient,
+  clock: Clock,
+  clinicianId: string,
+): Promise<ClinicianEngagementResponse> {
+  const assignments = await prisma.clinicianPatientAssignment.findMany({
+    where: { clinicianUserId: clinicianId, endedAt: null },
+    select: { patientId: true },
+    orderBy: [{ patientId: 'asc' }, { id: 'asc' }],
+  });
+  const patientIds = [...new Set(assignments.map((assignment) => assignment.patientId))];
+  const items: ClinicianEngagementItem[] = [];
+  for (const patientId of patientIds) {
+    const item = await prisma.$transaction((tx) =>
+      readClinicianEngagementForPatient(tx, clock, clinicianId, patientId),
+    );
+    items.push(await item);
+  }
+  return ClinicianEngagementResponseSchema.parse({ items });
+}
+
+export async function readClinicianEngagementDetail(input: {
+  tx: Tx;
+  clock: Clock;
+  clinicianId: string;
+  patientId: string;
+}) {
+  return readClinicianEngagementForPatient(
+    input.tx,
+    input.clock,
+    input.clinicianId,
+    input.patientId,
+  );
+}
+
+export async function transitionEngagementCase(input: {
+  tx: Tx;
+  clock: Clock;
+  clinicianId: string;
+  caseId: string;
+  expectedCaseVersion: number;
+  target: 'ACKNOWLEDGED' | 'OUTREACH_IN_PROGRESS';
+  requestId: string;
+}) {
+  const caseIdentity = await input.tx.engagementCase.findUnique({
+    where: { id: input.caseId },
+    select: { patientId: true },
+  });
+  if (!caseIdentity) {
+    throw new DomainError(404, 'NOT_FOUND', 'The requested resource was not found.');
+  }
+  await assertAssignedPatient(input.tx, input.clinicianId, caseIdentity.patientId);
+  await lockPatientForProcessing(input.tx, caseIdentity.patientId);
+  const current = await input.tx.engagementCase.findUnique({
+    where: { id: input.caseId },
+  });
+  if (!current) {
+    throw new DomainError(404, 'NOT_FOUND', 'The requested resource was not found.');
+  }
+  if (current.caseVersion !== input.expectedCaseVersion) {
+    throw new DomainError(409, 'VERSION_CONFLICT', 'The engagement case changed before this action.');
+  }
+  if (current.lifecycle === input.target) {
+    return readClinicianEngagementDetail({
+      tx: input.tx,
+      clock: input.clock,
+      clinicianId: input.clinicianId,
+      patientId: current.patientId,
+    });
+  }
+  const allowed =
+    input.target === 'ACKNOWLEDGED'
+      ? current.lifecycle === 'NEW'
+      : current.lifecycle === 'NEW' || current.lifecycle === 'ACKNOWLEDGED';
+  if (!allowed) {
+    throw new DomainError(
+      409,
+      'INVALID_CASE_TRANSITION',
+      'The engagement case is no longer available for this action.',
+    );
+  }
+  const now = input.clock.now();
+  const updated = await input.tx.engagementCase.update({
+    where: { id: current.id },
+    data: {
+      lifecycle: input.target,
+      caseVersion: { increment: 1 },
+      ...(input.target === 'ACKNOWLEDGED'
+        ? { acknowledgedAt: now }
+        : { outreachStartedAt: now }),
+      updatedAt: now,
+    },
+  });
+  await addEngagementCaseEvent(input.tx, {
+    caseId: current.id,
+    patientId: current.patientId,
+    eventType:
+      input.target === 'ACKNOWLEDGED'
+        ? 'CASE_ACKNOWLEDGED'
+        : 'OUTREACH_STARTED',
+    fromLifecycle: current.lifecycle,
+    toLifecycle: input.target,
+    actorId: input.clinicianId,
+    metadata: json({ requestId: input.requestId }),
+    occurredAt: now,
+  });
+  await input.tx.clinicianTask.updateMany({
+    where: {
+      caseType: 'ENGAGEMENT',
+      caseId: current.id,
+      deliveryStatus: { in: ['DELIVERED', 'UNROUTED'] },
+    },
+    data: {
+      deliveryStatus: 'ACKNOWLEDGED',
+      acknowledgedAt: now,
+    },
+  });
+  await input.tx.auditEvent.create({
+    data: {
+      actorId: input.clinicianId,
+      action:
+        input.target === 'ACKNOWLEDGED'
+          ? 'ENGAGEMENT_CASE_ACKNOWLEDGED'
+          : 'ENGAGEMENT_CASE_OUTREACH_STARTED',
+      entityType: 'ENGAGEMENT_CASE',
+      entityId: current.id,
+      patientId: current.patientId,
+      occurredAt: now,
+      requestId: input.requestId,
+      configurationVersion: SUBJECTIVE_MONITORING_V1.configurationVersion,
+      metadata: json({
+        fromLifecycle: current.lifecycle,
+        toLifecycle: updated.lifecycle,
+      }),
+    },
+  });
+  return readClinicianEngagementDetail({
+    tx: input.tx,
+    clock: input.clock,
+    clinicianId: input.clinicianId,
+    patientId: current.patientId,
+  });
 }
