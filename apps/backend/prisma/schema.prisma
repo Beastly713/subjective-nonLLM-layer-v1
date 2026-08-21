@@ -256,6 +256,8 @@ model PatientProfile {
   aggregateContextRecords AggregateContextRecord[]
   longitudinalFeatureRecords LongitudinalFeatureRecord[]
   patientInterventionIntents PatientInterventionIntent[]
+  engagementState EngagementState?
+  engagementReminders MissedCheckinReminder[]
 
   @@map("patient_profiles")
 }
@@ -602,10 +604,63 @@ model ScheduledPeriod {
   aggregateContextRecords AggregateContextRecord[]
   longitudinalFeatureRecords LongitudinalFeatureRecord[]
   patientInterventionIntents PatientInterventionIntent[]
+  engagementStateSources EngagementState[] @relation("EngagementCyclePeriod")
+  engagementReminders MissedCheckinReminder[]
 
   @@unique([patientId, periodStartAt], map: "scheduled_periods_patient_start_key")
   @@index([patientId, periodEndAt], map: "scheduled_periods_patient_end_idx")
   @@map("scheduled_periods")
+}
+
+enum EngagementStateValue {
+  ENGAGED
+  OVERDUE
+  AT_RISK_OF_DISENGAGEMENT
+  DISENGAGED
+  RETURNED_AFTER_GAP
+  OPTED_OUT
+  TECHNICAL_FAILURE
+}
+
+model EngagementState {
+  patientId                     String             @id @map("patient_id") @db.Uuid
+  state                         EngagementStateValue
+  version                       Int                @default(1)
+  missedCyclePeriodId           String?            @map("missed_cycle_period_id") @db.Uuid
+  cycleTrackingFromAt           DateTime?          @map("cycle_tracking_from_at") @db.Timestamptz(6)
+  sourceEffectiveDueAt          DateTime?          @map("source_effective_due_at") @db.Timestamptz(6)
+  lastValidAssessmentRevisionId String?            @map("last_valid_assessment_revision_id") @db.Uuid
+  lastValidPeriodId             String?            @map("last_valid_period_id") @db.Uuid
+  optedOutAt                    DateTime?          @map("opted_out_at") @db.Timestamptz(6)
+  returnedAfterGapAt            DateTime?          @map("returned_after_gap_at") @db.Timestamptz(6)
+  lastTransitionAt              DateTime           @default(now()) @map("last_transition_at") @db.Timestamptz(6)
+  updatedAt                     DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  profile                       PatientProfile     @relation(fields: [patientId], references: [patientId], onDelete: Restrict)
+  missedCyclePeriod             ScheduledPeriod?   @relation("EngagementCyclePeriod", fields: [missedCyclePeriodId], references: [id], onDelete: Restrict)
+
+  @@index([state, updatedAt], map: "engagement_states_state_updated_idx")
+  @@index([missedCyclePeriodId], map: "engagement_states_missed_period_idx")
+  @@map("engagement_states")
+}
+
+model MissedCheckinReminder {
+  id                  String          @id @default(uuid()) @db.Uuid
+  patientId           String          @map("patient_id") @db.Uuid
+  missedCyclePeriodId String          @map("missed_cycle_period_id") @db.Uuid
+  reminderNumber      Int             @map("reminder_number")
+  eligibleAt          DateTime        @map("eligible_at") @db.Timestamptz(6)
+  presentedAt         DateTime?       @map("presented_at") @db.Timestamptz(6)
+  cancelledAt         DateTime?       @map("cancelled_at") @db.Timestamptz(6)
+  cancellationReason  String?         @map("cancellation_reason") @db.VarChar(128)
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  profile             PatientProfile  @relation(fields: [patientId], references: [patientId], onDelete: Restrict)
+  missedCyclePeriod   ScheduledPeriod @relation(fields: [missedCyclePeriodId], references: [id], onDelete: Restrict)
+
+  @@unique([patientId, missedCyclePeriodId, reminderNumber], map: "missed_checkin_reminders_patient_cycle_number_key")
+  @@index([patientId, eligibleAt], map: "missed_checkin_reminders_patient_eligible_idx")
+  @@index([patientId, cancelledAt], map: "missed_checkin_reminders_patient_cancelled_idx")
+  @@map("missed_checkin_reminders")
 }
 
 model PeriodRescheduleAudit {

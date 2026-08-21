@@ -24,6 +24,15 @@ export const SUBJECTIVE_MONITORING_V1 = {
   recurrenceWindowPeriods: 4,
   useAfterStabilityNegativePeriods: 12,
   maxInterventionClassesPerEvaluation: 2,
+  engagement: {
+    firstReminderDaysAfterEffectiveDue: 7,
+    secondFinalReminderDaysAfterEffectiveDue: 14,
+    reminderCooldownDays: 7,
+    level2DaysAfterEffectiveDue: 14,
+    disengagementCaseDaysAfterEffectiveDue: 30,
+    maxAutomatedRemindersPerCycle: 2,
+    technicalRecoveryGraceHours: 24,
+  },
   interventionPriority: [
     'RECURRENT_USE_RECOVERY_SUPPORT',
     'USE_EVENT_RECOVERY_SUPPORT',

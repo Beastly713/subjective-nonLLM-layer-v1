@@ -34,6 +34,7 @@ import {
 } from '../monitoring/service.js';
 import { recomputePatientMonitoringFromPeriod } from './recompute-service.js';
 import type { WeeklyAnswers } from '../monitoring/types.js';
+import { reconcileEngagementForPatient } from '../engagement/service.js';
 
 type Tx = Prisma.TransactionClient;
 
@@ -529,6 +530,14 @@ export async function submitWeeklyAssessment(input: {
       submissionClassification === 'HISTORICAL_BACKFILL'
         ? 'HISTORICAL_BACKFILL'
         : 'CURRENT_PATIENT_SUBMISSION',
+    actorId: patientId,
+    requestId,
+  });
+
+  await reconcileEngagementForPatient({
+    tx,
+    clock,
+    patientId,
     actorId: patientId,
     requestId,
   });

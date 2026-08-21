@@ -22,6 +22,7 @@ import { registerReductionSetupRoutes } from './modules/consumption/routes.js';
 import { registerAssessmentRoutes } from './modules/assessments/routes.js';
 import { registerContentRoutes } from './modules/content/routes.js';
 import { registerClinicalRoutes } from './modules/clinical/routes.js';
+import { registerEngagementRoutes } from './modules/engagement/routes.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerApplicationAuthRoutes } from './routes/auth.js';
 import { registerErrorHandlers } from './shared/errors/error-handler.js';
@@ -122,6 +123,7 @@ export function buildApp({
   registerAssessmentRoutes(app, prisma, auth, config, clock);
   registerContentRoutes(app, prisma, auth, config, clock);
   registerClinicalRoutes(app, prisma, auth, config, clock);
+  registerEngagementRoutes(app, prisma, auth, config, clock);
 
   if (webRoot) {
     void app.register(fastifyStatic, {
