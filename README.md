@@ -1,8 +1,8 @@
 # AUD Subjective Monitoring Platform
 
-This repository is the implementation workspace for the V1 AUD subjective monitoring product. Phase 1 foundation, Phase 2 identity/core-platform work, Phase 3 safety-gated onboarding and reduction setup, Phase 4 weekly monitoring core, and Phase 5 patient support and clinical review are complete. Phase 5 is validated at implementation head `f6bc02b` (`fix: close phase 5 patient support and clinical review`). The current codebase includes server-backed onboarding and weekly-assessment drafts/revisions, deterministic safety and weekly-monitoring evaluation, governed patient support resolution, Level-2 clinician visibility, Level-3 clinical review cases, and durable in-app clinician tasks.
+This repository is the implementation workspace for the V1 AUD subjective monitoring product. Phases 1–5 are complete, and the Phase 6 local engagement/demo implementation is present (implementation sweep commits are recorded in git; Phase 6 closeout validation remains a separate step). Phase 5 was validated at implementation head `f6bc02b` (`fix: close phase 5 patient support and clinical review`). The current codebase includes server-backed onboarding and weekly-assessment drafts/revisions, deterministic safety and weekly-monitoring evaluation, governed patient support resolution, Level-2 clinician visibility, Level-3 clinical review cases, durable in-app clinician tasks, deterministic engagement reconciliation, engagement cases, and focused technical-failure operations.
 
-The weekly assessment and subjective-monitoring core is implemented, including current/late/historical submissions, immutable revisions, patient and assigned-clinician corrections, deterministic derived state, candidate intervention/reason outputs, and forward recomputation. Phase 5 consumes those authoritative outputs for deterministic patient support and clinician review without adding engagement workers, external delivery, backup/retention controls, or other later-phase operational controls. Prototype activation is supported; `real_patient` operation remains refused until the locked production requirements are present.
+The weekly assessment and subjective-monitoring core is implemented, including current/late/historical submissions, immutable revisions, patient and assigned-clinician corrections, deterministic derived state, candidate intervention/reason outputs, and forward recomputation. Phase 6 consumes those authoritative outputs through on-demand, patient-locked reconciliation before patient Home/clinician Engagement reads and after valid submissions or technical-failure actions. The local capstone intentionally does not add pg-boss scheduling, server-local timers, external engagement email/push delivery, or notification-delivery infrastructure. Prototype activation is supported; `real_patient` operation remains refused until the locked production requirements are present.
 
 ## Prerequisites
 
@@ -72,6 +72,17 @@ in `real_patient` mode:
 - `patient.demo@example.test` / `DemoPatient!2026`
 - `clinician.demo@example.test` / `DemoClinician!2026`
 - `admin.demo@example.test` / `DemoAdmin!2026`
+
+The prototype seed also creates assigned, deterministic engagement scenarios for
+upcoming, overdue, first-reminder, final-reminder, disengaged-outreach, and
+confirmed-technical-pause states. Scenario accounts use the email pattern
+`engagement.<scenario>@example.test` and password `DemoEngagement!2026`.
+
+Phase 6 demonstration routes include `/patient/home`,
+`/clinician/engagement`, and `/admin/operations`. Engagement timing is
+authoritative when one of the permitted reconciliation paths runs; the local
+demo does not claim unattended background transitions while the application is
+idle.
 
 ## Tests
 

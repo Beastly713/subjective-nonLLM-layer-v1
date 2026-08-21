@@ -1,6 +1,7 @@
 import {
   ClipboardCheck,
   HeartHandshake,
+  House,
   LifeBuoy,
   UserRound,
 } from 'lucide-react';
@@ -17,7 +18,7 @@ export function PatientShell({
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-surface px-[var(--page-gutter)] py-5">
-        <div className="mx-auto flex max-w-5xl items-center justify-between">
+        <div className="mx-auto flex max-w-5xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <span className="grid size-11 place-items-center rounded-xl bg-success-surface text-success">
               <HeartHandshake aria-hidden="true" />
@@ -30,7 +31,14 @@ export function PatientShell({
             </div>
           </div>
           {navigation ? (
-            <nav className="flex items-center gap-2">
+            <nav className="flex max-w-[70vw] flex-wrap justify-end gap-2">
+              <NavLink
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-inverse-foreground"
+                to="/patient/home"
+              >
+                <House className="size-4" />
+                Home
+              </NavLink>
               <NavLink
                 className="flex items-center gap-2 rounded-lg bg-surface-interactive px-4 py-2 text-sm font-semibold"
                 to="/patient/onboarding"

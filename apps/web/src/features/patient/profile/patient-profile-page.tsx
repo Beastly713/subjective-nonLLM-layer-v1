@@ -1,16 +1,19 @@
 import {
+  PatientMonitoringResponseSchema,
   PatientProfileResponseSchema,
   ScheduleReadResponseSchema,
   type ScheduleReadResponse,
   type PatientProfileResponse,
 } from '@aud-subjective/contracts';
 import { useQuery } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 
 import { PatientShell } from '@/app/shells/patient-shell';
 import { ErrorState, LoadingState } from '@/components/patterns/system-state';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { ConfirmActionDialog } from '@/components/patterns/confirm-action-dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiGet, apiMutate } from '@/lib/api/client';
@@ -41,6 +44,7 @@ export function PatientProfilePage() {
 
 function PatientProfileContent() {
   const safetyProjection = usePatientSafetyProjection();
+  const queryClient = useQueryClient();
   const profile = useQuery({
     queryKey: ['patient', 'profile'],
     queryFn: ({ signal }) =>
@@ -54,6 +58,14 @@ function PatientProfileContent() {
     queryFn: ({ signal }) =>
       apiGet<ScheduleReadResponse>('/api/v1/patient/schedule', {
         schema: ScheduleReadResponseSchema,
+        signal,
+      }),
+  });
+  const monitoring = useQuery({
+    queryKey: ['patient', 'monitoring'],
+    queryFn: ({ signal }) =>
+      apiGet('/api/v1/patient/monitoring', {
+        schema: PatientMonitoringResponseSchema,
         signal,
       }),
   });
@@ -71,6 +83,23 @@ function PatientProfileContent() {
       </PatientShell>
     );
   const data = profile.data;
+  const monitoringData = monitoring.data;
+  const updateMonitoring = async (action: 'opt-out' | 're-enable') => {
+    if (!monitoringData) return;
+    await apiMutate(
+      `/api/v1/patient/monitoring/${action}`,
+      'POST',
+      { expectedVersion: monitoringData.version },
+      {
+        schema: PatientMonitoringResponseSchema,
+        headers: { 'Idempotency-Key': crypto.randomUUID() },
+      },
+    );
+    await Promise.all([
+      monitoring.refetch(),
+      queryClient.invalidateQueries({ queryKey: ['patient', 'home'] }),
+    ]);
+  };
   const updateTimezone = async (form: FormData) => {
     setPending(true);
     try {
@@ -149,6 +178,53 @@ function PatientProfileContent() {
                 {onboardingStatusLabels[data.onboardingStatus]}
               </p>
             </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <h2 className="m-0 text-lg font-semibold">Monitoring</h2>
+            <p className="mb-0 mt-2 text-sm leading-6 text-muted-foreground">
+              Your check-in history stays preserved. You control whether weekly
+              monitoring reminders remain active.
+            </p>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="m-0 font-medium">
+                {monitoring.isLoading
+                  ? 'Loading monitoring status…'
+                  : monitoring.isError || !monitoringData
+                    ? 'Monitoring status unavailable'
+                    : monitoringData.state === 'OPTED_OUT'
+                      ? 'Monitoring is paused'
+                      : monitoringData.state === 'TECHNICAL_FAILURE'
+                        ? 'Timing is paused while an access issue is reviewed'
+                        : 'Monitoring is active'}
+              </p>
+              <p className="mb-0 mt-1 text-sm text-muted-foreground">
+                Opting out stops future reminders; it does not delete previous
+                assessments.
+              </p>
+            </div>
+            {monitoringData?.state === 'OPTED_OUT' ? (
+              <ConfirmActionDialog
+                triggerLabel="Re-enable monitoring"
+                title="Re-enable weekly monitoring?"
+                description="Your current monitoring cycle will restart from the next authoritative schedule boundary. Previous check-ins remain unchanged, and old reminder slots will not be replayed."
+                confirmLabel="Re-enable monitoring"
+                onConfirm={() => updateMonitoring('re-enable')}
+              />
+            ) : (
+              <ConfirmActionDialog
+                triggerLabel="Pause monitoring"
+                title="Pause monitoring reminders?"
+                description="Weekly monitoring reminders will stop, while your historical check-ins remain available. You can explicitly re-enable monitoring later; this action does not delete any record."
+                confirmLabel="Pause monitoring"
+                intent="destructive"
+                disabled={!monitoringData}
+                onConfirm={() => updateMonitoring('opt-out')}
+              />
+            )}
           </CardContent>
         </Card>
         <Card>

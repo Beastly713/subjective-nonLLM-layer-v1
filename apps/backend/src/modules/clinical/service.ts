@@ -1239,7 +1239,10 @@ export async function readClinicianPatientMonitoring(input: {
         orderBy: { openedAt: 'desc' },
       }),
       input.tx.clinicianTask.findMany({
-        where: { patientId: input.patientId },
+        where: {
+          patientId: input.patientId,
+          caseType: { in: ['CLINICAL', 'SUBJECTIVE_LEVEL_3_REVIEW'] },
+        },
         orderBy: { createdAt: 'desc' },
       }),
       input.tx.clinicalReasonHistory.findMany({

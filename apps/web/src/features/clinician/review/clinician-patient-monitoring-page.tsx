@@ -347,8 +347,10 @@ function MonitoringDetail({
                     />
                   </div>
                   <p className="mb-0 mt-2 text-sm text-muted-foreground">
-                    Reason: {humanize(task.createdReason)} · Created{' '}
-                    {formatDate(task.createdAt)}
+                    {task.caseType === 'ENGAGEMENT'
+                      ? `Source: ${humanize(task.taskIdentity)}`
+                      : `Reason: ${task.createdReason ? humanize(task.createdReason) : humanize(task.taskIdentity)}`}{' '}
+                    · Created {formatDate(task.createdAt)}
                   </p>
                   {task.alertUpdateRequired ? (
                     <p className="mb-0 mt-2 text-sm font-semibold text-warning">

@@ -6,7 +6,27 @@
 
 **Purpose:** Define the concrete implementation architecture for the V1 web product while preserving the existing clinical/domain specification and the previously locked product/UX architecture.
 
-**Current implementation status:** Phases 1–5 are complete, with the validated Phase 5 implementation head at `f6bc02b` (`fix: close phase 5 patient support and clinical review`). The repository contains the Phase 1 foundation, Phase 2 identity/core platform, Phase 3 safety-gated onboarding/safety cases/reduction setup, the Phase 4 weekly assessment and deterministic subjective-monitoring core, and Phase 5 governed patient support and clinical review. The current surface includes server-backed drafts, immutable revisions, current/late/historical classification, reduction-week observations, corrections, candidate derived/effect outputs, patient-safe history, forward recomputation, governed support resources, Level-2 clinician visibility, Level-3 review cases, and durable in-app clinician tasks. Engagement, auxiliary/external delivery, background workers, backup/retention controls, and real-patient operation remain outside the current implementation. See `AUD_V1_Phase_5_Patient_Support_and_Clinical_Review_Implementation_Guide.md` for the current phase completion record.
+**Current implementation status:** Phases 1–5 are complete and the Phase 6 local engagement/demo implementation is present, with closeout validation intentionally separate. The repository contains the Phase 1 foundation, Phase 2 identity/core platform, Phase 3 safety-gated onboarding/safety cases/reduction setup, the Phase 4 weekly assessment and deterministic subjective-monitoring core, Phase 5 governed patient support/clinical review, and Phase 6 deterministic engagement reconciliation, separate engagement cases/tasks, Patient Home, clinician Engagement, and focused manual technical-failure operations. The local capstone boundary defers unattended background workers, auxiliary/external engagement delivery, backup/retention controls, and real-patient operation. See `AUD_V1_Phase_6_Engagement_and_Local_Demo_Operations_Implementation_Guide.md` for the phase boundary.
+
+## 0.1 Phase 6 local-capstone boundary
+
+Phase 6 preserves the target production architecture and domain semantics, but
+the local demonstration implements only the smallest useful operational slice:
+
+- engagement reconciliation runs on authorized reads and ordered domain writes;
+- persisted schedule periods remain the sole due-time authority;
+- patient Home, clinician Engagement, separate engagement cases/tasks, and
+  focused technical-failure Operations are implemented as real surfaces;
+- no pg-boss schedule, server-local timer, external engagement email/push,
+  notification-delivery table, delivery provider callback/retry/bundling, or
+  cohort availability detector is added in this phase;
+- the application does not claim unattended multi-day state materialization
+  while it is idle; real-patient operation remains refused.
+
+These are infrastructure-scope decisions for the local capstone only. They do
+not change engagement thresholds, safety precedence, missingness, case
+lifecycle, authorization, historical behavior, or the exact technical-failure
+due-time formula defined by the governing documents.
 
 This document is subordinate to:
 

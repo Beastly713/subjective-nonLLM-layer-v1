@@ -26,6 +26,89 @@ export const PROTOTYPE_IDENTITIES = {
   },
 } as const;
 
+type PrototypeIdentity = {
+  name: string;
+  email: string;
+  password: string;
+};
+
+const PROTOTYPE_ENGAGEMENT_SCENARIOS = [
+  {
+    key: 'upcoming',
+    idSuffix: '000000000001',
+    label: 'Upcoming check-in',
+    identity: {
+      name: 'Demo Patient · Upcoming',
+      email: 'engagement.upcoming@example.test',
+      password: 'DemoEngagement!2026',
+    },
+    dueOffsetDays: 2,
+    technicalFailure: false,
+  },
+  {
+    key: 'overdue',
+    idSuffix: '000000000002',
+    label: 'Overdue before reminder',
+    identity: {
+      name: 'Demo Patient · Overdue',
+      email: 'engagement.overdue@example.test',
+      password: 'DemoEngagement!2026',
+    },
+    dueOffsetDays: -2,
+    technicalFailure: false,
+  },
+  {
+    key: 'first-reminder',
+    idSuffix: '000000000003',
+    label: 'First reminder eligible',
+    identity: {
+      name: 'Demo Patient · First Reminder',
+      email: 'engagement.first-reminder@example.test',
+      password: 'DemoEngagement!2026',
+    },
+    dueOffsetDays: -8,
+    technicalFailure: false,
+  },
+  {
+    key: 'at-risk',
+    idSuffix: '000000000004',
+    label: 'Final reminder eligible',
+    identity: {
+      name: 'Demo Patient · At Risk',
+      email: 'engagement.at-risk@example.test',
+      password: 'DemoEngagement!2026',
+    },
+    dueOffsetDays: -16,
+    technicalFailure: false,
+  },
+  {
+    key: 'disengaged',
+    idSuffix: '000000000005',
+    label: 'Disengaged outreach case',
+    identity: {
+      name: 'Demo Patient · Outreach',
+      email: 'engagement.outreach@example.test',
+      password: 'DemoEngagement!2026',
+    },
+    dueOffsetDays: -32,
+    technicalFailure: false,
+  },
+  {
+    key: 'technical',
+    idSuffix: '000000000006',
+    label: 'Confirmed technical pause',
+    identity: {
+      name: 'Demo Patient · Technical Pause',
+      email: 'engagement.technical@example.test',
+      password: 'DemoEngagement!2026',
+    },
+    dueOffsetDays: -10,
+    technicalFailure: true,
+  },
+] as const;
+
+const DAY_MS = 24 * 60 * 60 * 1_000;
+
 const PROTOTYPE_CONTENT_CLASSES = [
   {
     key: 'CRAVING_COPING_SUPPORT',
@@ -131,6 +214,186 @@ async function seedPrototypeContent(
   }
 }
 
+async function seedEngagementScenario(
+  prisma: ReturnType<typeof createPrismaClient>,
+  auth: ReturnType<typeof createAuth>,
+  adminUserId: string,
+  clinicianUserId: string,
+  scenario: (typeof PROTOTYPE_ENGAGEMENT_SCENARIOS)[number],
+) {
+  const existing = await prisma.user.findUnique({
+    where: { email: scenario.identity.email },
+  });
+  const patient = existing
+    ? existing
+    : (
+        await auth.api.signUpEmail({
+          body: {
+            name: scenario.identity.name,
+            email: scenario.identity.email,
+            password: scenario.identity.password,
+          },
+        })
+      ).user;
+  await prisma.user.update({
+    where: { id: patient.id },
+    data: { emailVerified: true, name: scenario.identity.name },
+  });
+  await prisma.applicationAccount.upsert({
+    where: { userId: patient.id },
+    create: {
+      userId: patient.id,
+      state: 'ACTIVE',
+      createdByUserId: adminUserId,
+    },
+    update: { state: 'ACTIVE' },
+  });
+  const role = await prisma.userRoleAssignment.findFirst({
+    where: {
+      userId: patient.id,
+      workspace: 'PATIENT',
+      role: 'PATIENT',
+      revokedAt: null,
+    },
+  });
+  if (!role) {
+    await prisma.userRoleAssignment.create({
+      data: {
+        userId: patient.id,
+        workspace: 'PATIENT',
+        role: 'PATIENT',
+        grantedByUserId: adminUserId,
+        grantReason: 'Deterministic Phase 6 engagement demo scenario',
+      },
+    });
+  }
+  await prisma.patientProfile.upsert({
+    where: { patientId: patient.id },
+    create: {
+      patientId: patient.id,
+      monitoringTimezone: 'UTC',
+      createdByUserId: adminUserId,
+      updatedByUserId: adminUserId,
+    },
+    update: { monitoringTimezone: 'UTC', updatedByUserId: adminUserId },
+  });
+  await prisma.profilePreferenceVersion.upsert({
+    where: { patientId_version: { patientId: patient.id, version: 1 } },
+    create: {
+      patientId: patient.id,
+      version: 1,
+      mutualHelpPreference: null,
+      spiritualContentPreference: null,
+      createdByUserId: adminUserId,
+    },
+    update: {},
+  });
+  await prisma.patientProcessingLock.upsert({
+    where: { patientId: patient.id },
+    create: { patientId: patient.id },
+    update: {},
+  });
+  const assignment = await prisma.clinicianPatientAssignment.findFirst({
+    where: { clinicianUserId, patientId: patient.id, endedAt: null },
+  });
+  if (!assignment) {
+    await prisma.clinicianPatientAssignment.create({
+      data: {
+        clinicianUserId,
+        patientId: patient.id,
+        assignedByUserId: adminUserId,
+        assignmentReason: 'Deterministic Phase 6 engagement demo scenario',
+      },
+    });
+  }
+
+  const now = new Date();
+  const effectiveDueAt = new Date(
+    now.getTime() + scenario.dueOffsetDays * DAY_MS,
+  );
+  const periodStartAt = new Date(effectiveDueAt.getTime() - 7 * DAY_MS);
+  const scheduleId = `00000000-0000-4600-8000-${scenario.idSuffix}`;
+  const periodId = `00000000-0000-4610-8000-${scenario.idSuffix}`;
+  await prisma.monitoringScheduleVersion.upsert({
+    where: { id: scheduleId },
+    create: {
+      id: scheduleId,
+      patientId: patient.id,
+      version: 1,
+      monitoringTimezone: 'UTC',
+      effectiveBoundary: periodStartAt,
+      lifecycle: 'ACTIVE',
+      createdByUserId: adminUserId,
+      provenance: 'phase6_deterministic_engagement_demo',
+    },
+    update: {
+      monitoringTimezone: 'UTC',
+      effectiveBoundary: periodStartAt,
+      lifecycle: 'ACTIVE',
+      provenance: 'phase6_deterministic_engagement_demo',
+    },
+  });
+  await prisma.scheduledPeriod.upsert({
+    where: { id: periodId },
+    create: {
+      id: periodId,
+      patientId: patient.id,
+      scheduleVersionId: scheduleId,
+      monitoringTimezone: 'UTC',
+      periodStartAt,
+      periodEndAt: effectiveDueAt,
+      openAt: effectiveDueAt,
+      originalDueAt: effectiveDueAt,
+      effectiveDueAt,
+      version: 1,
+    },
+    update: {
+      scheduleVersionId: scheduleId,
+      monitoringTimezone: 'UTC',
+      periodStartAt,
+      periodEndAt: effectiveDueAt,
+      openAt: effectiveDueAt,
+      originalDueAt: effectiveDueAt,
+      effectiveDueAt,
+    },
+  });
+  if (scenario.technicalFailure) {
+    const failureId = `00000000-0000-4700-8000-${scenario.idSuffix}`;
+    await prisma.technicalFailure.upsert({
+      where: { id: failureId },
+      create: {
+        id: failureId,
+        patientId: patient.id,
+        failureType: 'ASSESSMENT_ACCESS_UNAVAILABLE',
+        affectedScope: { kind: 'PATIENT', patientId: patient.id },
+        startedAt: new Date(now.getTime() - 2 * 60 * 60 * 1_000),
+        evidence: {
+          summary: `${scenario.label}: deterministic local demo evidence`,
+        },
+        status: 'CONFIRMED',
+        confirmedBy: adminUserId,
+        confirmedAt: now,
+        reason: 'Deterministic Phase 6 local demonstration scenario',
+        sourcePeriodId: periodId,
+        previousEffectiveDueAt: effectiveDueAt,
+      },
+      update: {
+        patientId: patient.id,
+        startedAt: new Date(now.getTime() - 2 * 60 * 60 * 1_000),
+        evidence: {
+          summary: `${scenario.label}: deterministic local demo evidence`,
+        },
+        status: 'CONFIRMED',
+        confirmedBy: adminUserId,
+        confirmedAt: now,
+        reason: 'Deterministic Phase 6 local demonstration scenario',
+        sourcePeriodId: periodId,
+        previousEffectiveDueAt: effectiveDueAt,
+      },
+    });
+  }
+}
+
 export async function seedPrototype(environment: NodeJS.ProcessEnv) {
   const config = parseConfig(environment);
   if (config.appMode !== 'prototype') {
@@ -142,9 +405,7 @@ export async function seedPrototype(environment: NodeJS.ProcessEnv) {
   });
 
   try {
-    const ensureIdentity = async (
-      identity: (typeof PROTOTYPE_IDENTITIES)[keyof typeof PROTOTYPE_IDENTITIES],
-    ) => {
+    const ensureIdentity = async (identity: PrototypeIdentity) => {
       const existing = await prisma.user.findUnique({
         where: { email: identity.email },
       });
@@ -241,6 +502,16 @@ export async function seedPrototype(environment: NodeJS.ProcessEnv) {
           assignmentReason: 'Deterministic prototype seed',
         },
       });
+    }
+
+    for (const scenario of PROTOTYPE_ENGAGEMENT_SCENARIOS) {
+      await seedEngagementScenario(
+        prisma,
+        auth,
+        admin.id,
+        clinician.id,
+        scenario,
+      );
     }
 
     await seedPrototypeContent(prisma, admin.id);

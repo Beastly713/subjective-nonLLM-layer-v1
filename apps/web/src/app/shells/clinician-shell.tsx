@@ -1,5 +1,6 @@
 import {
   ClipboardList,
+  HeartHandshake,
   ShieldAlert,
   Stethoscope,
   UsersRound,
@@ -11,7 +12,7 @@ export function ClinicianShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-surface-subtle">
       <header className="border-b border-border-strong bg-surface px-[var(--page-gutter)] py-4">
-        <div className="mx-auto flex max-w-6xl items-center justify-between">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <Stethoscope className="text-primary" />
             <div>
@@ -21,7 +22,7 @@ export function ClinicianShell({ children }: { children: ReactNode }) {
               <p className="m-0 font-semibold">Assigned care directory</p>
             </div>
           </div>
-          <nav className="flex items-center gap-2">
+          <nav className="flex max-w-[72vw] flex-wrap justify-end gap-2">
             <NavLink
               className="flex items-center gap-2 rounded-md border border-border-strong px-4 py-2 text-sm font-semibold"
               to="/clinician/patients"
@@ -35,6 +36,13 @@ export function ClinicianShell({ children }: { children: ReactNode }) {
             >
               <ClipboardList className="size-4" />
               Review Queue
+            </NavLink>
+            <NavLink
+              className="flex items-center gap-2 rounded-md border border-border-strong px-4 py-2 text-sm font-semibold"
+              to="/clinician/engagement"
+            >
+              <HeartHandshake className="size-4" />
+              Engagement
             </NavLink>
             <NavLink
               className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-inverse-foreground"

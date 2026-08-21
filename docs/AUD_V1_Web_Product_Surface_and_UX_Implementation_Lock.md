@@ -12,7 +12,7 @@ The authoritative V1 behavior remains defined by:
 - instrument: `AUD_WEEKLY_CHECKIN` version `1.0`
 - system version: `subjective_monitoring_v1`
 
-**Current implementation note:** Phases 1–5 are complete, with the validated Phase 5 implementation head at `f6bc02b`. The implemented web surface currently includes authentication, patient onboarding, reduction setup, profile/status, safety-controlled states, weekly Check-in, Check-in history, correction/backfill actions, patient Support and post-check-in support, clinician patients and safety views, clinician subjective-monitoring visibility and Review Queue/detail views, admin users/regional-routing/safety views, and the development foundation reference. Patient Home/Progress, engagement, content management, auxiliary delivery, and broader operations remain locked product design for later implementation; they are not current routes.
+**Current implementation note:** Phases 1–5 are complete, and the Phase 6 local-demo surfaces are now implemented. The implemented web surface includes authentication, patient onboarding, reduction setup, profile/status, Patient Home, safety-controlled states, weekly Check-in, Check-in history, correction/backfill actions, patient Support and post-check-in support, clinician patients/safety/clinical Review Queue views, clinician Engagement, admin users/regional-routing/safety views, focused technical-failure Operations, and the development foundation reference. Patient Progress, content management, auxiliary delivery, and broader operations remain later scope. UI/UX quality remains first-class for every implemented surface.
 
 ---
 

@@ -11,6 +11,7 @@ const forbiddenNavigation = [
   'Check-in',
   'Progress',
   'Review Queue',
+  'Engagement',
   'Safety',
   'Content',
   'Configuration',
@@ -49,12 +50,12 @@ describe('workspace shells', () => {
     [
       PatientShell,
       'Patient space',
-      ['Setup', 'Check-in', 'History', 'Support', 'Profile'],
+      ['Home', 'Setup', 'Check-in', 'History', 'Support', 'Profile'],
     ],
     [
       ClinicianShell,
       'Clinician workspace',
-      ['Patients', 'Review Queue', 'Safety'],
+      ['Patients', 'Review Queue', 'Engagement', 'Safety'],
     ],
     [AdminShell, 'Administrative console', ['Users & Access']],
   ] as const)(

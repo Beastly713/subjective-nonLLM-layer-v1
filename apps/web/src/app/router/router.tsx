@@ -9,10 +9,13 @@ import { FoundationPage } from '@/features/foundation/foundation-page';
 import { AdminUsersPage } from '@/features/admin/users/admin-users-page';
 import { RegionalRoutingPage } from '@/features/admin/routing/regional-routing-page';
 import { AdminSafetyPage } from '@/features/admin/safety/admin-safety-page';
+import { AdminOperationsPage } from '@/features/admin/operations/admin-operations-page';
 import { ClinicianPatientsPage } from '@/features/clinician/patients/clinician-patients-page';
 import { ClinicianSafetyPage } from '@/features/clinician/safety/clinician-safety-page';
 import { ClinicianReviewQueuePage } from '@/features/clinician/review/clinician-review-queue-page';
 import { ClinicianPatientMonitoringPage } from '@/features/clinician/review/clinician-patient-monitoring-page';
+import { ClinicianEngagementPage } from '@/features/clinician/engagement/clinician-engagement-page';
+import { PatientHomePage } from '@/features/patient/home/patient-home-page';
 import { PatientProfilePage } from '@/features/patient/profile/patient-profile-page';
 import { PatientOnboardingPage } from '@/features/patient/onboarding/patient-onboarding-page';
 import { PatientReductionSetupPage } from '@/features/patient/reduction/reduction-setup-page';
@@ -77,6 +80,11 @@ export const router = createBrowserRouter([
     errorElement: <RouteErrorBoundary />,
   },
   {
+    path: '/patient/home',
+    element: <PatientHomePage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
     path: '/patient/profile',
     element: <PatientProfilePage />,
     errorElement: <RouteErrorBoundary />,
@@ -127,8 +135,18 @@ export const router = createBrowserRouter([
     errorElement: <RouteErrorBoundary />,
   },
   {
+    path: '/clinician/engagement',
+    element: <ClinicianEngagementPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
     path: '/clinician/patients/:patientId/monitoring',
     element: <ClinicianPatientMonitoringPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: '/admin/operations',
+    element: <AdminOperationsPage />,
     errorElement: <RouteErrorBoundary />,
   },
   {

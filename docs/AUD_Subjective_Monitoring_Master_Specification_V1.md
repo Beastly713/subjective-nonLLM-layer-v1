@@ -8,7 +8,7 @@
 **Primary population:** Adults using an Alcohol Use Disorder support solution  
 **Decision model:** Deterministic, auditable, non-LLM
 
-**Implementation status:** Phases 1–5 are implemented in the repository, with the validated Phase 5 implementation head at `f6bc02b` (`fix: close phase 5 patient support and clinical review`). The current codebase includes the weekly assessment and deterministic subjective-monitoring core, governed patient support resolution, Level-2 clinician visibility, Level-3 clinical review cases, durable in-app clinician tasks, and the corresponding patient/clinician workflow surfaces. Engagement workflows, auxiliary/external delivery, background workers, backup/retention controls, and real-patient operation remain later implementation phases. This document remains the target V1 product and clinical specification; the current implementation boundary is recorded in `AUD_V1_Phase_5_Patient_Support_and_Clinical_Review_Implementation_Guide.md`.
+**Implementation status:** Phases 1–5 are complete and the Phase 6 engagement/local-demo implementation is present in the repository. The current codebase includes deterministic on-demand engagement reconciliation, patient Home, clinician Engagement, separate engagement cases/tasks, and focused manual technical-failure operations. This local capstone boundary intentionally defers unattended background workers, external engagement delivery, backup/retention controls, and real-patient operation. Phase 6 does not change the canonical rules in this document; its implementation boundary is recorded in `AUD_V1_Phase_6_Engagement_and_Local_Demo_Operations_Implementation_Guide.md`, while Phase 6 closeout validation remains separate.
 
 ---
 
