@@ -73,6 +73,14 @@ export const ContentExploreRequestSchema = z
   })
   .strict();
 
+export const ContentFeedbackResponseSchema = z.object({
+  recorded: z.literal(true),
+});
+
+export const ContentRestoreResponseSchema = z.object({
+  restored: z.literal(true),
+});
+
 export type ContentInterventionClass = z.infer<
   typeof ContentInterventionClassSchema
 >;

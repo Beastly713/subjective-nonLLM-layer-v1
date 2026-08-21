@@ -29,6 +29,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ApiClientError, apiMutate } from '@/lib/api/client';
 import { PatientShell } from '@/app/shells/patient-shell';
+import { PostCheckInSupport } from '@/features/patient/support/post-check-in-support';
 import { WeeklyConsumptionCalendar } from './weekly-consumption-calendar';
 import { BooleanChoice, WeeklyScale } from './weekly-scale';
 
@@ -949,6 +950,8 @@ function SubmittedState({ data }: { data: CheckInStateResponse }) {
             </Button>
           </Link>
         </div>
+
+        <PostCheckInSupport />
       </div>
     </PatientShell>
   );

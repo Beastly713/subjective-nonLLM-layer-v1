@@ -5,6 +5,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
 import { useState } from 'react';
+import { Link } from 'react-router';
 
 import { ClinicianShell } from '@/app/shells/clinician-shell';
 import { WorkspaceBoundary } from '@/app/shells/workspace-boundary';
@@ -75,6 +76,7 @@ export function ClinicianPatientsPage() {
                       <th className="px-4 py-3">Timezone</th>
                       <th className="px-4 py-3">Setup</th>
                       <th className="px-4 py-3">Preferences</th>
+                      <th className="px-4 py-3">Monitoring</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -98,6 +100,14 @@ export function ClinicianPatientsPage() {
                           ·{' '}
                           {patient.preferences.spiritualContentPreference ??
                             'Not supplied'}
+                        </td>
+                        <td className="px-4 py-4">
+                          <Link
+                            className="font-semibold text-primary underline underline-offset-2"
+                            to={`/clinician/patients/${patient.patientId}/monitoring`}
+                          >
+                            Open detail
+                          </Link>
                         </td>
                       </tr>
                     ))}

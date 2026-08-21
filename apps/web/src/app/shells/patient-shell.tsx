@@ -1,4 +1,9 @@
-import { ClipboardCheck, HeartHandshake, UserRound } from 'lucide-react';
+import {
+  ClipboardCheck,
+  HeartHandshake,
+  LifeBuoy,
+  UserRound,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
 import { NavLink } from 'react-router';
 
@@ -44,6 +49,13 @@ export function PatientShell({
                 to="/patient/check-in/history"
               >
                 History
+              </NavLink>
+              <NavLink
+                className="flex items-center gap-2 rounded-lg bg-surface-interactive px-4 py-2 text-sm font-semibold"
+                to="/patient/support"
+              >
+                <LifeBuoy className="size-4" />
+                Support
               </NavLink>
               <NavLink
                 className="flex items-center gap-2 rounded-lg bg-surface-interactive px-4 py-2 text-sm font-semibold"
