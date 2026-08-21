@@ -145,6 +145,32 @@ export async function provisionNextPeriod(
   );
 }
 
+/**
+ * Materialize only sequential persisted periods up to the current clock
+ * boundary. The assessment module never derives period boundaries itself.
+ */
+export async function ensureRelevantPeriodsInTransaction(
+  tx: Prisma.TransactionClient,
+  clock: Clock,
+  patientId: string,
+  maxPeriods = 52,
+) {
+  let latest = await tx.scheduledPeriod.findFirst({
+    where: { patientId },
+    orderBy: { periodEndAt: 'desc' },
+  });
+
+  if (!latest) return null;
+
+  for (let index = 0; index < maxPeriods && latest.openAt <= clock.now(); index += 1) {
+    const next = await provisionNextPeriodInTransaction(tx, clock, patientId);
+    if (next.id === latest.id) break;
+    latest = next;
+  }
+
+  return latest;
+}
+
 export async function ensureGoalActivationPeriodInTransaction(
   tx: Prisma.TransactionClient,
   clock: Clock,

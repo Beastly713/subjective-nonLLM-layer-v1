@@ -45,6 +45,8 @@ export const AuthenticatedSessionSchema = z.object({
         'PATIENT_ONBOARDING_READ',
         'PATIENT_ONBOARDING_UPDATE',
         'PATIENT_SAFETY_READ',
+        'PATIENT_ASSESSMENT_READ',
+        'PATIENT_ASSESSMENT_UPDATE',
         'SAFETY_CASE_READ',
         'SAFETY_CASE_ACKNOWLEDGE',
         'SAFETY_CASE_DISPOSITION',

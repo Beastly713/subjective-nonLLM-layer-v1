@@ -85,6 +85,23 @@ export const ReductionBaselineDayInputSchema = z
     }
   });
 
+// Weekly reduction drafts use the same authoritative day-status and quantity
+// semantics as the baseline flow. This alias keeps one validation policy.
+export const WeeklyAlcoholDayInputSchema = ReductionBaselineDayInputSchema;
+
+export const WeeklyAlcoholDayInputSetSchema = z
+  .array(WeeklyAlcoholDayInputSchema)
+  .superRefine((days, ctx) => {
+    const dates = new Set(days.map((day) => day.localDate));
+    if (dates.size !== days.length) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [],
+        message: 'Weekly alcohol days must contain unique local dates.',
+      });
+    }
+  });
+
 export const ReductionBaselineDayProjectionSchema = z.object({
   id: z.uuid(),
   localDate: z.iso.date(),
@@ -197,6 +214,9 @@ export type AlcoholThresholdProfile = z.infer<
 export type ReductionProposalKind = z.infer<typeof ReductionProposalKindSchema>;
 export type ReductionBaselineDayInput = z.infer<
   typeof ReductionBaselineDayInputSchema
+>;
+export type WeeklyAlcoholDayInput = z.infer<
+  typeof WeeklyAlcoholDayInputSchema
 >;
 export type ReductionSetupResponse = z.infer<
   typeof ReductionSetupResponseSchema

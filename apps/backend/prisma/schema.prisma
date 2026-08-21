@@ -246,6 +246,7 @@ model PatientProfile {
   safetyInputRevisions SafetyInputRevision[]
   safetyEvaluationResults SafetyEvaluationResult[]
   safetyCases SafetyCase[]
+  weeklyAssessments WeeklyAssessment[]
 
   @@map("patient_profiles")
 }
@@ -581,6 +582,7 @@ model ScheduledPeriod {
   scheduleVersion    MonitoringScheduleVersion @relation(fields: [scheduleVersionId], references: [id], onDelete: Restrict)
   recoveryGoalVersions RecoveryGoalVersion[]
   rescheduleAudits   PeriodRescheduleAudit[]
+  weeklyAssessments  WeeklyAssessment[]
 
   @@unique([patientId, periodStartAt], map: "scheduled_periods_patient_start_key")
   @@index([patientId, periodEndAt], map: "scheduled_periods_patient_end_idx")
@@ -664,6 +666,93 @@ model RecoveryGoalVersion {
 
   @@unique([patientId, goalVersion], map: "recovery_goal_versions_patient_version_key")
   @@map("recovery_goal_versions")
+}
+
+enum AssessmentCompletionStatus {
+  DRAFT
+  PARTIAL
+  COMPLETE
+}
+
+enum AssessmentRevisionCompletionStatus {
+  PARTIAL
+  COMPLETE
+}
+
+enum AssessmentActorType {
+  PATIENT
+  CLINICIAN
+  STAFF
+  IMPORT
+}
+
+model WeeklyAssessment {
+  id                         String                   @id @default(uuid()) @db.Uuid
+  patientId                  String                   @map("patient_id") @db.Uuid
+  scheduledPeriodId          String                   @map("scheduled_period_id") @db.Uuid
+  instrumentId               String                   @map("instrument_id") @db.VarChar(128)
+  instrumentVersion          String                   @map("instrument_version") @db.VarChar(64)
+  draftVersion               Int                      @default(0) @map("draft_version")
+  draftCurrentStep           String                   @map("draft_current_step") @db.VarChar(64)
+  draftAnswerSnapshot        Json                     @map("draft_answer_snapshot")
+  draftConsumptionSnapshot   Json?                    @map("draft_consumption_snapshot")
+  completionStatus            AssessmentCompletionStatus @default(DRAFT) @map("completion_status")
+  authoritativeRevisionId    String?                  @unique(map: "weekly_assessments_authoritative_revision_key") @map("authoritative_revision_id") @db.Uuid
+  createdAt                  DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdByUserId            String                   @map("created_by_user_id") @db.Uuid
+  updatedAt                  DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedByUserId            String                   @map("updated_by_user_id") @db.Uuid
+  profile                    PatientProfile           @relation(fields: [patientId], references: [patientId], onDelete: Restrict, map: "weekly_assessments_patient_fk")
+  scheduledPeriod            ScheduledPeriod          @relation(fields: [scheduledPeriodId], references: [id], onDelete: Restrict, map: "weekly_assessments_period_fk")
+  authoritativeRevision      AssessmentRevision?      @relation("AssessmentAuthoritativeRevision", fields: [authoritativeRevisionId], references: [id], onDelete: Restrict, map: "weekly_assessments_authoritative_revision_fk")
+  revisions                  AssessmentRevision[]     @relation("AssessmentRevisions")
+
+  @@unique([patientId, scheduledPeriodId, instrumentId, instrumentVersion], map: "weekly_assessments_patient_period_instrument_key")
+  @@index([patientId, scheduledPeriodId], map: "weekly_assessments_patient_period_idx")
+  @@map("weekly_assessments")
+}
+
+model AssessmentRevision {
+  id                       String                           @id @default(uuid()) @db.Uuid
+  assessmentId             String                           @map("assessment_id") @db.Uuid
+  revisionNumber           Int                              @map("revision_number")
+  completionStatus         AssessmentRevisionCompletionStatus @map("completion_status")
+  sourceDraftVersion       Int                              @map("source_draft_version")
+  submittedAt              DateTime                         @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  submittedBy              AssessmentActorType              @map("submitted_by")
+  submittedByUserId        String                           @map("submitted_by_user_id") @db.Uuid
+  supersedesRevisionId     String?                          @map("supersedes_revision_id") @db.Uuid
+  submissionClassification String                           @map("submission_classification") @db.VarChar(64)
+  instrumentVersion        String                           @map("instrument_version") @db.VarChar(64)
+  wordingVersion           String                           @map("wording_version") @db.VarChar(64)
+  ruleSetVersion           String                           @map("rule_set_version") @db.VarChar(128)
+  configurationVersion     String                           @map("configuration_version") @db.VarChar(128)
+  provenance               Json?
+  assessment               WeeklyAssessment                 @relation("AssessmentRevisions", fields: [assessmentId], references: [id], onDelete: Restrict, map: "assessment_revisions_assessment_fk")
+  authoritativeAssessment WeeklyAssessment?                @relation("AssessmentAuthoritativeRevision")
+  supersedesRevision      AssessmentRevision?              @relation("AssessmentRevisionSupersedes", fields: [supersedesRevisionId], references: [id], onDelete: Restrict, map: "assessment_revisions_supersedes_fk")
+  supersededBy            AssessmentRevision[]              @relation("AssessmentRevisionSupersedes")
+  itemResponses           AssessmentItemResponse[]
+
+  @@unique([assessmentId, revisionNumber], map: "assessment_revisions_assessment_revision_key")
+  @@index([assessmentId, submittedAt], map: "assessment_revisions_assessment_submitted_idx")
+  @@map("assessment_revisions")
+}
+
+model AssessmentItemResponse {
+  id                   String             @id @default(uuid()) @db.Uuid
+  assessmentRevisionId String             @map("assessment_revision_id") @db.Uuid
+  itemId               String             @map("item_id") @db.VarChar(64)
+  itemKey              String             @map("item_key") @db.VarChar(128)
+  booleanValue         Boolean?           @map("boolean_value")
+  integerValue         Int?              @map("integer_value")
+  instrumentVersion    String             @map("instrument_version") @db.VarChar(64)
+  wordingVersion       String             @map("wording_version") @db.VarChar(64)
+  scaleVersion         String             @map("scale_version") @db.VarChar(64)
+  assessmentRevision   AssessmentRevision @relation(fields: [assessmentRevisionId], references: [id], onDelete: Restrict, map: "assessment_item_responses_revision_fk")
+
+  @@unique([assessmentRevisionId, itemId], map: "assessment_item_responses_revision_item_key")
+  @@map("assessment_item_responses")
 }
 
 model ClinicianPatientAssignment {
