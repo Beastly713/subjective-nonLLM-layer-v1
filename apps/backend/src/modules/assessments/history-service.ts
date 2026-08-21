@@ -25,6 +25,7 @@ import {
   projectPeriod,
   projectPreferenceContext,
   safetyAvailability,
+  periodLocalDates,
 } from './projections.js';
 import { hasNewerAuthoritativeAssessment } from './service.js';
 import { reconcileCurrentStateProjection } from '../monitoring/service.js';
@@ -294,6 +295,8 @@ export async function readCheckInAssessmentDetail(
     instrument: projectInstrument(goal?.goal ?? 'UNSURE'),
     goalContext: projectGoalContext(goal),
     preferenceContext: projectPreferenceContext(preference),
+    weeklyConsumptionDates:
+      goal?.goal === 'REDUCTION' ? periodLocalDates(period) : [],
     authoritativeRevision: authoritative ? projectRevision(authoritative, true) : null,
     priorRevisions: assessment.revisions
       .filter((revision) => revision.id !== authoritative?.id)

@@ -28,6 +28,7 @@ import {
 import { periodAvailability, periodLocalDates, projectCheckInState } from './projections.js';
 import type { AssessmentPeriodRecord } from './types.js';
 import { recomputePatientMonitoringFromPeriod } from './recompute-service.js';
+import { hasNewerAuthoritativeAssessment } from './service.js';
 
 type Tx = Prisma.TransactionClient;
 
@@ -359,9 +360,15 @@ export async function correctWeeklyAssessment(input: {
     },
   });
 
+  const historicalCorrection =
+    actorType === 'PATIENT'
+      ? await hasNewerAuthoritativeAssessment(tx, patientId, period)
+      : false;
   if (actorType === 'PATIENT') {
     return projectCheckInState({
-      availability: periodAvailability(period, now),
+      availability: historicalCorrection
+        ? 'HISTORICAL'
+        : periodAvailability(period, now),
       period,
       assessment: updated,
       context: { period, goal, preference },

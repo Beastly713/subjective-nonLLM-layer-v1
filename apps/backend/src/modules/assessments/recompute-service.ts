@@ -77,12 +77,19 @@ function baselineDaysInput(
 }
 
 function effectScopeForPeriod(
-  trigger: 'CURRENT_PATIENT_SUBMISSION' | 'CURRENT_PATIENT_CORRECTION' | 'STAFF_CORRECTION' | 'HISTORICAL_BACKFILL' | 'ADMINISTRATIVE_RECOMPUTE' | 'POLICY_MIGRATION',
+  _trigger:
+    | 'CURRENT_PATIENT_SUBMISSION'
+    | 'CURRENT_PATIENT_CORRECTION'
+    | 'STAFF_CORRECTION'
+    | 'HISTORICAL_BACKFILL'
+    | 'ADMINISTRATIVE_RECOMPUTE'
+    | 'POLICY_MIGRATION',
   periodId: string,
   latestAuthoritativePeriodId: string | null,
 ) {
-  if (trigger === 'STAFF_CORRECTION') return 'CURRENT' as const;
-  return periodId === latestAuthoritativePeriodId ? 'CURRENT' as const : 'HISTORICAL' as const;
+  return periodId === latestAuthoritativePeriodId
+    ? ('CURRENT' as const)
+    : ('HISTORICAL' as const);
 }
 
 async function refreshReductionSummary(input: {

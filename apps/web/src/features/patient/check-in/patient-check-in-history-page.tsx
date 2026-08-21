@@ -46,7 +46,15 @@ export function PatientCheckInHistoryPage() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="m-0 text-xs font-bold uppercase tracking-[0.12em] text-primary">
-                        {item.submissionClassification === 'HISTORICAL_BACKFILL' || item.backfillAvailable ? 'Past check-in' : item.period.status === 'LATE' ? 'Late' : 'Scheduled period'}
+                        {item.submissionClassification === 'PATIENT_CORRECTION' ||
+                        item.submissionClassification === 'STAFF_CORRECTION'
+                          ? 'Corrected'
+                          : item.submissionClassification === 'HISTORICAL_BACKFILL' ||
+                              item.backfillAvailable
+                            ? 'Past check-in'
+                            : item.period.status === 'LATE'
+                              ? 'Late'
+                              : 'Scheduled period'}
                       </p>
                       <h2 className="mb-0 mt-1 text-lg font-semibold">
                         {item.period.displayRecallStartDate} – {item.period.displayRecallEndDate}

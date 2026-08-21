@@ -695,6 +695,8 @@ export async function persistMonitoringEvaluationHistory(input: {
       ),
       consecutiveUse: result.longitudinal.consecutiveUse,
       recurrentUse: result.longitudinal.recurrentUse,
+      recurrentUseObservedPeriods:
+        result.longitudinal.recurrentUseObservedPeriods,
       useAfterStability: result.longitudinal.useAfterStability,
       trendDataValid: result.longitudinal.trendDataValid,
     },

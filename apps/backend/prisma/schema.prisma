@@ -1054,6 +1054,7 @@ model LongitudinalFeatureRecord {
   clearanceReasonStateSnapshot    Json                @map("clearance_reason_state_snapshot")
   consecutiveUse                  Boolean             @map("consecutive_use")
   recurrentUse                    Boolean             @map("recurrent_use")
+  recurrentUseObservedPeriods     Int                 @default(0) @map("recurrent_use_observed_periods")
   useAfterStability               Boolean             @map("use_after_stability")
   trendDataValid                  Boolean             @map("trend_data_valid")
   patient                         PatientProfile       @relation(fields: [patientId], references: [patientId], onDelete: Restrict, map: "longitudinal_feature_records_patient_fk")

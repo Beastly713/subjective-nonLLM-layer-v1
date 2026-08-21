@@ -166,6 +166,7 @@ export type LongitudinalFeatures = {
   clearanceReasonStateSnapshot: Record<string, ReasonLifecycleSnapshot>;
   consecutiveUse: boolean;
   recurrentUse: boolean;
+  recurrentUseObservedPeriods: number;
   useAfterStability: boolean;
   trendDataValid: boolean;
 };

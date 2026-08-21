@@ -476,7 +476,10 @@ export async function submitWeeklyAssessment(input: {
   });
 
   return projectCheckInState({
-    availability: periodAvailability(period, now),
+    availability:
+      submissionClassification === 'HISTORICAL_BACKFILL'
+        ? 'HISTORICAL'
+        : periodAvailability(period, now),
     period,
     assessment: updated,
     context: { period, goal, preference },

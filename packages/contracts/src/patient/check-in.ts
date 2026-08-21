@@ -101,6 +101,7 @@ export const CheckInAssessmentDetailSchema = z.object({
   instrument: WeeklyCheckInInstrumentProjectionSchema,
   goalContext: WeeklyCheckInGoalContextSchema,
   preferenceContext: WeeklyCheckInPreferenceContextSchema,
+  weeklyConsumptionDates: WeeklyConsumptionDatesSchema,
   authoritativeRevision: CheckInHistoryRevisionSchema.extend({
     answers: WeeklyAssessmentDraftAnswersSchema,
     weeklyConsumptionDays: WeeklyConsumptionDraftDaysSchema,

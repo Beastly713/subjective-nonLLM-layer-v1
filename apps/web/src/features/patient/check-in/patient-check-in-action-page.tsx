@@ -15,10 +15,10 @@ import { useNavigate, useSearchParams } from 'react-router';
 
 import { ErrorState, LoadingState } from '@/components/patterns/system-state';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { apiGet, apiMutate } from '@/lib/api/client';
 import { PatientShell } from '@/app/shells/patient-shell';
 import { WeeklyConsumptionCalendar } from './weekly-consumption-calendar';
+import { BooleanChoice, WeeklyScale } from './weekly-scale';
 
 function stableKey(prefix: string) {
   return `${prefix}:${globalThis.crypto.randomUUID()}`;
@@ -37,6 +37,11 @@ export function PatientCheckInActionPage() {
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [submissionAttempt, setSubmissionAttempt] = useState<{
+    fingerprint: string;
+    key: string;
+  } | null>(null);
+  const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState<string>();
 
   const backfillQuery = useQuery({
@@ -94,15 +99,10 @@ export function PatientCheckInActionPage() {
   const instrument = backfillData?.instrument ?? correctionData!.instrument;
   const period = backfillData?.period ?? correctionData!.period;
   const goal = backfillData?.goalContext.goal ?? correctionData!.goalContext.goal;
-  const dates = backfillData?.weeklyConsumptionDates ?? (
-    goal === 'REDUCTION'
-      ? Array.from({ length: 7 }, (_, index) => {
-          const start = new Date(period.displayRecallStartDate);
-          start.setUTCDate(start.getUTCDate() + index);
-          return start.toISOString().slice(0, 10);
-        })
-      : []
-  );
+  const dates =
+    backfillData?.weeklyConsumptionDates ??
+    correctionData?.weeklyConsumptionDates ??
+    [];
   const isBackfill = Boolean(backfillData);
   const allAnswered = ['U1', 'R1', 'R2', 'R3', 'R4', 'R5', 'P1', 'P2', 'P3', 'P4', 'P5'].every(
     (itemId) => Object.prototype.hasOwnProperty.call(answers, itemId),
@@ -129,6 +129,8 @@ export function PatientCheckInActionPage() {
         ['patient', 'check-in', 'backfill', backfillPeriodId],
         response,
       );
+      setDirty(false);
+      setSubmissionAttempt(null);
       setMessage('Your past check-in draft was saved.');
       return response;
     } catch {
@@ -144,21 +146,38 @@ export function PatientCheckInActionPage() {
     setMessage(undefined);
     try {
       if (isBackfill) {
-        const saved = await saveBackfillDraft();
-        if (!saved?.assessment || saved.assessment.completionStatus !== 'DRAFT') return;
+        const existingDraft = backfillData?.assessment;
+        if (!existingDraft || existingDraft.completionStatus !== 'DRAFT') return;
+        const saved = dirty ? await saveBackfillDraft() : backfillData;
+        const draft = saved?.assessment;
+        if (!draft || draft.completionStatus !== 'DRAFT') return;
         const body = SubmitWeeklyAssessmentRequestSchema.parse({
-          expectedDraftVersion: saved.assessment.draftVersion,
+          expectedDraftVersion: draft.draftVersion,
           completionIntent: allAnswered ? 'COMPLETE' : 'PARTIAL',
         });
+        const fingerprint = JSON.stringify({
+          action: 'BACKFILL_SUBMIT',
+          assessmentId: draft.assessmentId,
+          body,
+        });
+        const attempt =
+          submissionAttempt?.fingerprint === fingerprint
+            ? submissionAttempt
+            : {
+                fingerprint,
+                key: globalThis.crypto.randomUUID(),
+              };
+        setSubmissionAttempt(attempt);
         const response = await apiMutate<CheckInStateResponse>(
-          `/api/v1/patient/assessments/${saved.assessment.assessmentId}/backfill-submit` as `/api/v1/${string}`,
+          `/api/v1/patient/assessments/${draft.assessmentId}/backfill-submit` as `/api/v1/${string}`,
           'POST',
           body,
           {
             schema: CheckInStateResponseSchema,
-            headers: { 'Idempotency-Key': stableKey('backfill-submit') },
+            headers: { 'Idempotency-Key': attempt.key },
           },
         );
+        setSubmissionAttempt(null);
         if (response.assessment?.completionStatus !== 'DRAFT') navigate('/patient/check-in/history');
       } else if (correctionData?.authoritativeRevision) {
         const body = WeeklyAssessmentCorrectionRequestSchema.parse({
@@ -168,15 +187,29 @@ export function PatientCheckInActionPage() {
           answers,
           weeklyConsumptionDays: weeklyDays,
         });
+        const fingerprint = JSON.stringify({
+          action: 'PATIENT_CORRECTION',
+          assessmentId: correctionData.assessmentId,
+          body,
+        });
+        const attempt =
+          submissionAttempt?.fingerprint === fingerprint
+            ? submissionAttempt
+            : {
+                fingerprint,
+                key: globalThis.crypto.randomUUID(),
+              };
+        setSubmissionAttempt(attempt);
         await apiMutate<CheckInStateResponse>(
           `/api/v1/patient/assessments/${correctionData.assessmentId}/corrections` as `/api/v1/${string}`,
           'POST',
           body,
           {
             schema: CheckInStateResponseSchema,
-            headers: { 'Idempotency-Key': stableKey('correction') },
+            headers: { 'Idempotency-Key': attempt.key },
           },
         );
+        setSubmissionAttempt(null);
         navigate('/patient/check-in/history');
       }
     } catch {
@@ -206,42 +239,46 @@ export function PatientCheckInActionPage() {
         </header>
         {message ? <div className="rounded-lg border border-warning-border bg-warning-surface/60 p-4 text-sm" role="status">{message}</div> : null}
         <section className="grid gap-5">
-          {instrument.items.map((item) => (
-            <div className="grid gap-2 rounded-xl border bg-surface p-5" key={item.itemId}>
-              <label className="grid gap-2 text-sm font-semibold">
-                {item.prompt}
-                {item.type === 'BOOLEAN' ? (
-                  <span className="flex gap-2">
-                    {([true, false] as const).map((value) => (
-                      <Button
-                        key={String(value)}
-                        onClick={() => setAnswers((previous) => ({ ...previous, U1: value }))}
-                        type="button"
-                        variant={answers.U1 === value ? 'primary' : 'outline'}
-                      >
-                        {item.responseLabels[String(value) as 'true' | 'false']}
-                      </Button>
-                    ))}
-                  </span>
-                ) : (
-                  <Input
-                    max="7"
-                    min="0"
-                    onChange={(event) => setAnswers((previous) => ({ ...previous, [item.itemId]: Number(event.target.value) }))}
-                    type="number"
-                    value={
-                      typeof answers[item.itemId as keyof WeeklyAssessmentDraftAnswers] === 'number'
-                        ? answers[item.itemId as keyof WeeklyAssessmentDraftAnswers]
-                        : ''
-                    }
-                  />
-                )}
-              </label>
-            </div>
-          ))}
+          {instrument.items.map((item) =>
+            item.type === 'BOOLEAN' ? (
+              <BooleanChoice
+                key={item.itemId}
+                labels={item.responseLabels}
+                onChange={(value) => {
+                  setAnswers((previous) => ({ ...previous, U1: value }));
+                  setDirty(true);
+                  setSubmissionAttempt(null);
+                }}
+                prompt={item.prompt}
+                value={answers.U1}
+              />
+            ) : (
+              <WeeklyScale
+                item={item}
+                key={item.itemId}
+                onChange={(value) => {
+                  setAnswers((previous) => ({
+                    ...previous,
+                    [item.itemId]: value,
+                  }));
+                  setDirty(true);
+                  setSubmissionAttempt(null);
+                }}
+                value={answers[item.itemId]}
+              />
+            ),
+          )}
         </section>
         {goal === 'REDUCTION' ? (
-          <WeeklyConsumptionCalendar dates={dates} days={weeklyDays} onChange={setWeeklyDays} />
+          <WeeklyConsumptionCalendar
+            dates={dates}
+            days={weeklyDays}
+            onChange={(next) => {
+              setWeeklyDays(next);
+              setDirty(true);
+              setSubmissionAttempt(null);
+            }}
+          />
         ) : null}
         <div className="flex flex-wrap gap-3 border-t pt-5">
           {isBackfill ? (
@@ -255,7 +292,11 @@ export function PatientCheckInActionPage() {
             </Button>
           ) : (
             <div className="grid gap-3 rounded-lg border border-warning-border bg-warning-surface/50 p-4 sm:flex sm:items-center">
-              <p className="m-0 text-sm">Confirm: this creates a new revision and keeps the previous version in history.</p>
+              <p className="m-0 text-sm">
+                {isBackfill
+                  ? 'Confirm: this records a submitted past check-in. Unanswered questions remain unknown.'
+                  : 'Confirm: this creates a new revision. The previous version remains in history.'}
+              </p>
               <Button disabled={submitting} onClick={() => void submit()}>
                 {submitting ? 'Submitting…' : 'Confirm and submit'}
               </Button>
