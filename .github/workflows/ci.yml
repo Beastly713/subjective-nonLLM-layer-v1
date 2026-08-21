@@ -1,4 +1,4 @@
-name: Phase 2 Platform Validation
+name: Platform Validation
 
 on:
   pull_request:

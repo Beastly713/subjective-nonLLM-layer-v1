@@ -12,7 +12,7 @@ The authoritative V1 behavior remains defined by:
 - instrument: `AUD_WEEKLY_CHECKIN` version `1.0`
 - system version: `subjective_monitoring_v1`
 
-**Current implementation note:** Phase 3 is complete at `c7fd012`. The implemented web surface currently includes patient onboarding, reduction setup, profile/status, patient safety-shell states, clinician patients and safety views, admin users/regional-routing/safety views, and the development foundation reference. The weekly check-in, patient home/progress/support, monitoring, content, engagement, and broader operations surfaces below remain locked product design for later implementation; they are not current routes.
+**Current implementation note:** Phases 1–4 are complete on `main` at `a16c1bd`. The implemented web surface currently includes authentication, patient onboarding, reduction setup, profile/status, safety-controlled states, weekly Check-in, Check-in history, correction/backfill actions, clinician patients and safety views, admin users/regional-routing/safety views, and the development foundation reference. Patient Home/Progress/Support, clinician subjective-monitoring/review/engagement surfaces, content management, delivery, and broader operations remain locked product design for later implementation; they are not current routes.
 
 ---
 
@@ -1932,7 +1932,7 @@ Any such capability should be added only if a later feature/service explicitly r
 
 # 37. Suggested evaluator/demo journey
 
-The current Phase 3 implementation can be demonstrated through this flow:
+The current prototype can be demonstrated through this flow:
 
 ```text
 1. Sign in as PATIENT
@@ -1946,23 +1946,29 @@ The current Phase 3 implementation can be demonstrated through this flow:
 5. If REDUCTION, complete the 28-day baseline and propose a target
        ↓
 6. Finish onboarding and observe COMPLETE, pending-review, or safety-handoff state
-
-
-7. Switch to CLINICIAN
        ↓
-8. Open assigned patients and safety cases
+7. Open Check-in and resume the backend-backed weekly draft
        ↓
-9. Acknowledge, review, disposition, or escalate an authorized safety case
+8. Submit a PARTIAL or COMPLETE assessment and inspect the neutral recorded state
+       ↓
+9. Open Check-in history and exercise a correction or historical backfill
 
 
-10. Switch to ADMIN
+10. Switch to CLINICIAN
+       ↓
+11. Open assigned patients and safety cases
+       ↓
+12. Acknowledge, review, disposition, or escalate an authorized safety case
+
+
+13. Switch to ADMIN
         ↓
-11. Inspect users, regional routing, safety cases, and route incidents
+14. Inspect users, regional routing, safety cases, and route incidents
         ↓
-12. Demonstrate that prototype activation remains separate from real-patient readiness
+15. Demonstrate that prototype activation remains separate from real-patient readiness
 ```
 
-The weekly check-in, support/content, progress, engagement, and longitudinal-monitoring journey remains the later implementation path described by the product lock; those screens are not current routes.
+The weekly check-in, history, correction, and historical-backfill journey is now current. Support/content, progress, engagement, and longitudinal-monitoring presentation remain the later implementation path described by the product lock; those screens are not current routes.
 
 The current evaluator should be able to see that the application is doing more than storing questionnaire answers: authoritative revisions, safety state, reduction provenance, goal status, schedule activation, access boundaries, and audit effects are all backend-controlled.
 

@@ -8,6 +8,8 @@
 **Primary population:** Adults using an Alcohol Use Disorder support solution  
 **Decision model:** Deterministic, auditable, non-LLM
 
+**Implementation status:** Phase 4 weekly assessment and deterministic subjective-monitoring core is implemented in the repository at `a16c1bd`. Patient content delivery, clinician review cases/tasks, engagement workflows, durable workers, backup/retention controls, and real-patient operation remain later implementation phases. This document remains the target V1 product and clinical specification; the current implementation boundary is recorded in `AUD_V1_Phase_4_Weekly_Monitoring_Core_Implementation_Guide.md`.
+
 ---
 
 ## 1. Authority and purpose

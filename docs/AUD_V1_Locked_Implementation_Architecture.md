@@ -6,7 +6,7 @@
 
 **Purpose:** Define the concrete implementation architecture for the V1 web product while preserving the existing clinical/domain specification and the previously locked product/UX architecture.
 
-**Current implementation status:** Phase 3 is complete at `c7fd012` (`test: close phase 3 activation coverage and validation gaps`). The repository now contains the Phase 1 foundation, Phase 2 identity/core platform, and Phase 3 safety-gated onboarding, safety cases, reduction setup, and prototype activation path. Weekly assessments and subjective-monitoring evaluation, content/support, engagement, workers/durable delivery, backup/retention controls, and real-patient operation remain outside the current implementation. See `AUD_V1_Phase_3_Safety_Onboarding_and_Reduction_Setup_Implementation_Guide.md` for the current completion record.
+**Current implementation status:** Phases 1–4 are complete on `main` at `a16c1bd` (`closing: Phase-4`). The repository now contains the Phase 1 foundation, Phase 2 identity/core platform, Phase 3 safety-gated onboarding/safety cases/reduction setup, and the Phase 4 weekly assessment and deterministic subjective-monitoring core. The current weekly surface includes server-backed drafts, immutable revisions, current/late/historical classification, reduction-week observations, corrections, candidate derived/effect outputs, patient-safe history, and forward recomputation. Content/support delivery, clinician review cases/tasks, engagement, workers/durable delivery, backup/retention controls, and real-patient operation remain outside the current implementation. See `AUD_V1_Phase_4_Weekly_Monitoring_Core_Implementation_Guide.md` for the current phase completion record.
 
 This document is subordinate to:
 

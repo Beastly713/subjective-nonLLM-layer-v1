@@ -869,3 +869,5 @@ Phase 4 owns:
 - assessment-driven consumption calendar integration for active reduction goals.
 
 Phase 3 did not pre-implement those behaviors through weekly prompts, assessment tables, monitoring evaluators, or synthetic “current” assessment results.
+
+That handoff was consumed by the completed Phase 4 implementation. The statements above about weekly assessment and monitoring being absent describe the Phase 3 boundary; the current weekly capability and its remaining later-phase boundaries are recorded in `AUD_V1_Phase_4_Weekly_Monitoring_Core_Implementation_Guide.md`.

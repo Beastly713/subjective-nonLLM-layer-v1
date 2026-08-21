@@ -2,13 +2,13 @@
 
 ## Document status
 
-**Status:** **PLANNED**
+**Status:** **COMPLETE**
 
 **Phase:** 4 of 7
 
 **Phase name:** Weekly Monitoring Core
 
-**Target commits:** **3 balanced implementation commits**
+**Delivery:** 3 primary implementation commits plus bounded correction, validation, and closeout commits
 
 **Implementation mode:** Commit packet method
 
@@ -22,11 +22,15 @@
 
 **Current repository/documentation baseline inspected for this guide:** `6fc3303` (`docs: update post Phase-3 completion`)
 
-**Repository state when this guide was written:** `main` reflects the accepted Phase 3 implementation plus the post-Phase-3 documentation update. No weekly assessment, subjective-monitoring, clinical-review, content, engagement, delivery-worker, or pg-boss module is present in the current implementation.
+**Validated Phase 4 closeout head:** `a16c1bd` (`closing: Phase-4`)
 
-**Validation ownership for this phase:** The three Phase 4 implementation packets intentionally **exclude tests, validation commands, CI changes whose sole purpose is validation, and validation-only commits**. Validation will be performed separately and manually after implementation. Acceptance criteria below define the required behavior but are not instructions to add automated tests to the commits.
+**Phase 4 implementation commits:** `80bc59c`, `326dbcf`, and `4ff6961`
 
-This document defines the implementation boundary and three-commit execution plan for Phase 4 only. It is an execution guide, not a new product, clinical, UX, or architecture specification.
+**Phase 4 correction/validation commits:** `989b30b`, `4a76ac4`, `3a5f0ba`, and `a16c1bd`
+
+The packet sections below are retained as the historical Phase 4 planning and review record. Statements describing the pre-Phase-4 tree, planned file paths, or packet-local exclusions refer to that earlier boundary; the completion record below describes the repository as it exists now.
+
+This document defined the implementation boundary and three-commit execution plan for Phase 4 and now records the accepted result. It is an execution guide and completion record, not a new product, clinical, UX, or architecture specification.
 
 Authority remains:
 
@@ -38,6 +42,38 @@ Authority remains:
 6. packet-specific implementation instructions, provided they do not conflict with the sources above
 
 If this guide appears to conflict with a governing document, the higher-authority document wins. Do not silently reinterpret a locked clinical, safety, historical, scheduling, or data-ownership decision. Record the conflict and correct the active packet or this guide before continuing.
+
+## Completion record
+
+Phase 4 is implemented and accepted at the closeout head above. The current codebase delivers:
+
+- the versioned `AUD_WEEKLY_CHECKIN` 1.0 instrument with eleven canonical items and backend-owned wording/scale provenance;
+- one logical weekly assessment per patient, scheduled period, instrument, and version, with optimistic server-backed drafts;
+- immutable `PARTIAL`/`COMPLETE` revisions, current/late/historical classification, patient correction, assigned-clinician correction, and patient-safe history projections;
+- backend-authoritative Monday-to-Monday recall periods, period-effective recovery-goal and preference context, and backend-supplied REDUCTION calendar dates;
+- authoritative weekly REDUCTION observations with known-zero, known-quantity, and unknown states, 14g policy provenance, target context, and U1/calendar contradiction protection;
+- the pure, deterministic `subjective_monitoring_v1` evaluator with item flags, aggregate context, longitudinal persistence/clearance, abstinence recurrence, candidate patient intervention intents, and candidate clinician reason families;
+- immutable evaluation history, weekly U1 interval observations, current-state projections, forward recomputation from historical changes, superseded/revoked history, and trigger-derived effect scopes;
+- patient-level processing locks, optimistic version checks, idempotent consequential actions, transactional audit, and provenance across assessment mutations;
+- patient Check-in, history, correction, and historical-backfill flows with accessible 0–7 controls and narrow-layout coverage;
+- no patient content resolver/delivery, clinician review-case lifecycle, engagement workflow, durable worker, or pg-boss implementation. Those remain later-phase consumers of the persisted Phase 4 outputs.
+
+The Phase 4 migration additions are, in order:
+
+1. `20260821100000_weekly_assessment_foundation`
+2. `20260821130000_weekly_monitoring_evaluation`
+3. `20260821150000_weekly_monitoring_recompute_history`
+4. `20260821203000_phase4_closeout_recurrence_observation`
+
+The implemented Phase 4 HTTP surface is:
+
+| Area | Endpoints |
+|---|---|
+| Patient Check-in | `POST /api/v1/patient/check-in/start`, `GET /api/v1/patient/check-in/history`, `GET /api/v1/patient/assessments/:assessmentId`, and `POST /api/v1/patient/check-in/backfill/:periodId/start` |
+| Patient assessment mutations | `PUT /api/v1/patient/assessments/:assessmentId/draft`, `POST /api/v1/patient/assessments/:assessmentId/submit`, `POST /api/v1/patient/assessments/:assessmentId/backfill-submit`, and `POST /api/v1/patient/assessments/:assessmentId/corrections` |
+| Assigned-clinician correction | `POST /api/v1/clinician/patients/:patientId/assessments/:assessmentId/corrections` |
+
+Phase 4 validation is represented by the focused domain tests, real-PostgreSQL integration test, web scale test, browser Check-in suite, and database invariant query listed in `PHASE4_CLOSEOUT_TESTS.md`. The root CI path also runs formatting, lint, typecheck, migration deployment, web/backend tests, production build, Chromium smoke/accessibility coverage, and the Docker build.
 
 ---
 
@@ -162,27 +198,27 @@ The current implementation provides:
 
 Phase 4 begins **after** this activation boundary. It must not re-run onboarding policy as a substitute for weekly evaluation.
 
-### Current patient-visible Phase 3 surface
+### Current patient-visible surface at the Phase 4 planning boundary
 
-The patient frontend currently has:
+At the `6fc3303` planning boundary, the patient frontend had:
 
 - onboarding;
 - reduction setup;
 - profile/status;
 - safety-controlled states.
 
-It does **not** currently have:
+It did **not** yet have:
 
 - Home;
 - Check-in;
 - Progress;
 - Support.
 
-Phase 4 adds the **Check-in** product surface required for the weekly core. Full Home, Progress, and Support remain later product work unless a tiny navigation/read-state change is required to make Check-in reachable.
+Phase 4 added the **Check-in**, Check-in history, correction, and historical-backfill surfaces required for the weekly core. Full Home, Progress, and Support remain later product work.
 
-### Current backend module tree
+### Backend module tree at the Phase 4 planning boundary
 
-The backend currently has modules for:
+At the Phase 4 planning boundary, the backend had modules for:
 
 ```text
 consumption
@@ -194,7 +230,7 @@ safety
 scheduling
 ```
 
-There is currently no:
+There was not yet:
 
 ```text
 assessments
@@ -206,7 +242,7 @@ delivery
 workers
 ```
 
-This is a clean and desirable Phase 4 starting point. Do not rename or reorganize the existing backend merely to make the folder tree resemble the architecture document visually.
+Phase 4 added only `assessments` and `monitoring` (plus the bounded Check-in integration in `consumption`, `profiles`, `scheduling`, and `safety`). The later `clinical`, `content`, `engagement`, `delivery`, and `workers` modules remain intentionally absent. The planning-boundary tree was a clean starting point; no broad reorganization was needed.
 
 ---
 
@@ -216,7 +252,7 @@ The current codebase does not contain problematic architecture sprawl, but sever
 
 ### 1. Phase 3 deliberately did not prebuild weekly monitoring
 
-No assessment tables, weekly assessment routes, monitoring evaluator, monitoring seed results, clinician subjective cases, or patient support resolver were found.
+At the Phase 4 planning boundary, no assessment tables, weekly assessment routes, monitoring evaluator, monitoring seed results, clinician subjective cases, or patient support resolver were present.
 
 This means Phase 4 owns the weekly core cleanly. Do not assume placeholder assessment data exists.
 
@@ -356,17 +392,17 @@ The Check-in read/write boundary must consume the authoritative current safety p
 
 A broad scheduled-rescreen worker, 30-day scheduler, or new safety operations platform is **not** added here. If a minimal reusable patient safety-evaluation route is required to make the existing safety evaluator usable after onboarding, add it as a bounded integration of the current safety module rather than redesigning safety.
 
-### 12. Patient default navigation still reflects the Phase 3 product
+### 12. Patient default navigation at the Phase 4 planning boundary
 
-The current Patient shell exposes Setup and Profile, and the root patient destination remains Profile.
+At the Phase 4 planning boundary, the Patient shell exposed Setup and Profile, and the root patient destination remained Profile.
 
-Phase 4 should add a polished Check-in destination when the capability becomes real. It should not fabricate Home, Progress, Support, or clinician review screens merely to match future navigation diagrams.
+Phase 4 added polished Check-in and History destinations without fabricating Home, Progress, Support, or clinician review screens merely to match future navigation diagrams.
 
-### 13. The current docs were updated after Phase 3 implementation
+### 13. Planning documentation state before Phase 4 implementation
 
-`6fc3303` is a documentation-only closeout on top of the accepted Phase 3 code baseline `c7fd012`.
+At the Phase 4 planning boundary, `6fc3303` was the documentation-only closeout on top of the accepted Phase 3 code baseline `c7fd012`.
 
-Phase 4 should treat `c7fd012` as the accepted implementation baseline and `6fc3303` as the current repository/documentation head. No weekly feature was added by the closeout.
+The Phase 4 packets treated `c7fd012` as the accepted implementation baseline and `6fc3303` as the repository/documentation head. That closeout added no weekly feature; the subsequent Phase 4 commits now provide the weekly implementation recorded above.
 
 ---
 
@@ -840,8 +876,8 @@ This commit should make the patient’s weekly input safely resumable and correc
 
 ## Assumptions to verify before implementation
 
-- `main` still reflects the inspected Phase 3 implementation plus documentation closeout.
-- No assessment or monitoring module has been added since this guide was produced.
+- At Commit 1 start, `main` reflected the inspected Phase 3 implementation plus documentation closeout.
+- At Commit 1 start, no assessment or monitoring module had been added.
 - Phase 3 `RecoveryGoalVersion`, safety projection, reduction baseline, schedule, patient lock, idempotency, audit, and profile preference structures remain the authoritative inputs.
 - The current schedule service remains the only authority allowed to materialize a new period.
 - The weekly questionnaire wording in the Master Specification remains unchanged.
@@ -1691,7 +1727,7 @@ Exact route naming may be reconciled to the current module style, but the action
 
 # 9. Phase-wide acceptance criteria
 
-Phase 4 is complete only when all of the following are true:
+The following criteria were used for Phase 4 closeout. The current implementation at `a16c1bd` is the accepted result:
 
 1. All three implementation commit scopes have been delivered and individually reviewed through the packet method.
 2. The canonical weekly instrument is `AUD_WEEKLY_CHECKIN` version `1.0` with the exact eleven items and value domains from the Master Specification.
@@ -1734,7 +1770,7 @@ Phase 4 is complete only when all of the following are true:
 39. No pg-boss, broker, cache, second database, microservice, or speculative infrastructure has entered the phase.
 40. `real_patient` readiness remains truthful and refused until later requirements are implemented.
 
-Phase 4 is **not** accepted merely because a questionnaire can be submitted.
+Phase 4 was **not** accepted merely because a questionnaire could be submitted. The closeout covered authoritative assessment identity, immutable history, deterministic interpretation, correction/recomputation semantics, patient-safe projections, and the explicit boundary before later content, clinician-case, engagement, and delivery systems.
 
 It must prove:
 
@@ -1753,6 +1789,8 @@ correct concurrency/idempotency/audit
 ```
 
 as one coherent weekly monitoring core.
+
+The criteria are satisfied by the committed Phase 4 implementation and closeout validation recorded in `PHASE4_CLOSEOUT_TESTS.md`.
 
 ---
 
