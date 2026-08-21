@@ -729,6 +729,7 @@ model WeeklyAssessment {
   authoritativeRevision      AssessmentRevision?      @relation("AssessmentAuthoritativeRevision", fields: [authoritativeRevisionId], references: [id], onDelete: Restrict, map: "weekly_assessments_authoritative_revision_fk")
   revisions                  AssessmentRevision[]     @relation("AssessmentRevisions")
   evaluations                AssessmentEvaluation[]
+  useObservations            UseObservationLedger[]
 
   @@unique([patientId, scheduledPeriodId, instrumentId, instrumentVersion], map: "weekly_assessments_patient_period_instrument_key")
   @@index([patientId, scheduledPeriodId], map: "weekly_assessments_patient_period_idx")

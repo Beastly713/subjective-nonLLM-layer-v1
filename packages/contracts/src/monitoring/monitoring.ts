@@ -1,7 +1,5 @@
 import { z } from 'zod';
 
-import { SubjectiveInterventionClassSchema } from '../safety/safety.js';
-
 export const SubjectiveMonitoringPolicyProvenanceSchema = z.object({
   ruleSetVersion: z.string().min(1),
   configurationVersion: z.string().min(1),
@@ -88,28 +86,33 @@ export const WeeklyUseObservationSchema = z.object({
 export type SubjectiveMonitoringPolicyProvenance = z.infer<
   typeof SubjectiveMonitoringPolicyProvenanceSchema
 >;
+
 export type AssessmentEvaluationTrigger = z.infer<
   typeof AssessmentEvaluationTriggerSchema
 >;
+
 export type AssessmentEvaluationLifecycle = z.infer<
   typeof AssessmentEvaluationLifecycleSchema
 >;
+
 export type UseObservationStatus = z.infer<typeof UseObservationStatusSchema>;
+
 export type StateFlagObservationState = z.infer<
   typeof StateFlagObservationStateSchema
 >;
-export type CurrentStateFlagState = z.infer<
-  typeof CurrentStateFlagStateSchema
->;
+
+export type CurrentStateFlagState = z.infer<typeof CurrentStateFlagStateSchema>;
+
 export type AggregateContextTag = z.infer<typeof AggregateContextTagSchema>;
+
 export type ClinicalReasonFamily = z.infer<typeof ClinicalReasonFamilySchema>;
+
 export type PatientInterventionIntentEffect = z.infer<
   typeof PatientInterventionIntentEffectSchema
 >;
+
 export type ClinicianReasonEffect = z.infer<typeof ClinicianReasonEffectSchema>;
+
 export type WeeklyConsumptionTargetStatus = z.infer<
   typeof WeeklyConsumptionTargetStatusSchema
->;
-export type SubjectiveInterventionClass = z.infer<
-  typeof SubjectiveInterventionClassSchema
 >;

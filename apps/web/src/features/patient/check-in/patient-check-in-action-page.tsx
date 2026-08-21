@@ -10,7 +10,7 @@ import {
   type WeeklyConsumptionDraftDay,
 } from '@aud-subjective/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 
 import { ErrorState, LoadingState } from '@/components/patterns/system-state';
@@ -76,17 +76,17 @@ export function PatientCheckInActionPage() {
     : correctionData
       ? `correction:${correctionData.assessmentId}:${correctionData.authoritativeRevision?.revisionId ?? 'none'}`
       : null;
-  useEffect(() => {
-    if (!sourceKey || sourceKey === seed) return;
-    if (backfillData?.assessment?.completionStatus === 'DRAFT') {
-      setAnswers(backfillData.assessment.answers);
-      setWeeklyDays(backfillData.assessment.weeklyConsumptionDays);
-    } else if (correctionData?.authoritativeRevision) {
-      setAnswers(correctionData.authoritativeRevision.answers);
-      setWeeklyDays(correctionData.authoritativeRevision.weeklyConsumptionDays);
-    }
-    setSeed(sourceKey);
-  }, [backfillData, correctionData, seed, sourceKey]);
+  if (sourceKey && sourceKey !== seed) {
+  setSeed(sourceKey);
+
+  if (backfillData?.assessment?.completionStatus === 'DRAFT') {
+    setAnswers(backfillData.assessment.answers);
+    setWeeklyDays(backfillData.assessment.weeklyConsumptionDays);
+  } else if (correctionData?.authoritativeRevision) {
+    setAnswers(correctionData.authoritativeRevision.answers);
+    setWeeklyDays(correctionData.authoritativeRevision.weeklyConsumptionDays);
+  }
+}
 
   const loading = (Boolean(backfillPeriodId) && backfillQuery.isLoading) ||
     (Boolean(correctionAssessmentId) && correctionQuery.isLoading);

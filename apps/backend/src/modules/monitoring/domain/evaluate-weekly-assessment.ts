@@ -50,26 +50,32 @@ function currentFlagValue(key: FlagKey, answers: WeeklyAnswers) {
       const value = numberAnswer(answers, 'R3');
       return value === null ? null : value >= 6;
     }
+
     case 'HIGH_NEGATIVE_MOOD': {
       const value = numberAnswer(answers, 'R2');
       return value === null ? null : value >= 6;
     }
+
     case 'HIGH_RISKY_SITUATIONS': {
       const value = numberAnswer(answers, 'R4');
       return value === null ? null : value >= 6;
     }
+
     case 'HIGH_RELATIONSHIP_PROBLEMS': {
       const value = numberAnswer(answers, 'R5');
       return value === null ? null : value >= 6;
     }
+
     case 'LOW_CONFIDENCE': {
       const value = numberAnswer(answers, 'P1');
       return value === null ? null : value <= 2;
     }
+
     case 'LOW_SOCIAL_SUPPORT': {
       const value = numberAnswer(answers, 'P5');
       return value === null ? null : value <= 2;
     }
+
     case 'USE_POSITIVE_CURRENT':
       return booleanAnswer(answers, 'U1');
   }
@@ -78,6 +84,7 @@ function currentFlagValue(key: FlagKey, answers: WeeklyAnswers) {
 function flagObservations(answers: WeeklyAnswers): FlagObservation[] {
   return FLAG_KEYS.map((flagKey) => {
     const value = currentFlagValue(flagKey, answers);
+
     return {
       flagKey,
       value,
@@ -91,12 +98,19 @@ function calculateAggregate(
   preferences: EvaluateWeeklyAssessmentInput['preferences'],
 ): AggregateContext {
   const riskKeys = ['R1', 'R2', 'R3', 'R4', 'R5'] as const;
+
   const protectionKeys = ['P1', 'P2', 'P3', 'P4', 'P5'] as const;
+
   const riskComplete = hasAllNumbers(answers, riskKeys);
   const protectionComplete = hasAllNumbers(answers, protectionKeys);
+
   const riskScore = riskComplete
-    ? riskKeys.reduce((total, key) => total + (numberAnswer(answers, key) ?? 0), 0)
+    ? riskKeys.reduce(
+        (total, key) => total + (numberAnswer(answers, key) ?? 0),
+        0,
+      )
     : null;
+
   const rawProtectionScore = protectionComplete
     ? protectionKeys.reduce(
         (total, key) => total + (numberAnswer(answers, key) ?? 0),
@@ -104,7 +118,9 @@ function calculateAggregate(
       )
     : null;
 
-  const riskTag = riskScore === null ? null : riskScore >= 25 ? 'HIGH_RISK' : 'NOT_HIGH';
+  const riskTag =
+    riskScore === null ? null : riskScore >= 25 ? 'HIGH_RISK' : 'NOT_HIGH';
+
   const applicability: Array<'APPLICABLE' | 'NOT_APPLICABLE' | 'UNKNOWN'> = [
     'APPLICABLE',
     preferences.mutualHelpPreference === 'NONE'
@@ -121,27 +137,37 @@ function calculateAggregate(
     'APPLICABLE',
     'APPLICABLE',
   ];
-  const protectionValues = protectionKeys.map((key) => numberAnswer(answers, key));
+
+  const protectionValues = protectionKeys.map((key) =>
+    numberAnswer(answers, key),
+  );
+
   const operationalProtectionDomainsObserved = applicability.filter(
-    (value, index) => value === 'APPLICABLE' && protectionValues[index] !== null,
+    (value, index) =>
+      value === 'APPLICABLE' && protectionValues[index] !== null,
   ).length;
-  const minimumPossibleProtection = protectionValues.reduce(
+
+  const minimumPossibleProtection = protectionValues.reduce<number>(
     (total, value, index) =>
       total +
       (applicability[index] === 'APPLICABLE' && value !== null ? value : 0),
     0,
   );
-  const maximumPossibleProtection = protectionValues.reduce(
+
+  const maximumPossibleProtection = protectionValues.reduce<number>(
     (total, value, index) =>
       total +
       (applicability[index] === 'APPLICABLE' && value !== null ? value : 7),
     0,
   );
+
   const protectionCoverageRatio = operationalProtectionDomainsObserved / 5;
+
   let protectionTag: AggregateContext['protectionTag'] = null;
-  if (maximumPossibleProtection !== null && maximumPossibleProtection <= 5) {
+
+  if (maximumPossibleProtection <= 5) {
     protectionTag = 'WEAK_PROTECTION';
-  } else if (minimumPossibleProtection !== null && minimumPossibleProtection >= 25) {
+  } else if (minimumPossibleProtection >= 25) {
     protectionTag = 'STRONG_PROTECTION';
   } else if (
     protectionComplete &&
@@ -154,9 +180,11 @@ function calculateAggregate(
   }
 
   const interactionTags: string[] = [];
+
   if (riskTag === 'HIGH_RISK' && protectionTag === 'WEAK_PROTECTION') {
     interactionTags.push('HIGH_RISK_WEAK_PROTECTION_CONTEXT');
   }
+
   if (riskTag === 'HIGH_RISK' && protectionTag === 'STRONG_PROTECTION') {
     interactionTags.push('HIGH_RISK_STRONG_PROTECTION_CONTEXT');
   }
@@ -184,17 +212,17 @@ function previousAdjacent(
   periodStartAt: Date,
 ) {
   const previous = history[history.length - 1];
-  return previous && periodIsAdjacent(previous, periodStartAt) ? previous : null;
+
+  return previous && periodIsAdjacent(previous, periodStartAt)
+    ? previous
+    : null;
 }
 
 function conditionForFlag(flagKey: FlagKey, answers: WeeklyAnswers | null) {
   return answers ? currentFlagValue(flagKey, answers) : null;
 }
 
-function combinedCondition(
-  left: boolean | null,
-  right: boolean | null,
-) {
+function combinedCondition(left: boolean | null, right: boolean | null) {
   if (left === null || right === null) return null;
   return left && right;
 }
@@ -215,14 +243,31 @@ function reasonLifecycleTransition(
   currentCondition: boolean | null,
   previous: ReasonLifecycleSnapshot,
 ): ReasonLifecycleSnapshot {
-  if (currentCondition === null) return { ...previous };
-  if (currentCondition) return { status: 'ACTIVE', clearanceCount: 0 };
+  if (currentCondition === null) {
+    return { ...previous };
+  }
+
+  if (currentCondition) {
+    return {
+      status: 'ACTIVE',
+      clearanceCount: 0,
+    };
+  }
+
   if (previous.status === 'ACTIVE' || previous.status === 'CLEARANCE_PENDING') {
     const clearanceCount = previous.clearanceCount + 1;
+
     return clearanceCount >= SUBJECTIVE_MONITORING_V1.persistence.N_CLEAR
-      ? { status: 'RESOLVED', clearanceCount }
-      : { status: 'CLEARANCE_PENDING', clearanceCount };
+      ? {
+          status: 'RESOLVED',
+          clearanceCount,
+        }
+      : {
+          status: 'CLEARANCE_PENDING',
+          clearanceCount,
+        };
   }
+
   return { ...previous };
 }
 
@@ -232,32 +277,14 @@ function recurrenceLifecycleCondition(
   previous: ReasonLifecycleSnapshot,
 ) {
   if (currentUseStatus === 'UNKNOWN') return null;
+
   if (currentUseStatus === 'NEGATIVE') return false;
 
-  if (
-    previous.status === 'ACTIVE' ||
-    previous.status === 'CLEARANCE_PENDING'
-  ) {
+  if (previous.status === 'ACTIVE' || previous.status === 'CLEARANCE_PENDING') {
     return true;
   }
 
   return newlyQualified;
-}
-
-function persistenceConditionAt(
-  flagKey: FlagKey,
-  observation: HistoricalWeeklyObservation,
-  index: number,
-  history: readonly HistoricalWeeklyObservation[],
-) {
-  if (!observation.authoritative) return null;
-  const current = conditionForFlag(flagKey, observation.answers);
-  if (current === null) return null;
-  const previous = history[index - 1];
-  if (!previous || !previous.authoritative) return null;
-  if (!periodIsAdjacent(previous, observation.periodStartAt)) return null;
-  const previousValue = conditionForFlag(flagKey, previous.answers);
-  return previousValue === null ? null : current && previousValue;
 }
 
 function currentPersistenceCondition(
@@ -267,35 +294,19 @@ function currentPersistenceCondition(
   periodStartAt: Date,
 ) {
   const current = conditionForFlag(flagKey, answers);
+
   if (current === null) return null;
   if (!current) return false;
-  const previous = previousAdjacent(history, periodStartAt);
-  if (!previous || !previous.authoritative) return null;
-  const previousValue = conditionForFlag(flagKey, previous.answers);
-  return previousValue === null ? null : previousValue;
-}
 
-function consecutiveUseConditionAt(
-  observation: HistoricalWeeklyObservation,
-  index: number,
-  history: readonly HistoricalWeeklyObservation[],
-) {
-  if (
-    !observation.authoritative ||
-    observation.goal !== 'ABSTINENCE' ||
-    observation.useStatus === 'UNKNOWN'
-  ) {
+  const previous = previousAdjacent(history, periodStartAt);
+
+  if (!previous || !previous.authoritative) {
     return null;
   }
-  const previous = history[index - 1];
-  if (
-    !previous ||
-    !previous.authoritative ||
-    previous.goal !== 'ABSTINENCE'
-  ) return null;
-  if (!periodIsAdjacent(previous, observation.periodStartAt)) return null;
-  if (previous.useStatus === 'UNKNOWN') return null;
-  return observation.useStatus === 'POSITIVE' && previous.useStatus === 'POSITIVE';
+
+  const previousValue = conditionForFlag(flagKey, previous.answers);
+
+  return previousValue === null ? null : previousValue;
 }
 
 function currentConsecutiveUseCondition(
@@ -304,9 +315,14 @@ function currentConsecutiveUseCondition(
   history: readonly HistoricalWeeklyObservation[],
   periodStartAt: Date,
 ) {
-  if (currentGoal !== 'ABSTINENCE' || currentUseStatus === 'UNKNOWN') return null;
+  if (currentGoal !== 'ABSTINENCE' || currentUseStatus === 'UNKNOWN') {
+    return null;
+  }
+
   if (currentUseStatus !== 'POSITIVE') return false;
+
   const previous = previousAdjacent(history, periodStartAt);
+
   if (
     !previous ||
     !previous.authoritative ||
@@ -315,6 +331,7 @@ function currentConsecutiveUseCondition(
   ) {
     return null;
   }
+
   return previous.useStatus === 'POSITIVE';
 }
 
@@ -324,9 +341,14 @@ function windowIsAdjacent(
 ) {
   for (let index = observations.length - 1; index >= 0; index -= 1) {
     const observation = observations[index];
-    if (!observation || !periodIsAdjacent(observation, nextStart)) return false;
+
+    if (!observation || !periodIsAdjacent(observation, nextStart)) {
+      return false;
+    }
+
     nextStart = observation.periodStartAt;
   }
+
   return true;
 }
 
@@ -365,30 +387,8 @@ function recurrenceWindowStats(
   return {
     valid: true,
     positiveCount,
-    observedUsePeriods:
-      historicalObserved.length + (currentObserved ? 1 : 0),
+    observedUsePeriods: historicalObserved.length + (currentObserved ? 1 : 0),
   };
-}
-
-function recurrentUseConditionAt(
-  observation: HistoricalWeeklyObservation,
-  index: number,
-  history: readonly HistoricalWeeklyObservation[],
-) {
-  if (
-    !observation.authoritative ||
-    observation.goal !== 'ABSTINENCE' ||
-    observation.useStatus === 'UNKNOWN'
-  ) {
-    return observation.useStatus === 'UNKNOWN' ? null : false;
-  }
-  const window = recurrenceWindowStats(
-    observation.useStatus,
-    observation.goal,
-    history.slice(0, index),
-    observation.periodStartAt,
-  );
-  return window.valid ? window.positiveCount >= 2 : null;
 }
 
 function currentRecurrentUseCondition(
@@ -397,33 +397,45 @@ function currentRecurrentUseCondition(
   history: readonly HistoricalWeeklyObservation[],
   periodStartAt: Date,
 ) {
-  if (currentGoal !== 'ABSTINENCE' || currentUseStatus === 'UNKNOWN') return null;
+  if (currentGoal !== 'ABSTINENCE' || currentUseStatus === 'UNKNOWN') {
+    return null;
+  }
+
   if (currentUseStatus !== 'POSITIVE') return false;
+
   const window = recurrenceWindowStats(
     currentUseStatus,
     currentGoal,
     history,
     periodStartAt,
   );
+
   return window.valid ? window.positiveCount >= 2 : null;
 }
 
 function addCandidate(
-  candidates: Map<CandidatePatientIntervention['interventionClass'], CandidatePatientIntervention>,
+  candidates: Map<
+    CandidatePatientIntervention['interventionClass'],
+    CandidatePatientIntervention
+  >,
   interventionClass: CandidatePatientIntervention['interventionClass'],
   reason: string,
 ) {
   const existing = candidates.get(interventionClass);
+
   if (existing) {
-    if (!existing.sourceReasons.includes(reason)) existing.sourceReasons.push(reason);
+    if (!existing.sourceReasons.includes(reason)) {
+      existing.sourceReasons.push(reason);
+    }
+
     return;
   }
+
   candidates.set(interventionClass, {
     interventionClass,
     sourceReasons: [reason],
-    resolverPriority: SUBJECTIVE_MONITORING_V1.interventionPriority.indexOf(
-      interventionClass,
-    ),
+    resolverPriority:
+      SUBJECTIVE_MONITORING_V1.interventionPriority.indexOf(interventionClass),
     effect: 'ELIGIBLE',
     suppressionReason: null,
   });
@@ -441,6 +453,7 @@ function resolveCandidates(
     CandidatePatientIntervention['interventionClass'],
     CandidatePatientIntervention
   >();
+
   const active = new Set(
     flags.filter((flag) => flag.state === 'ACTIVE').map((flag) => flag.flagKey),
   );
@@ -453,6 +466,7 @@ function resolveCandidates(
         'RECURRENT_USE',
       );
     }
+
     if (longitudinal.consecutiveUse) {
       addCandidate(
         candidates,
@@ -460,14 +474,22 @@ function resolveCandidates(
         'CONSECUTIVE_USE',
       );
     }
+
     addCandidate(candidates, 'RECOVERY_PLAN_REVIEW', 'ABSTINENCE_USE_PATTERN');
   }
+
   if (active.has('USE_POSITIVE_CURRENT')) {
-    addCandidate(candidates, 'USE_EVENT_RECOVERY_SUPPORT', 'USE_POSITIVE_CURRENT');
+    addCandidate(
+      candidates,
+      'USE_EVENT_RECOVERY_SUPPORT',
+      'USE_POSITIVE_CURRENT',
+    );
   }
+
   if (active.has('HIGH_CRAVING')) {
     addCandidate(candidates, 'CRAVING_COPING_SUPPORT', 'HIGH_CRAVING');
   }
+
   if (active.has('HIGH_RISKY_SITUATIONS')) {
     addCandidate(
       candidates,
@@ -475,12 +497,15 @@ function resolveCandidates(
       'HIGH_RISKY_SITUATIONS',
     );
   }
+
   if (active.has('HIGH_NEGATIVE_MOOD')) {
     addCandidate(candidates, 'MOOD_COPING_SUPPORT', 'HIGH_NEGATIVE_MOOD');
   }
+
   if (active.has('LOW_CONFIDENCE')) {
     addCandidate(candidates, 'SELF_EFFICACY_SUPPORT', 'LOW_CONFIDENCE');
   }
+
   if (active.has('HIGH_RELATIONSHIP_PROBLEMS')) {
     addCandidate(
       candidates,
@@ -488,21 +513,31 @@ function resolveCandidates(
       'HIGH_RELATIONSHIP_PROBLEMS',
     );
   }
+
   if (active.has('LOW_SOCIAL_SUPPORT')) {
     addCandidate(candidates, 'SOCIAL_SUPPORT_ACTIVATION', 'LOW_SOCIAL_SUPPORT');
   }
+
   if (
     longitudinal.cravingDelta !== null &&
-    longitudinal.cravingDelta >= SUBJECTIVE_MONITORING_V1.sharpChanges.cravingIncrease
+    longitudinal.cravingDelta >=
+      SUBJECTIVE_MONITORING_V1.sharpChanges.cravingIncrease
   ) {
-    addCandidate(candidates, 'CRAVING_COPING_SUPPORT', 'SHARP_CRAVING_INCREASE');
+    addCandidate(
+      candidates,
+      'CRAVING_COPING_SUPPORT',
+      'SHARP_CRAVING_INCREASE',
+    );
   }
+
   if (
     longitudinal.confidenceDelta !== null &&
-    longitudinal.confidenceDelta <= SUBJECTIVE_MONITORING_V1.sharpChanges.confidenceDrop
+    longitudinal.confidenceDelta <=
+      SUBJECTIVE_MONITORING_V1.sharpChanges.confidenceDrop
   ) {
     addCandidate(candidates, 'SELF_EFFICACY_SUPPORT', 'SHARP_CONFIDENCE_DROP');
   }
+
   if (
     longitudinal.negativeMoodDelta !== null &&
     longitudinal.negativeMoodDelta >=
@@ -514,6 +549,7 @@ function resolveCandidates(
       'SHARP_NEGATIVE_MOOD_INCREASE',
     );
   }
+
   if (aggregate.interactionTags.includes('HIGH_RISK_WEAK_PROTECTION_CONTEXT')) {
     addCandidate(
       candidates,
@@ -521,31 +557,58 @@ function resolveCandidates(
       'HIGH_RISK_WEAK_PROTECTION_CONTEXT',
     );
   }
+
   if (input.consumption?.targetStatus === 'NOT_MET') {
-    addCandidate(candidates, 'RECOVERY_PLAN_REVIEW', 'REDUCTION_TARGET_NOT_MET');
+    addCandidate(
+      candidates,
+      'RECOVERY_PLAN_REVIEW',
+      'REDUCTION_TARGET_NOT_MET',
+    );
   }
 
-  const previousActive = previous && previous.authoritative && periodIsAdjacent(previous, input.periodStartAt)
-    ? flags.some((flag) => {
-        if (flag.flagKey === 'USE_POSITIVE_CURRENT') return false;
-        if (flag.state !== 'CLEAR') return false;
-        const previousValue = conditionForFlag(flag.flagKey, previous.answers);
-        return previousValue === true;
-      })
-    : false;
+  const previousActive =
+    previous &&
+    previous.authoritative &&
+    periodIsAdjacent(previous, input.periodStartAt)
+      ? flags.some((flag) => {
+          if (flag.flagKey === 'USE_POSITIVE_CURRENT') {
+            return false;
+          }
+
+          if (flag.state !== 'CLEAR') {
+            return false;
+          }
+
+          const previousValue = conditionForFlag(
+            flag.flagKey,
+            previous.answers,
+          );
+
+          return previousValue === true;
+        })
+      : false;
+
   if (
     candidates.size === 0 &&
     (previousActive || input.consumption?.targetStatus === 'MET')
   ) {
-    addCandidate(candidates, 'POSITIVE_REINFORCEMENT', 'RESOLVED_OR_TARGET_MET');
+    addCandidate(
+      candidates,
+      'POSITIVE_REINFORCEMENT',
+      'RESOLVED_OR_TARGET_MET',
+    );
   }
 
   const allowed = new Set(input.safety.allowedSubjectiveInterventions);
+
   const restricted =
     input.safety.safetyState === 'REVIEW_REQUIRED' ||
     input.safety.safetyState === 'HANDOFF_REQUIRED';
+
   return [...candidates.values()]
-    .filter((candidate) => reasons.length > 0 || candidate.sourceReasons.length > 0)
+    .filter(
+      (candidate) => reasons.length > 0 || candidate.sourceReasons.length > 0,
+    )
     .sort((left, right) => left.resolverPriority - right.resolverPriority)
     .slice(0, SUBJECTIVE_MONITORING_V1.maxInterventionClassesPerEvaluation)
     .map((candidate) => {
@@ -560,16 +623,19 @@ function resolveCandidates(
           suppressionReason: input.trigger,
         };
       }
-      if (
-        input.effectScope === 'HISTORICAL'
-      ) {
+
+      if (input.effectScope === 'HISTORICAL') {
         return {
           ...candidate,
           effect: 'HISTORICAL_ONLY' as const,
           suppressionReason: 'HISTORICAL_EFFECT_SCOPE',
         };
       }
-      if (!restricted || allowed.has(candidate.interventionClass)) return candidate;
+
+      if (!restricted || allowed.has(candidate.interventionClass)) {
+        return candidate;
+      }
+
       return {
         ...candidate,
         effect: 'SUPPRESSED_SAFETY',
@@ -585,30 +651,51 @@ function evaluateLongitudinal(
   flags: readonly FlagObservation[],
 ): LongitudinalFeatures {
   const previous = previousAdjacent(input.history, input.periodStartAt);
+
   const previousAnswers = previous?.authoritative ? previous.answers : null;
-  const deltasValid = Boolean(previous && previous.authoritative && previousAnswers);
+
+  const deltasValid = Boolean(
+    previous && previous.authoritative && previousAnswers,
+  );
+
   const cravingDelta =
-    deltasValid && numberAnswer(input.answers, 'R3') !== null && numberAnswer(previousAnswers, 'R3') !== null
-      ? numberAnswer(input.answers, 'R3')! - numberAnswer(previousAnswers, 'R3')!
+    deltasValid &&
+    numberAnswer(input.answers, 'R3') !== null &&
+    numberAnswer(previousAnswers, 'R3') !== null
+      ? numberAnswer(input.answers, 'R3')! -
+        numberAnswer(previousAnswers, 'R3')!
       : null;
+
   const confidenceDelta =
-    deltasValid && numberAnswer(input.answers, 'P1') !== null && numberAnswer(previousAnswers, 'P1') !== null
-      ? numberAnswer(input.answers, 'P1')! - numberAnswer(previousAnswers, 'P1')!
+    deltasValid &&
+    numberAnswer(input.answers, 'P1') !== null &&
+    numberAnswer(previousAnswers, 'P1') !== null
+      ? numberAnswer(input.answers, 'P1')! -
+        numberAnswer(previousAnswers, 'P1')!
       : null;
+
   const negativeMoodDelta =
-    deltasValid && numberAnswer(input.answers, 'R2') !== null && numberAnswer(previousAnswers, 'R2') !== null
-      ? numberAnswer(input.answers, 'R2')! - numberAnswer(previousAnswers, 'R2')!
+    deltasValid &&
+    numberAnswer(input.answers, 'R2') !== null &&
+    numberAnswer(previousAnswers, 'R2') !== null
+      ? numberAnswer(input.answers, 'R2')! -
+        numberAnswer(previousAnswers, 'R2')!
       : null;
+
   const riskScoreDelta =
-    deltasValid && currentAggregate.riskScore !== null && previous?.riskScore !== null
+    deltasValid &&
+    currentAggregate.riskScore !== null &&
+    previous?.riskScore !== null
       ? currentAggregate.riskScore - previous!.riskScore!
       : null;
+
   const rawProtectionScoreDelta =
     deltasValid &&
     currentAggregate.rawProtectionScore !== null &&
     previous?.rawProtectionScore !== null
       ? currentAggregate.rawProtectionScore - previous!.rawProtectionScore!
       : null;
+
   const recoveryProgressDelta =
     deltasValid &&
     currentAggregate.recoveryProgress !== null &&
@@ -617,14 +704,17 @@ function evaluateLongitudinal(
       : null;
 
   const persistenceStreakSnapshot: Record<string, number> = {};
+
   for (const flagKey of ['HIGH_CRAVING', 'HIGH_NEGATIVE_MOOD'] as const) {
     const current = flags.find((flag) => flag.flagKey === flagKey);
+
     const previousValue = previous
       ? conditionForFlag(flagKey, previous.answers)
       : null;
+
     persistenceStreakSnapshot[flagKey] =
       current?.state === 'ACTIVE'
-      ? previous &&
+        ? previous &&
           previous.authoritative &&
           periodIsAdjacent(previous, input.periodStartAt) &&
           previousValue === true
@@ -633,34 +723,40 @@ function evaluateLongitudinal(
         : 0;
   }
 
-  const clearanceReasonStateSnapshot: Record<string, ReasonLifecycleSnapshot> = {};
+  const clearanceReasonStateSnapshot: Record<string, ReasonLifecycleSnapshot> =
+    {};
 
   const consecutiveUse =
     input.goal === 'ABSTINENCE' &&
     currentUseStatus === 'POSITIVE' &&
     Boolean(
       previous &&
-        previous.authoritative &&
-        previous.goal === 'ABSTINENCE' &&
-        periodIsAdjacent(previous, input.periodStartAt) &&
-        previous.useStatus === 'POSITIVE',
+      previous.authoritative &&
+      previous.goal === 'ABSTINENCE' &&
+      periodIsAdjacent(previous, input.periodStartAt) &&
+      previous.useStatus === 'POSITIVE',
     );
+
   const recurrenceWindow = recurrenceWindowStats(
     currentUseStatus,
     input.goal,
     input.history,
     input.periodStartAt,
   );
+
   const recurrentUse =
     input.goal === 'ABSTINENCE' &&
     currentUseStatus === 'POSITIVE' &&
     recurrenceWindow.valid &&
     recurrenceWindow.positiveCount >= 2;
+
   const stabilityWindow = input.history.slice(-12);
+
   const useAfterStability =
     input.goal === 'ABSTINENCE' &&
     currentUseStatus === 'POSITIVE' &&
-    stabilityWindow.length === SUBJECTIVE_MONITORING_V1.useAfterStabilityNegativePeriods &&
+    stabilityWindow.length ===
+      SUBJECTIVE_MONITORING_V1.useAfterStabilityNegativePeriods &&
     windowIsAdjacent(stabilityWindow, input.periodStartAt) &&
     stabilityWindow.every((item) => item.goal === 'ABSTINENCE') &&
     stabilityWindow.every(
@@ -686,50 +782,71 @@ function evaluateLongitudinal(
 
 function deriveUseStatus(answers: WeeklyAnswers) {
   const value = booleanAnswer(answers, 'U1');
-  return value === null ? ('UNKNOWN' as const) : value ? ('POSITIVE' as const) : ('NEGATIVE' as const);
+
+  return value === null
+    ? ('UNKNOWN' as const)
+    : value
+      ? ('POSITIVE' as const)
+      : ('NEGATIVE' as const);
 }
 
 export function evaluateWeeklyAssessment(
   input: EvaluateWeeklyAssessmentInput,
 ): WeeklyEvaluationResult {
   const weeklyUseStatus = deriveUseStatus(input.answers);
+
   const flags = flagObservations(input.answers);
+
   const aggregate = calculateAggregate(input.answers, input.preferences);
+
   const longitudinal = evaluateLongitudinal(
     input,
     aggregate,
     weeklyUseStatus,
     flags,
   );
+
   const allClinicianReasons = new Set<
-    'CRAVING_LOW_CONFIDENCE' |
-      'MOOD_CRAVING' |
-      'PERSISTENT_HIGH_CRAVING' |
-      'PERSISTENT_HIGH_NEGATIVE_MOOD' |
-      'CONSECUTIVE_USE' |
-      'RECURRENT_USE'
+    | 'CRAVING_LOW_CONFIDENCE'
+    | 'MOOD_CRAVING'
+    | 'PERSISTENT_HIGH_CRAVING'
+    | 'PERSISTENT_HIGH_NEGATIVE_MOOD'
+    | 'CONSECUTIVE_USE'
+    | 'RECURRENT_USE'
   >();
-  const highCraving = flags.find((flag) => flag.flagKey === 'HIGH_CRAVING')?.state === 'ACTIVE';
-  const highMood = flags.find((flag) => flag.flagKey === 'HIGH_NEGATIVE_MOOD')?.state === 'ACTIVE';
-  const lowConfidence = flags.find((flag) => flag.flagKey === 'LOW_CONFIDENCE')?.state === 'ACTIVE';
+
+  const highCraving =
+    flags.find((flag) => flag.flagKey === 'HIGH_CRAVING')?.state === 'ACTIVE';
+
+  const highMood =
+    flags.find((flag) => flag.flagKey === 'HIGH_NEGATIVE_MOOD')?.state ===
+    'ACTIVE';
+
+  const lowConfidence =
+    flags.find((flag) => flag.flagKey === 'LOW_CONFIDENCE')?.state === 'ACTIVE';
+
   const currentCravingLowConfidence = combinedCondition(
     currentFlagValue('HIGH_CRAVING', input.answers),
     currentFlagValue('LOW_CONFIDENCE', input.answers),
   );
+
   const currentMoodCraving = combinedCondition(
     currentFlagValue('HIGH_NEGATIVE_MOOD', input.answers),
     currentFlagValue('HIGH_CRAVING', input.answers),
   );
+
   longitudinal.clearanceReasonStateSnapshot.CRAVING_LOW_CONFIDENCE =
     reasonLifecycleTransition(
       currentCravingLowConfidence,
       previousReasonState(input.history, 'CRAVING_LOW_CONFIDENCE'),
     );
+
   longitudinal.clearanceReasonStateSnapshot.MOOD_CRAVING =
     reasonLifecycleTransition(
       currentMoodCraving,
       previousReasonState(input.history, 'MOOD_CRAVING'),
     );
+
   longitudinal.clearanceReasonStateSnapshot.PERSISTENT_HIGH_CRAVING =
     reasonLifecycleTransition(
       currentPersistenceCondition(
@@ -740,6 +857,7 @@ export function evaluateWeeklyAssessment(
       ),
       previousReasonState(input.history, 'PERSISTENT_HIGH_CRAVING'),
     );
+
   longitudinal.clearanceReasonStateSnapshot.PERSISTENT_HIGH_NEGATIVE_MOOD =
     reasonLifecycleTransition(
       currentPersistenceCondition(
@@ -750,13 +868,18 @@ export function evaluateWeeklyAssessment(
       ),
       previousReasonState(input.history, 'PERSISTENT_HIGH_NEGATIVE_MOOD'),
     );
+
   const previousConsecutiveReason = previousReasonState(
     input.history,
     'CONSECUTIVE_USE',
   );
+
   longitudinal.clearanceReasonStateSnapshot.CONSECUTIVE_USE =
     input.goal !== 'ABSTINENCE'
-      ? { status: 'INACTIVE', clearanceCount: 0 }
+      ? {
+          status: 'INACTIVE',
+          clearanceCount: 0,
+        }
       : reasonLifecycleTransition(
           recurrenceLifecycleCondition(
             weeklyUseStatus,
@@ -770,13 +893,18 @@ export function evaluateWeeklyAssessment(
           ),
           previousConsecutiveReason,
         );
+
   const previousRecurrentReason = previousReasonState(
     input.history,
     'RECURRENT_USE',
   );
+
   longitudinal.clearanceReasonStateSnapshot.RECURRENT_USE =
     input.goal !== 'ABSTINENCE'
-      ? { status: 'INACTIVE', clearanceCount: 0 }
+      ? {
+          status: 'INACTIVE',
+          clearanceCount: 0,
+        }
       : reasonLifecycleTransition(
           recurrenceLifecycleCondition(
             weeklyUseStatus,
@@ -790,26 +918,38 @@ export function evaluateWeeklyAssessment(
           ),
           previousRecurrentReason,
         );
-  if (highCraving && lowConfidence) allClinicianReasons.add('CRAVING_LOW_CONFIDENCE');
-  if (highMood && highCraving) allClinicianReasons.add('MOOD_CRAVING');
-  if (longitudinal.persistenceStreakSnapshot.HIGH_CRAVING === SUBJECTIVE_MONITORING_V1.persistence.N_PERSIST) {
+
+  if (highCraving && lowConfidence) {
+    allClinicianReasons.add('CRAVING_LOW_CONFIDENCE');
+  }
+
+  if (highMood && highCraving) {
+    allClinicianReasons.add('MOOD_CRAVING');
+  }
+
+  if (
+    longitudinal.persistenceStreakSnapshot.HIGH_CRAVING ===
+    SUBJECTIVE_MONITORING_V1.persistence.N_PERSIST
+  ) {
     allClinicianReasons.add('PERSISTENT_HIGH_CRAVING');
   }
+
   if (
     longitudinal.persistenceStreakSnapshot.HIGH_NEGATIVE_MOOD ===
     SUBJECTIVE_MONITORING_V1.persistence.N_PERSIST
   ) {
     allClinicianReasons.add('PERSISTENT_HIGH_NEGATIVE_MOOD');
   }
+
   if (
     longitudinal.clearanceReasonStateSnapshot.CONSECUTIVE_USE?.status ===
     'ACTIVE'
   ) {
     allClinicianReasons.add('CONSECUTIVE_USE');
   }
+
   if (
-    longitudinal.clearanceReasonStateSnapshot.RECURRENT_USE?.status ===
-    'ACTIVE'
+    longitudinal.clearanceReasonStateSnapshot.RECURRENT_USE?.status === 'ACTIVE'
   ) {
     allClinicianReasons.add('RECURRENT_USE');
   }
@@ -817,12 +957,14 @@ export function evaluateWeeklyAssessment(
   const clinicianReasons = new Set(
     input.completionStatus === 'PARTIAL'
       ? [...allClinicianReasons].filter(
-          (reason) => reason === 'CONSECUTIVE_USE' || reason === 'RECURRENT_USE',
+          (reason) =>
+            reason === 'CONSECUTIVE_USE' || reason === 'RECURRENT_USE',
         )
       : [...allClinicianReasons],
   );
 
   const previous = previousAdjacent(input.history, input.periodStartAt);
+
   const candidatePatientInterventions = resolveCandidates(
     input,
     flags,
@@ -831,6 +973,7 @@ export function evaluateWeeklyAssessment(
     longitudinal,
     previous,
   );
+
   const effectPlan: EffectPlan = {
     trigger: input.trigger,
     candidatePatientInterventions,
