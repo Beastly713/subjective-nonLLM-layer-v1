@@ -49,9 +49,13 @@ describe('workspace shells', () => {
     [
       PatientShell,
       'Patient space',
-      ['Setup', 'Check-in', 'History', 'Profile'],
+      ['Setup', 'Check-in', 'History', 'Support', 'Profile'],
     ],
-    [ClinicianShell, 'Clinician workspace', ['Patients', 'Safety']],
+    [
+      ClinicianShell,
+      'Clinician workspace',
+      ['Patients', 'Review Queue', 'Safety'],
+    ],
     [AdminShell, 'Administrative console', ['Users & Access']],
   ] as const)(
     'renders distinct implemented destinations for %s',

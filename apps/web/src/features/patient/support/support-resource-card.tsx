@@ -33,7 +33,8 @@ export function SupportResourceCard({
         </p>
         <h2 className="mb-0 mt-2 text-xl font-semibold">{resource.title}</h2>
         <p className="mb-0 mt-2 text-sm text-muted-foreground">
-          About {Math.max(1, Math.round(resource.estimatedDurationSeconds / 60))}{' '}
+          About{' '}
+          {Math.max(1, Math.round(resource.estimatedDurationSeconds / 60))}{' '}
           minute{resource.estimatedDurationSeconds >= 120 ? 's' : ''}
         </p>
       </CardHeader>
@@ -41,13 +42,17 @@ export function SupportResourceCard({
         <SafeMarkdown value={resource.bodyMarkdown} />
         <div className="flex flex-wrap gap-2 border-t pt-4">
           <Button
-            onClick={() => void onFeedback(resource, 'DISMISS').catch(() => undefined)}
+            onClick={() =>
+              void onFeedback(resource, 'DISMISS').catch(() => undefined)
+            }
             variant="ghost"
           >
             Dismiss
           </Button>
           <Button
-            onClick={() => void onFeedback(resource, 'NOT_HELPFUL').catch(() => undefined)}
+            onClick={() =>
+              void onFeedback(resource, 'NOT_HELPFUL').catch(() => undefined)
+            }
             variant="outline"
           >
             Not helpful

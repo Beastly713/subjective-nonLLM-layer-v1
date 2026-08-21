@@ -10,16 +10,10 @@ export const CLINICAL_REASON_FAMILIES = [
 ] as const satisfies readonly ClinicalReasonFamily[];
 
 export type ClinicalReasonStatus =
-  | 'INACTIVE'
-  | 'ACTIVE'
-  | 'CLEARANCE_PENDING'
-  | 'RESOLVED';
+  'INACTIVE' | 'ACTIVE' | 'CLEARANCE_PENDING' | 'RESOLVED';
 
 export type ClinicalReasonEffect =
-  | 'ELIGIBLE'
-  | 'SUPPRESSED_TRIGGER'
-  | 'HISTORICAL_ONLY'
-  | 'REVOKED_BY_REVISION';
+  'ELIGIBLE' | 'SUPPRESSED_TRIGGER' | 'HISTORICAL_ONLY' | 'REVOKED_BY_REVISION';
 
 export type ClinicalReasonSnapshot = {
   status: ClinicalReasonStatus;

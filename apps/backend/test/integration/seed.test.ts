@@ -72,6 +72,26 @@ describe('prototype identity seed', () => {
         },
       }),
     ).toBe(1);
+
+    const seededResources = await prisma.contentResource.findMany({
+      select: { id: true, interventionClass: true },
+    });
+    expect(seededResources).toHaveLength(24);
+    const seededVersions = await prisma.contentResourceVersion.findMany({
+      where: {
+        resourceId: { in: seededResources.map((resource) => resource.id) },
+      },
+      select: { resourceId: true, reviewStatus: true, provenance: true },
+    });
+    expect(seededVersions).toHaveLength(24);
+    expect(
+      seededVersions.every(
+        (version) =>
+          version.reviewStatus === 'APPROVED' &&
+          (version.provenance as { mode?: string } | null)?.mode ===
+            'prototype',
+      ),
+    ).toBe(true);
   }, 20_000);
 
   it('refuses before doing any work in real-patient mode', async () => {

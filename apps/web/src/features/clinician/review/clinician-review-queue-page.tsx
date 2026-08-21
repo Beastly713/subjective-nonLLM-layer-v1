@@ -37,7 +37,9 @@ function sourceLabel(item: ClinicianReviewQueueItem) {
   if (item.source.freshness === 'STALE') return 'Stale data';
   if (item.source.freshness === 'REVOKED') return 'Revision revoked';
   if (item.source.freshness === 'NO_CURRENT_DATA') return 'No current data';
-  return item.source.completionStatus === 'PARTIAL' ? 'Current · partial' : 'Current';
+  return item.source.completionStatus === 'PARTIAL'
+    ? 'Current · partial'
+    : 'Current';
 }
 
 export function ClinicianReviewQueuePage() {
@@ -69,10 +71,15 @@ function ClinicianReviewQueueContent() {
         {query.isLoading ? (
           <LoadingState />
         ) : query.isError ? (
-          query.error instanceof ApiClientError && query.error.status === 403 ? (
+          query.error instanceof ApiClientError &&
+          query.error.status === 403 ? (
             <RestrictedState />
           ) : (
-            <ErrorState action={<Button onClick={() => void query.refetch()}>Try again</Button>} />
+            <ErrorState
+              action={
+                <Button onClick={() => void query.refetch()}>Try again</Button>
+              }
+            />
           )
         ) : query.data?.items.length === 0 ? (
           <EmptyState />
@@ -94,12 +101,21 @@ function ReviewQueueCard({ item }: { item: ClinicianReviewQueueItem }) {
       <CardHeader>
         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
           <div>
-            <p className="m-0 text-sm font-semibold text-primary">{item.patientName}</p>
-            <h2 className="mb-0 mt-1 text-xl font-semibold">Subjective monitoring review</h2>
-            <p className="mb-0 mt-2 font-mono text-xs text-muted-foreground">{item.patientId}</p>
+            <p className="m-0 text-sm font-semibold text-primary">
+              {item.patientName}
+            </p>
+            <h2 className="mb-0 mt-1 text-xl font-semibold">
+              Subjective monitoring review
+            </h2>
+            <p className="mb-0 mt-2 font-mono text-xs text-muted-foreground">
+              {item.patientId}
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <StateBadge label={humanize(item.case.lifecycle)} state={lifecycleTone(item.case.lifecycle)} />
+            <StateBadge
+              label={humanize(item.case.lifecycle)}
+              state={lifecycleTone(item.case.lifecycle)}
+            />
             <StateBadge
               label={sourceLabel(item)}
               state={item.source.freshness === 'CURRENT' ? 'current' : 'stale'}
@@ -109,24 +125,45 @@ function ReviewQueueCard({ item }: { item: ClinicianReviewQueueItem }) {
       </CardHeader>
       <CardContent className="grid gap-5">
         <div className="grid gap-2">
-          <p className="m-0 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Active reasons</p>
+          <p className="m-0 text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">
+            Active reasons
+          </p>
           <div className="flex flex-wrap gap-2">
-            {item.activeReasons.length > 0 ? item.activeReasons.map((reason) => (
-              <span className="rounded-full border bg-surface-subtle px-3 py-1 text-sm" key={reason.reasonFamily}>
-                {humanize(reason.reasonFamily)}
+            {item.activeReasons.length > 0 ? (
+              item.activeReasons.map((reason) => (
+                <span
+                  className="rounded-full border bg-surface-subtle px-3 py-1 text-sm"
+                  key={reason.reasonFamily}
+                >
+                  {humanize(reason.reasonFamily)}
+                </span>
+              ))
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                No currently active reason.
               </span>
-            )) : <span className="text-sm text-muted-foreground">No currently active reason.</span>}
+            )}
           </div>
         </div>
         {item.clearancePendingReasons.length > 0 ? (
           <p className="m-0 text-sm text-stale">
-            Clearance pending: {item.clearancePendingReasons.map((reason) => humanize(reason.reasonFamily)).join(', ')}
+            Clearance pending:{' '}
+            {item.clearancePendingReasons
+              .map((reason) => humanize(reason.reasonFamily))
+              .join(', ')}
           </p>
         ) : null}
         <div className="flex flex-col justify-between gap-3 border-t pt-4 sm:flex-row sm:items-center">
           <div className="grid gap-1 text-sm text-muted-foreground">
-            <span>{item.tasks.length} durable task{item.tasks.length === 1 ? '' : 's'}</span>
-            <span>{item.tasks.some((task) => task.alertUpdateRequired) ? 'A correction update is required.' : 'No task update required.'}</span>
+            <span>
+              {item.tasks.length} durable task
+              {item.tasks.length === 1 ? '' : 's'}
+            </span>
+            <span>
+              {item.tasks.some((task) => task.alertUpdateRequired)
+                ? 'A correction update is required.'
+                : 'No task update required.'}
+            </span>
           </div>
           <Link to={`/clinician/patients/${item.patientId}/monitoring`}>
             <Button>Open review</Button>

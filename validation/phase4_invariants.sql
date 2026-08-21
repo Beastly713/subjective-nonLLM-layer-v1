@@ -146,14 +146,13 @@ BEGIN
       'Phase 4 invariant failed: alcohol-consumption day period differs from its logical assessment period';
   END IF;
 
-  IF to_regclass('public.clinical_reason_states') IS NOT NULL
-     OR to_regclass('public.clinical_reason_history') IS NOT NULL
-     OR to_regclass('public.clinical_review_cases') IS NOT NULL
-     OR to_regclass('public.content_resources') IS NOT NULL
-     OR to_regclass('public.clinician_tasks') IS NOT NULL
-     OR to_regclass('public.engagement_cases') IS NOT NULL THEN
+  -- Phase 5 content/clinical projections are now expected consumers of the
+  -- accepted Phase 4 outputs. The Phase 4 boundary still forbids Phase 6
+  -- engagement state from appearing in this database validation.
+  IF to_regclass('public.engagement_cases') IS NOT NULL
+     OR to_regclass('public.technical_failure_cases') IS NOT NULL THEN
     RAISE EXCEPTION
-      'Phase 4 boundary failed: a later-phase clinical/content/engagement table exists';
+      'Phase 4 boundary failed: a later-phase engagement/technical-failure table exists';
   END IF;
 END $$;
 

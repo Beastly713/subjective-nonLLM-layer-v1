@@ -27,16 +27,52 @@ export const PROTOTYPE_IDENTITIES = {
 } as const;
 
 const PROTOTYPE_CONTENT_CLASSES = [
-  { key: 'CRAVING_COPING_SUPPORT', volume: 3, label: 'Working through cravings' },
+  {
+    key: 'CRAVING_COPING_SUPPORT',
+    volume: 3,
+    label: 'Working through cravings',
+  },
   { key: 'SELF_EFFICACY_SUPPORT', volume: 3, label: 'Building confidence' },
-  { key: 'MOOD_COPING_SUPPORT', volume: 3, label: 'Managing difficult emotions' },
-  { key: 'TRIGGER_MANAGEMENT_SUPPORT', volume: 3, label: 'Handling difficult situations' },
-  { key: 'RELATIONSHIP_COPING_SUPPORT', volume: 2, label: 'Navigating relationships' },
-  { key: 'SOCIAL_SUPPORT_ACTIVATION', volume: 2, label: 'Connecting with support' },
-  { key: 'USE_EVENT_RECOVERY_SUPPORT', volume: 2, label: 'Next steps after alcohol use' },
-  { key: 'RECURRENT_USE_RECOVERY_SUPPORT', volume: 2, label: 'Reviewing your recovery plan' },
-  { key: 'RECOVERY_PLAN_REVIEW', volume: 2, label: 'Reviewing your support plan' },
-  { key: 'POSITIVE_REINFORCEMENT', volume: 2, label: 'Recognizing what is working' },
+  {
+    key: 'MOOD_COPING_SUPPORT',
+    volume: 3,
+    label: 'Managing difficult emotions',
+  },
+  {
+    key: 'TRIGGER_MANAGEMENT_SUPPORT',
+    volume: 3,
+    label: 'Handling difficult situations',
+  },
+  {
+    key: 'RELATIONSHIP_COPING_SUPPORT',
+    volume: 2,
+    label: 'Navigating relationships',
+  },
+  {
+    key: 'SOCIAL_SUPPORT_ACTIVATION',
+    volume: 2,
+    label: 'Connecting with support',
+  },
+  {
+    key: 'USE_EVENT_RECOVERY_SUPPORT',
+    volume: 2,
+    label: 'Next steps after alcohol use',
+  },
+  {
+    key: 'RECURRENT_USE_RECOVERY_SUPPORT',
+    volume: 2,
+    label: 'Reviewing your recovery plan',
+  },
+  {
+    key: 'RECOVERY_PLAN_REVIEW',
+    volume: 2,
+    label: 'Reviewing your support plan',
+  },
+  {
+    key: 'POSITIVE_REINFORCEMENT',
+    volume: 2,
+    label: 'Recognizing what is working',
+  },
 ] as const;
 
 const PROTOTYPE_CONTENT_EFFECTIVE_FROM = new Date('2026-01-01T00:00:00.000Z');

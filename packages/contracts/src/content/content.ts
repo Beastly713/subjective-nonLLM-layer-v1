@@ -97,6 +97,4 @@ export type PatientSupportResponse = z.infer<
 export type ContentFeedbackRequest = z.infer<
   typeof ContentFeedbackRequestSchema
 >;
-export type ContentExploreRequest = z.infer<
-  typeof ContentExploreRequestSchema
->;
+export type ContentExploreRequest = z.infer<typeof ContentExploreRequestSchema>;

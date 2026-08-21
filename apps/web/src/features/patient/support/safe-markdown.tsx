@@ -13,7 +13,7 @@ function safeHref(value: string) {
 
 function inlineMarkdown(value: string): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const pattern = /(\*\*[^*]+\*\*|\[[^\]]+\]\([^\)]+\))/g;
+  const pattern = /(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g;
   let cursor = 0;
   let match: RegExpExecArray | null;
   let key = 0;
@@ -24,7 +24,7 @@ function inlineMarkdown(value: string): ReactNode[] {
     if (token.startsWith('**')) {
       nodes.push(<strong key={`strong-${key++}`}>{token.slice(2, -2)}</strong>);
     } else {
-      const link = /^\[([^\]]+)\]\(([^\)]+)\)$/.exec(token);
+      const link = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(token);
       const href = link?.[2] ? safeHref(link[2]) : null;
       if (link && href) {
         nodes.push(
@@ -87,7 +87,10 @@ export function SafeMarkdown({ value }: { value: string }) {
       flushList();
       const Heading = heading[1]?.length === 1 ? 'h2' : 'h3';
       blocks.push(
-        <Heading className="m-0 text-lg font-semibold" key={`heading-${blocks.length}`}>
+        <Heading
+          className="m-0 text-lg font-semibold"
+          key={`heading-${blocks.length}`}
+        >
           {inlineMarkdown(heading[2] ?? '')}
         </Heading>,
       );

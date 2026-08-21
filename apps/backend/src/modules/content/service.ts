@@ -14,12 +14,15 @@ import {
   CONTENT_RESOLVER_VERSION,
   HIGH_FREQUENCY_CLASSES,
   NOT_HELPFUL_SUPPRESSION_DAYS,
-  RESOURCE_COOLDOWN_DAYS,
   SUPPORT_TYPE_LABELS,
   SUPPORT_TYPE_OPTIONS,
   type ContentPreferenceContext,
   type ContentSafetyContext,
 } from './types.js';
+import {
+  latestVersionPerResource,
+  selectDeterministicResource,
+} from './deterministic-selection.js';
 
 type Tx = Prisma.TransactionClient;
 type JsonInput = Prisma.InputJsonValue;
@@ -146,10 +149,12 @@ type Selection = {
     override: 'USER_REQUEST' | null;
     lastShownAt: string | null;
   };
+  intentId: string | null;
 };
 
 type ResourceFilterSummary = {
   approved: number;
+  enabled: number;
   goal: number;
   preference: number;
   safety: number;
@@ -194,7 +199,7 @@ async function chooseResourceForClass(input: {
   now: Date;
   userRequest?: boolean;
   excludedResourceIds?: ReadonlySet<string>;
-}) {
+}): Promise<Selection | null> {
   const {
     tx,
     patientId,
@@ -213,15 +218,21 @@ async function chooseResourceForClass(input: {
       locale: CONTENT_LOCALE,
       language: CONTENT_LANGUAGE,
       reviewStatus: 'APPROVED',
-      enabled: true,
       effectiveFrom: { lte: now },
       OR: [{ retiredAt: null }, { retiredAt: { gt: now } }],
     },
     orderBy: [{ resourceId: 'asc' }, { version: 'desc' }],
   });
 
+  // A logical resource may have several approved versions. Only the newest
+  // currently effective version for that resource participates in eligibility
+  // and rotation; historical versions remain available through their IDs for
+  // audit reconstruction but never add volume or exposure diversity.
+  const currentVersions = latestVersionPerResource(versions);
+
   const filterSummary: ResourceFilterSummary = {
-    approved: versions.length,
+    approved: currentVersions.length,
+    enabled: 0,
     goal: 0,
     preference: 0,
     safety: 0,
@@ -232,7 +243,9 @@ async function chooseResourceForClass(input: {
   };
 
   const base = [] as typeof versions;
-  for (const version of versions) {
+  for (const version of currentVersions) {
+    if (!version.enabled) continue;
+    filterSummary.enabled += 1;
     if (!goalCompatible(version, goal)) continue;
     filterSummary.goal += 1;
     if (!preferenceCompatible(version, preferences)) continue;
@@ -279,54 +292,16 @@ async function chooseResourceForClass(input: {
     }),
   ]);
 
-  const lastShown = new Map<string, Date>();
-  const exposureCount = new Map<string, number>();
-  for (const audit of audits) {
-    if (!lastShown.has(audit.resourceId)) {
-      lastShown.set(audit.resourceId, audit.deliveredAt);
-    }
-    exposureCount.set(
-      audit.resourceId,
-      (exposureCount.get(audit.resourceId) ?? 0) + 1,
-    );
-  }
   const helpfulIds = new Set(helpful.map((item) => item.resourceId));
-  const cooldownBoundary = plusDays(
+  const rotation = selectDeterministicResource({
+    candidates: base,
+    exposures: audits,
+    helpfulResourceIds: helpfulIds,
     now,
-    -RESOURCE_COOLDOWN_DAYS,
-  ).getTime();
-  const outsideCooldown = base.filter((version) => {
-    const shown = lastShown.get(version.resourceId);
-    const available = !shown || shown.getTime() <= cooldownBoundary;
-    if (!available) filterSummary.cooldown += 1;
-    return available;
+    userRequest,
   });
-  const pool = outsideCooldown.length > 0 ? outsideCooldown : userRequest ? base : [];
-
-  if (pool.length === 0) return null;
-
-  pool.sort((left, right) => {
-    const helpfulDifference =
-      Number(helpfulIds.has(right.resourceId)) -
-      Number(helpfulIds.has(left.resourceId));
-    if (helpfulDifference !== 0) return helpfulDifference;
-
-    const leftNeverShown = lastShown.has(left.resourceId) ? 0 : 1;
-    const rightNeverShown = lastShown.has(right.resourceId) ? 0 : 1;
-    if (leftNeverShown !== rightNeverShown) return rightNeverShown - leftNeverShown;
-
-    const leftShown = lastShown.get(left.resourceId)?.getTime() ?? 0;
-    const rightShown = lastShown.get(right.resourceId)?.getTime() ?? 0;
-    if (leftShown !== rightShown) return leftShown - rightShown;
-
-    const exposureDifference =
-      (exposureCount.get(left.resourceId) ?? 0) -
-      (exposureCount.get(right.resourceId) ?? 0);
-    if (exposureDifference !== 0) return exposureDifference;
-    return left.resourceId.localeCompare(right.resourceId);
-  });
-
-  const selected = pool[0];
+  filterSummary.cooldown = base.length - rotation.outsideCooldown.length;
+  const selected = rotation.selected;
   if (!selected) return null;
   return {
     resourceId: selected.resourceId,
@@ -338,16 +313,16 @@ async function chooseResourceForClass(input: {
     selectionReasons: [
       helpfulIds.has(selected.resourceId)
         ? 'EXPLICITLY_HELPFUL'
-        : !lastShown.has(selected.resourceId)
+        : !audits.some((audit) => audit.resourceId === selected.resourceId)
           ? 'NEVER_SHOWN'
           : 'ROTATION_ORDER',
     ],
     filterSummary,
     cooldownResult: {
-      override:
-        outsideCooldown.length === 0 && userRequest ? 'USER_REQUEST' : null,
-      lastShownAt: lastShown.get(selected.resourceId)?.toISOString() ?? null,
+      override: rotation.cooldownOverride,
+      lastShownAt: rotation.lastShownAt,
     },
+    intentId: null,
   } satisfies Selection;
 }
 
@@ -388,11 +363,13 @@ function effectPlanSnapshot(value: Prisma.JsonValue) {
     ? effectPlan.followUpCandidates
     : [];
   return {
-    proactive: proactive.filter((item): item is Record<string, Prisma.JsonValue> =>
-      Boolean(item && typeof item === 'object' && !Array.isArray(item)),
+    proactive: proactive.filter(
+      (item): item is Record<string, Prisma.JsonValue> =>
+        Boolean(item && typeof item === 'object' && !Array.isArray(item)),
     ),
-    followUp: followUp.filter((item): item is Record<string, Prisma.JsonValue> =>
-      Boolean(item && typeof item === 'object' && !Array.isArray(item)),
+    followUp: followUp.filter(
+      (item): item is Record<string, Prisma.JsonValue> =>
+        Boolean(item && typeof item === 'object' && !Array.isArray(item)),
     ),
   };
 }
@@ -551,7 +528,10 @@ export async function resolveContentForEvaluation(input: {
       ),
       selectionReasons: json(
         Object.fromEntries(
-          selected.map((item) => [item.interventionClass, item.selectionReasons]),
+          selected.map((item) => [
+            item.interventionClass,
+            item.selectionReasons,
+          ]),
         ),
       ),
       filterSummary: json(filterSummary),
@@ -569,7 +549,7 @@ export async function resolveContentForEvaluation(input: {
     select: { periodEndAt: true },
   });
 
-  if (followupExpiry) {
+  if (followupExpiry && followupExpiry.periodEndAt > input.now) {
     for (const candidate of snapshot.followUp) {
       const className = interventionClass(candidate.interventionClass);
       if (
@@ -655,7 +635,9 @@ async function currentSource(tx: Tx, patientId: string) {
     orderBy: { scheduledPeriod: { periodStartAt: 'desc' } },
     include: {
       scheduledPeriod: true,
-      authoritativeRevision: { select: { id: true, completionStatus: true, submittedAt: true } },
+      authoritativeRevision: {
+        select: { id: true, completionStatus: true, submittedAt: true },
+      },
     },
   });
 }
@@ -673,7 +655,9 @@ async function hiddenClasses(tx: Tx, patientId: string, now: Date) {
     select: { interventionClass: true },
   });
   const hidden = new Set(
-    rows.flatMap((row) => (row.interventionClass ? [row.interventionClass] : [])),
+    rows.flatMap((row) =>
+      row.interventionClass ? [row.interventionClass] : [],
+    ),
   );
   return SUPPORT_TYPE_OPTIONS.filter((item) => hidden.has(item.key));
 }
@@ -706,7 +690,10 @@ export async function readPatientSupport(
       : null,
   } satisfies Omit<PatientSupportResponse, 'status'>;
 
-  if (safetyContext.requiresSafetyShell || safetyContext.monitoringPromptPolicy === 'PAUSE') {
+  if (
+    safetyContext.requiresSafetyShell ||
+    safetyContext.monitoringPromptPolicy === 'PAUSE'
+  ) {
     return { ...base, status: 'SAFETY_CONTROLLED' };
   }
   if (!source?.authoritativeRevision) {
@@ -726,6 +713,14 @@ export async function readPatientSupport(
     where: { sourceEvaluationId: evaluation.id },
   });
   if (!resolution) return { ...base, status: 'NO_CURRENT_SUPPORT' };
+
+  const intents = await tx.patientInterventionIntent.findMany({
+    where: { evaluationId: evaluation.id },
+    select: { id: true, interventionClass: true },
+  });
+  const intentByClass = new Map(
+    intents.map((intent) => [intent.interventionClass, intent.id]),
+  );
 
   const selectedResourceIds = stringArray(resolution.selectedResourceIds);
   const selectedVersionIds = stringArray(resolution.selectedResourceVersionIds);
@@ -786,7 +781,13 @@ export async function readPatientSupport(
     item.resourceVersionId ? [item.resourceVersionId] : [],
   );
   const followupVersions = await tx.contentResourceVersion.findMany({
-    where: { id: { in: followupVersionIds.length ? followupVersionIds : ['00000000-0000-0000-0000-000000000000'] } },
+    where: {
+      id: {
+        in: followupVersionIds.length
+          ? followupVersionIds
+          : ['00000000-0000-0000-0000-000000000000'],
+      },
+    },
   });
   const followupByVersion = new Map(
     followupVersions.map((version) => [version.id, version]),
@@ -836,6 +837,25 @@ export async function readPatientSupport(
       selectionReasons: stringArray(intentClasses[item.interventionClass]),
       filterSummary: {},
       cooldownResult: { override: null, lastShownAt: null },
+      intentId: intentByClass.get(item.interventionClass) ?? null,
+    });
+  }
+  for (const followup of followups) {
+    const version = followup.resourceVersionId
+      ? followupByVersion.get(followup.resourceVersionId)
+      : undefined;
+    if (!version || selectionByResource.has(version.resourceId)) continue;
+    selectionByResource.set(version.resourceId, {
+      resourceId: version.resourceId,
+      resourceVersionId: version.id,
+      interventionClass: version.interventionClass,
+      title: version.title,
+      markdownBody: version.markdownBody,
+      estimatedDurationSeconds: version.estimatedDurationSeconds,
+      selectionReasons: ['AVAILABLE_FOLLOWUP'],
+      filterSummary: {},
+      cooldownResult: { override: null, lastShownAt: null },
+      intentId: intentByClass.get(version.interventionClass) ?? null,
     });
   }
   const deliverable = [...selectedResources, ...availableFollowup];
@@ -847,19 +867,17 @@ export async function readPatientSupport(
         patientId,
         resolution,
         selection: selected,
-        intentId: null,
+        intentId: selected.intentId,
         now,
       });
     }
   }
 
-  const hasContent = selectedResources.length > 0 || availableFollowup.length > 0;
+  const hasContent =
+    selectedResources.length > 0 || availableFollowup.length > 0;
   return {
     ...base,
-    status:
-      hasContent && resolution.contentResult === 'SELECTED'
-        ? 'AVAILABLE'
-        : 'CONTENT_UNAVAILABLE',
+    status: hasContent ? 'AVAILABLE' : 'CONTENT_UNAVAILABLE',
     primary: selectedResources[0] ?? null,
     secondary: selectedResources[1] ?? null,
     availableFollowup,
@@ -873,19 +891,8 @@ export async function explorePatientSupport(input: {
   interventionClass: ContentInterventionClass;
 }) {
   const now = input.clock.now();
-  const [source, preference, safety, hidden] = await Promise.all([
+  const [source, safety, hidden] = await Promise.all([
     currentSource(input.tx, input.patientId),
-    currentSource(input.tx, input.patientId).then((current) =>
-      current?.scheduledPeriod
-        ? input.tx.profilePreferenceVersion.findFirst({
-            where: {
-              patientId: input.patientId,
-              createdAt: { lte: current.scheduledPeriod.periodStartAt },
-            },
-            orderBy: [{ createdAt: 'desc' }, { version: 'desc' }],
-          })
-        : null,
-    ),
     loadPatientSafetyProjection(input.tx, input.patientId),
     hiddenClasses(input.tx, input.patientId, now),
   ]);
@@ -902,6 +909,11 @@ export async function explorePatientSupport(input: {
     orderBy: { evaluatedAt: 'desc' },
   });
   if (!evaluation) return base;
+  const preference = evaluation.preferenceVersionId
+    ? await input.tx.profilePreferenceVersion.findUnique({
+        where: { id: evaluation.preferenceVersionId },
+      })
+    : null;
   const resolution = await input.tx.contentResolutionRecord.findUnique({
     where: { sourceEvaluationId: evaluation.id },
   });
@@ -923,11 +935,22 @@ export async function explorePatientSupport(input: {
     userRequest: true,
   });
   if (!selection) return base;
+  const intent = await input.tx.patientInterventionIntent.findUnique({
+    where: {
+      evaluationId_interventionClass: {
+        evaluationId: evaluation.id,
+        interventionClass: input.interventionClass,
+      },
+    },
+    select: { id: true },
+  });
+  selection.intentId = intent?.id ?? null;
   await createDeliveryAudit({
     tx: input.tx,
     patientId: input.patientId,
     resolution,
     selection,
+    intentId: selection.intentId,
     now,
   });
   return {
@@ -979,32 +1002,56 @@ export async function recordContentFeedback(input: {
     },
   });
   if (input.outcome === 'NOT_HELPFUL') {
-    await input.tx.contentSuppression.create({
-      data: {
+    const existingSuppression = await input.tx.contentSuppression.findFirst({
+      where: {
         patientId: input.patientId,
         scope: 'RESOURCE',
         resourceId: input.resourceId,
-        interventionClass: null,
-        startsAt: now,
-        expiresAt: plusDays(now, NOT_HELPFUL_SUPPRESSION_DAYS),
-        sourceFeedbackId: feedback.id,
-        reason: 'RESOURCE_NOT_HELPFUL',
+        startsAt: { lte: now },
+        endedAt: null,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
     });
+    if (!existingSuppression) {
+      await input.tx.contentSuppression.create({
+        data: {
+          patientId: input.patientId,
+          scope: 'RESOURCE',
+          resourceId: input.resourceId,
+          interventionClass: null,
+          startsAt: now,
+          expiresAt: plusDays(now, NOT_HELPFUL_SUPPRESSION_DAYS),
+          sourceFeedbackId: feedback.id,
+          reason: 'RESOURCE_NOT_HELPFUL',
+        },
+      });
+    }
   }
   if (input.outcome === 'DONT_SHOW_THIS_TYPE') {
-    await input.tx.contentSuppression.create({
-      data: {
+    const existingSuppression = await input.tx.contentSuppression.findFirst({
+      where: {
         patientId: input.patientId,
         scope: 'INTERVENTION_CLASS',
-        resourceId: null,
         interventionClass: version.interventionClass,
-        startsAt: now,
+        startsAt: { lte: now },
+        endedAt: null,
         expiresAt: null,
-        sourceFeedbackId: feedback.id,
-        reason: 'INTERVENTION_CLASS_DONT_SHOW',
       },
     });
+    if (!existingSuppression) {
+      await input.tx.contentSuppression.create({
+        data: {
+          patientId: input.patientId,
+          scope: 'INTERVENTION_CLASS',
+          resourceId: null,
+          interventionClass: version.interventionClass,
+          startsAt: now,
+          expiresAt: null,
+          sourceFeedbackId: feedback.id,
+          reason: 'INTERVENTION_CLASS_DONT_SHOW',
+        },
+      });
+    }
   }
   await input.tx.contentDeliveryAudit.update({
     where: { id: audit.id },

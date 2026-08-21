@@ -59,55 +59,61 @@ export function registerClinicalRoutes(
     return ClinicianReviewQueueResponseSchema.parse(response);
   });
 
-  app.get('/api/v1/clinician/patients/:patientId/monitoring', async (request) => {
-    const actor = await requirePermission(
-      request,
-      auth,
-      prisma,
-      config,
-      'PATIENT_MONITORING_READ',
-    );
-    requireAssignedScope(actor);
-    const { patientId } = PatientParamsSchema.parse(request.params);
-    const response = await prisma.$transaction((tx) =>
-      readClinicianPatientMonitoring({
-        tx,
-        clock,
-        clinicianId: actor.userId,
-        patientId,
-      }),
-    );
-    return ClinicianPatientMonitoringResponseSchema.parse(response);
-  });
-
-  app.post('/api/v1/clinician/review-cases/:caseId/acknowledge', async (request) => {
-    const actor = await requirePermission(
-      request,
-      auth,
-      prisma,
-      config,
-      'CLINICAL_REVIEW_ACKNOWLEDGE',
-    );
-    requireAssignedScope(actor);
-    const { caseId } = CaseParamsSchema.parse(request.params);
-    const body = AcknowledgeClinicalCaseRequestSchema.parse(request.body);
-    const key = requireIdempotencyKey(request.headers['idempotency-key']);
-    const result = await executeIdempotently(
-      prisma,
-      actor.userId,
-      'CLINICAL_REVIEW_CASE_ACKNOWLEDGE',
-      key,
-      { caseId, ...body },
-      (tx) =>
-        acknowledgeClinicalCase({
+  app.get(
+    '/api/v1/clinician/patients/:patientId/monitoring',
+    async (request) => {
+      const actor = await requirePermission(
+        request,
+        auth,
+        prisma,
+        config,
+        'PATIENT_MONITORING_READ',
+      );
+      requireAssignedScope(actor);
+      const { patientId } = PatientParamsSchema.parse(request.params);
+      const response = await prisma.$transaction((tx) =>
+        readClinicianPatientMonitoring({
           tx,
           clock,
           clinicianId: actor.userId,
-          caseId,
-          expectedCaseVersion: body.expectedCaseVersion,
-          requestId: request.id,
+          patientId,
         }),
-    );
-    return ClinicianPatientMonitoringResponseSchema.parse(result.value);
-  });
+      );
+      return ClinicianPatientMonitoringResponseSchema.parse(response);
+    },
+  );
+
+  app.post(
+    '/api/v1/clinician/review-cases/:caseId/acknowledge',
+    async (request) => {
+      const actor = await requirePermission(
+        request,
+        auth,
+        prisma,
+        config,
+        'CLINICAL_REVIEW_ACKNOWLEDGE',
+      );
+      requireAssignedScope(actor);
+      const { caseId } = CaseParamsSchema.parse(request.params);
+      const body = AcknowledgeClinicalCaseRequestSchema.parse(request.body);
+      const key = requireIdempotencyKey(request.headers['idempotency-key']);
+      const result = await executeIdempotently(
+        prisma,
+        actor.userId,
+        'CLINICAL_REVIEW_CASE_ACKNOWLEDGE',
+        key,
+        { caseId, ...body },
+        (tx) =>
+          acknowledgeClinicalCase({
+            tx,
+            clock,
+            clinicianId: actor.userId,
+            caseId,
+            expectedCaseVersion: body.expectedCaseVersion,
+            requestId: request.id,
+          }),
+      );
+      return ClinicianPatientMonitoringResponseSchema.parse(result.value);
+    },
+  );
 }

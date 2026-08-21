@@ -18,6 +18,8 @@ describe('code-owned permission table', () => {
         'PATIENT_SAFETY_READ',
         'PATIENT_ASSESSMENT_READ',
         'PATIENT_ASSESSMENT_UPDATE',
+        'PATIENT_SUPPORT_READ',
+        'PATIENT_SUPPORT_FEEDBACK',
       ],
       scope: 'OWN_PATIENT',
     });
@@ -31,6 +33,9 @@ describe('code-owned permission table', () => {
         'SAFETY_CASE_ACKNOWLEDGE',
         'SAFETY_CASE_DISPOSITION',
         'PATIENT_ASSESSMENT_STAFF_CORRECT',
+        'PATIENT_MONITORING_READ',
+        'CLINICAL_REVIEW_READ',
+        'CLINICAL_REVIEW_ACKNOWLEDGE',
       ],
       scope: 'ASSIGNED_PATIENTS',
     });

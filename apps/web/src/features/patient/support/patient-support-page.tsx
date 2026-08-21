@@ -64,7 +64,9 @@ function PatientSupportContent() {
       ),
     onSuccess: (_value, input) => {
       if (input.outcome === 'DISMISS') {
-        setDismissed((previous) => new Set(previous).add(input.resource.resourceId));
+        setDismissed((previous) =>
+          new Set(previous).add(input.resource.resourceId),
+        );
       }
       setMessage(
         input.outcome === 'DONT_SHOW_THIS_TYPE'
@@ -76,7 +78,9 @@ function PatientSupportContent() {
   });
 
   const explore = useMutation({
-    mutationFn: (interventionClass: PatientSupportResponse['exploreOptions'][number]['key']) =>
+    mutationFn: (
+      interventionClass: PatientSupportResponse['exploreOptions'][number]['key'],
+    ) =>
       apiMutate<PatientSupportResponse>(
         '/api/v1/patient/support/explore',
         'POST',
@@ -94,7 +98,9 @@ function PatientSupportContent() {
   });
 
   const restore = useMutation({
-    mutationFn: (interventionClass: PatientSupportResponse['hiddenInterventionClasses'][number]['key']) =>
+    mutationFn: (
+      interventionClass: PatientSupportResponse['hiddenInterventionClasses'][number]['key'],
+    ) =>
       apiMutate(
         `/api/v1/patient/support/intervention-classes/${interventionClass}/restore` as `/api/v1/${string}`,
         'POST',
@@ -108,10 +114,14 @@ function PatientSupportContent() {
       setMessage('That support type is available again.');
       void queryClient.invalidateQueries({ queryKey: ['patient', 'support'] });
     },
-    onError: () => setMessage('That support type could not be restored. Try again.'),
+    onError: () =>
+      setMessage('That support type could not be restored. Try again.'),
   });
 
-  const feedback = async (resource: ContentResourceView, outcome: ContentFeedbackOutcome) => {
+  const feedback = async (
+    resource: ContentResourceView,
+    outcome: ContentFeedbackOutcome,
+  ) => {
     setMessage(undefined);
     try {
       await mutation.mutateAsync({ resource, outcome });
@@ -122,13 +132,29 @@ function PatientSupportContent() {
   };
 
   if (query.isLoading) {
-    return <PatientShell><LoadingState /></PatientShell>;
+    return (
+      <PatientShell>
+        <LoadingState />
+      </PatientShell>
+    );
   }
   if (query.isError || !query.data) {
     if (query.error instanceof ApiClientError && query.error.status === 403) {
-      return <PatientShell><RestrictedState /></PatientShell>;
+      return (
+        <PatientShell>
+          <RestrictedState />
+        </PatientShell>
+      );
     }
-    return <PatientShell><ErrorState action={<Button onClick={() => void query.refetch()}>Try again</Button>} /></PatientShell>;
+    return (
+      <PatientShell>
+        <ErrorState
+          action={
+            <Button onClick={() => void query.refetch()}>Try again</Button>
+          }
+        />
+      </PatientShell>
+    );
   }
 
   const support = query.data;
@@ -148,26 +174,36 @@ function PatientSupportContent() {
           title="Support for this week"
         />
 
-        {message ? <p className="m-0 text-sm font-semibold text-success" role="status">{message}</p> : null}
+        {message ? (
+          <p className="m-0 text-sm font-semibold text-success" role="status">
+            {message}
+          </p>
+        ) : null}
 
         {support.source ? (
           <p className="m-0 text-sm text-muted-foreground">
-            Based on your {support.source.completionStatus === 'PARTIAL' ? 'partial ' : ''}check-in submitted {formatDate(support.source.submittedAt)}.
+            Based on your{' '}
+            {support.source.completionStatus === 'PARTIAL' ? 'partial ' : ''}
+            check-in submitted {formatDate(support.source.submittedAt)}.
           </p>
         ) : null}
 
         {support.status === 'CONTENT_UNAVAILABLE' ? (
           <Card className="border-border-strong">
             <CardContent className="p-6">
-              <h2 className="m-0 text-xl font-semibold">Support is not available right now</h2>
+              <h2 className="m-0 text-xl font-semibold">
+                Support is not available right now
+              </h2>
               <p className="mb-0 mt-3 text-sm leading-6 text-muted-foreground">
-                No support resource currently meets the requirements for this check-in. Your monitoring record is still preserved.
+                No support resource currently meets the requirements for this
+                check-in. Your monitoring record is still preserved.
               </p>
             </CardContent>
           </Card>
         ) : support.status === 'NO_CURRENT_SUPPORT' ? (
           <EmptyState />
-        ) : visibleResources.length === 0 && support.availableFollowup.length === 0 ? (
+        ) : visibleResources.length === 0 &&
+          support.availableFollowup.length === 0 ? (
           <EmptyState />
         ) : (
           <div className="grid gap-5">
@@ -195,31 +231,54 @@ function PatientSupportContent() {
             <div className="flex items-center gap-3">
               <Compass aria-hidden="true" className="size-5 text-primary" />
               <div>
-                <h2 className="m-0 text-xl font-semibold">Explore another support type</h2>
-                <p className="mb-0 mt-1 text-sm text-muted-foreground">Explore is a request, not an automatic recommendation.</p>
+                <h2 className="m-0 text-xl font-semibold">
+                  Explore another support type
+                </h2>
+                <p className="mb-0 mt-1 text-sm text-muted-foreground">
+                  Explore is a request, not an automatic recommendation.
+                </p>
               </div>
             </div>
           </CardHeader>
           <CardContent className="grid gap-3">
             <div className="flex flex-wrap gap-2">
-              {support.exploreOptions.filter((option) => !support.hiddenInterventionClasses.some((hidden) => hidden.key === option.key)).map((option) => (
-                <Button
-                  disabled={explore.isPending}
-                  key={option.key}
-                  onClick={() => explore.mutate(option.key)}
-                  variant="outline"
-                >
-                  {option.label}
-                </Button>
-              ))}
+              {support.exploreOptions
+                .filter(
+                  (option) =>
+                    !support.hiddenInterventionClasses.some(
+                      (hidden) => hidden.key === option.key,
+                    ),
+                )
+                .map((option) => (
+                  <Button
+                    disabled={explore.isPending}
+                    key={option.key}
+                    onClick={() => explore.mutate(option.key)}
+                    variant="outline"
+                  >
+                    {option.label}
+                  </Button>
+                ))}
             </div>
             {support.hiddenInterventionClasses.length > 0 ? (
               <div className="grid gap-3 border-t pt-4">
-                <p className="m-0 text-sm font-semibold">Hidden support types</p>
+                <p className="m-0 text-sm font-semibold">
+                  Hidden support types
+                </p>
                 {support.hiddenInterventionClasses.map((option) => (
-                  <div className="flex flex-wrap items-center justify-between gap-3" key={option.key}>
-                    <span className="text-sm text-muted-foreground">{option.label}</span>
-                    <Button disabled={restore.isPending} onClick={() => restore.mutate(option.key)} size="compact" variant="ghost">
+                  <div
+                    className="flex flex-wrap items-center justify-between gap-3"
+                    key={option.key}
+                  >
+                    <span className="text-sm text-muted-foreground">
+                      {option.label}
+                    </span>
+                    <Button
+                      disabled={restore.isPending}
+                      onClick={() => restore.mutate(option.key)}
+                      size="compact"
+                      variant="ghost"
+                    >
                       <RotateCcw aria-hidden="true" className="size-4" />
                       Restore
                     </Button>

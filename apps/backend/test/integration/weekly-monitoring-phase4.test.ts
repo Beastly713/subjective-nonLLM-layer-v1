@@ -3,10 +3,14 @@ import { randomUUID } from 'node:crypto';
 import {
   CheckInHistoryResponseSchema,
   CheckInStateResponseSchema,
+  ClinicianPatientMonitoringResponseSchema,
+  ClinicianReviewQueueResponseSchema,
+  PatientSupportResponseSchema,
 } from '@aud-subjective/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../../src/app.js';
+import { seedPrototype } from '../../prisma/seed.js';
 import { createAuth } from '../../src/infrastructure/auth/auth.js';
 import {
   loadRootEnvironment,
@@ -46,11 +50,14 @@ const app = buildApp({ config, prisma, auth, emailSender, clock });
 const password = 'Phase4Fixture!2026';
 const patientEmail = `phase4-patient-${marker}@example.test`;
 const clinicianEmail = `phase4-clinician-${marker}@example.test`;
+const adminEmail = `phase5-admin-${marker}@example.test`;
 
 let patientId = '';
 let clinicianId = '';
+let adminId = '';
 let patientCookie = '';
 let clinicianCookie = '';
+let adminCookie = '';
 
 const period1 = {
   start: new Date('2026-08-10T00:00:00.000Z'),
@@ -162,6 +169,7 @@ async function submit(
 beforeAll(async () => {
   patientId = await createIdentity(patientEmail, 'Phase 4 Patient');
   clinicianId = await createIdentity(clinicianEmail, 'Phase 4 Clinician');
+  adminId = await createIdentity(adminEmail, 'Phase 5 Admin');
 
   await prisma.applicationAccount.createMany({
     data: [
@@ -175,6 +183,11 @@ beforeAll(async () => {
         state: 'ACTIVE',
         createdByUserId: clinicianId,
         privilegedIdentityVerifiedAt: new Date('2026-08-20T00:00:00.000Z'),
+      },
+      {
+        userId: adminId,
+        state: 'ACTIVE',
+        createdByUserId: clinicianId,
       },
     ],
   });
@@ -194,6 +207,13 @@ beforeAll(async () => {
         role: 'CLINICIAN',
         grantedByUserId: clinicianId,
         grantReason: 'Phase 4 integration fixture',
+      },
+      {
+        userId: adminId,
+        workspace: 'ADMIN',
+        role: 'ADMIN',
+        grantedByUserId: clinicianId,
+        grantReason: 'Phase 5 authorization fixture',
       },
     ],
   });
@@ -270,8 +290,18 @@ beforeAll(async () => {
   });
 
   await app.ready();
+  await seedPrototype({
+    ...process.env,
+    NODE_ENV: 'test',
+    DATABASE_URL: databaseUrl,
+    APP_MODE: 'prototype',
+    LOG_LEVEL: 'silent',
+    BETTER_AUTH_SECRET: config.betterAuthSecret,
+    APP_BASE_URL: config.appBaseUrl,
+  });
   patientCookie = await signIn(patientEmail);
   clinicianCookie = await signIn(clinicianEmail);
+  adminCookie = await signIn(adminEmail);
 }, 30_000);
 
 afterAll(async () => {
@@ -649,6 +679,129 @@ describe.sequential('Phase 4 weekly monitoring integration', () => {
       effect: 'ELIGIBLE',
       suppressionReason: null,
     });
+  });
+
+  it('keeps patient support separate from the clinician case and protects the Phase 5 routes', async () => {
+    const supportResponse = await app.inject({
+      method: 'GET',
+      url: '/api/v1/patient/support',
+      headers: { cookie: patientCookie },
+    });
+    expect(supportResponse.statusCode).toBe(200);
+    const support = PatientSupportResponseSchema.parse(supportResponse.json());
+    expect(['CONTENT_UNAVAILABLE', 'NO_CURRENT_SUPPORT']).toContain(
+      support.status,
+    );
+    const serialized = JSON.stringify(support);
+    expect(serialized).not.toContain('CRAVING_LOW_CONFIDENCE');
+    expect(serialized).not.toContain('HIGH_CRAVING');
+
+    const patientReadingClinical = await app.inject({
+      method: 'GET',
+      url: `/api/v1/clinician/patients/${patientId}/monitoring`,
+      headers: { cookie: patientCookie },
+    });
+    expect(patientReadingClinical.statusCode).toBe(403);
+
+    const adminReadingClinical = await app.inject({
+      method: 'GET',
+      url: '/api/v1/clinician/review-queue',
+      headers: { cookie: adminCookie },
+    });
+    expect(adminReadingClinical.statusCode).toBe(403);
+  });
+
+  it('creates a Level-3 queue item, acknowledges it into ACTIVE, and preserves idempotency', async () => {
+    const queueResponse = await app.inject({
+      method: 'GET',
+      url: '/api/v1/clinician/review-queue',
+      headers: { cookie: clinicianCookie },
+    });
+    expect(queueResponse.statusCode).toBe(200);
+    const queue = ClinicianReviewQueueResponseSchema.parse(
+      queueResponse.json(),
+    );
+    expect(queue.items).toHaveLength(1);
+    expect(queue.items[0]?.case.lifecycle).toBe('NEW');
+    expect(queue.items[0]?.activeReasons.length).toBeGreaterThan(0);
+    expect(queue.items[0]?.tasks.length).toBeGreaterThan(0);
+    expect(queue.items[0]?.source.goal).toBe('UNSURE');
+
+    const caseRow = queue.items[0]!.case;
+    const key = randomUUID();
+    const first = await app.inject({
+      method: 'POST',
+      url: `/api/v1/clinician/review-cases/${caseRow.id}/acknowledge`,
+      headers: { cookie: clinicianCookie, 'idempotency-key': key },
+      payload: { expectedCaseVersion: caseRow.caseVersion },
+    });
+    expect(first.statusCode).toBe(200);
+    const firstProjection = ClinicianPatientMonitoringResponseSchema.parse(
+      first.json(),
+    );
+    expect(firstProjection.currentCase?.lifecycle).toBe('ACTIVE');
+
+    const replay = await app.inject({
+      method: 'POST',
+      url: `/api/v1/clinician/review-cases/${caseRow.id}/acknowledge`,
+      headers: { cookie: clinicianCookie, 'idempotency-key': key },
+      payload: { expectedCaseVersion: caseRow.caseVersion },
+    });
+    expect(replay.statusCode).toBe(200);
+    expect(replay.json()).toEqual(first.json());
+    expect(
+      await prisma.clinicalCaseEvent.count({
+        where: { caseId: caseRow.id, eventType: 'CASE_ACKNOWLEDGED' },
+      }),
+    ).toBe(1);
+  });
+
+  it('marks an invalidated task update-required and closes the case with correction provenance', async () => {
+    const assessment = await prisma.weeklyAssessment.findUniqueOrThrow({
+      where: { id: currentAssessmentId },
+      include: { authoritativeRevision: true },
+    });
+    if (!assessment.authoritativeRevision) {
+      throw new Error('Expected authoritative revision');
+    }
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/patient/assessments/${assessment.id}/corrections`,
+      headers: {
+        cookie: patientCookie,
+        'idempotency-key': randomUUID(),
+      },
+      payload: {
+        expectedAuthoritativeRevisionId: assessment.authoritativeRevision.id,
+        expectedRevisionNumber: assessment.authoritativeRevision.revisionNumber,
+        completionIntent: 'COMPLETE',
+        answers: completeAnswers,
+      },
+    });
+    expect(response.statusCode).toBe(200);
+
+    const currentCase = await prisma.clinicalReviewCase.findFirstOrThrow({
+      where: { patientId },
+      orderBy: { openedAt: 'desc' },
+    });
+    expect(currentCase.lifecycle).toBe('RESOLVED_CORRECTION');
+    const tasks = await prisma.clinicianTask.findMany({
+      where: { caseId: currentCase.id },
+    });
+    expect(tasks.length).toBeGreaterThan(0);
+    expect(tasks.every((task) => task.alertUpdateRequired)).toBe(true);
+    expect(
+      tasks.every(
+        (task) =>
+          task.sourceRevisionId !== assessment.authoritativeRevision?.id,
+      ),
+    ).toBe(true);
+    expect(
+      await prisma.clinicalCaseEvent.count({
+        where: { caseId: currentCase.id, eventType: 'REASON_REVOKED' },
+      }),
+    ).toBeGreaterThan(0);
   });
 
   it('projects the history without exposing internal monitoring scores or flags', async () => {

@@ -912,6 +912,7 @@ enum ClinicalCaseLifecycle {
 }
 
 enum ClinicalCaseTier {
+  NONE
   LEVEL_3
 }
 
@@ -927,6 +928,7 @@ enum ClinicalCaseEventType {
 }
 
 enum ClinicianTaskCaseType {
+  CLINICAL
   SUBJECTIVE_LEVEL_3_REVIEW
 }
 
@@ -1441,6 +1443,10 @@ model ClinicianTask {
   sourceEvaluationId    String?                   @map("source_evaluation_id") @db.Uuid
   sourceRevisionId      String?                   @map("source_revision_id") @db.Uuid
   sourcePeriodId        String?                   @map("source_period_id") @db.Uuid
+  eligibilityRecordedAt DateTime                  @default(now()) @map("eligibility_recorded_at") @db.Timestamptz(6)
+  attemptCount          Int                       @default(0) @map("attempt_count")
+  nextAttemptAt         DateTime?                 @map("next_attempt_at") @db.Timestamptz(6)
+  operationalIncidentId String?                   @map("operational_incident_id") @db.Uuid
   title                 String                    @db.VarChar(255)
   detail                Json?
   alertUpdateRequired   Boolean                   @default(false) @map("alert_update_required")
@@ -1451,6 +1457,7 @@ model ClinicianTask {
   @@unique([caseId, createdReason], map: "clinician_tasks_case_reason_key")
   @@index([recipientId, deliveryStatus, createdAt], map: "clinician_tasks_recipient_status_idx")
   @@index([patientId, createdAt], map: "clinician_tasks_patient_created_idx")
+  @@index([operationalIncidentId], map: "clinician_tasks_operational_incident_idx")
   @@map("clinician_tasks")
 }
 

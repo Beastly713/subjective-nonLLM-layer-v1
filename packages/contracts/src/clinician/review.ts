@@ -32,7 +32,7 @@ export const ClinicalCaseLifecycleSchema = z.enum([
   'RESOLVED_CORRECTION',
 ]);
 
-export const ClinicalCaseTierSchema = z.literal('LEVEL_3');
+export const ClinicalCaseTierSchema = z.enum(['NONE', 'LEVEL_3']);
 
 export const ClinicianTaskRecipientTypeSchema = z.enum([
   'PRIMARY_CLINICIAN',
@@ -105,6 +105,7 @@ export const ClinicalReviewSourceSchema = z.object({
   periodEndAt: z.iso.datetime().nullable(),
   completionStatus: z.enum(['PARTIAL', 'COMPLETE']).nullable(),
   submittedAt: z.iso.datetime().nullable(),
+  goal: z.enum(['ABSTINENCE', 'REDUCTION', 'UNSURE']).nullable(),
   freshness: z.enum(['CURRENT', 'STALE', 'REVOKED', 'NO_CURRENT_DATA']),
 });
 

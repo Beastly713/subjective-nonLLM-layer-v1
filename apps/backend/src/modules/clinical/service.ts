@@ -12,6 +12,10 @@ import type { Prisma } from '../../generated/prisma/client.js';
 import type { Clock } from '../../shared/clock/clock.js';
 import { lockPatientForProcessing } from '../../shared/authz/patient-processing-lock.js';
 import { DomainError } from '../../shared/errors/domain-error.js';
+import {
+  deriveOpenCaseLifecycle,
+  materiallyNewReasonFamilies,
+} from './lifecycle.js';
 import { CLINICAL_REASON_FAMILIES } from './types.js';
 
 type Tx = Prisma.TransactionClient;
@@ -217,7 +221,8 @@ async function reconcileVisibility(
             sourceEvaluationId: evaluation.id,
             sourceRevisionId: evaluation.assessmentRevisionId,
             sourcePeriodId: evaluation.scheduledPeriodId,
-            sourceCompletionStatus: evaluation.assessmentRevision.completionStatus,
+            sourceCompletionStatus:
+              evaluation.assessmentRevision.completionStatus,
             sourceSubmittedAt: evaluation.assessmentRevision.submittedAt,
           },
         });
@@ -284,7 +289,7 @@ async function reconcileReasonStates(
     const nextStatus = snapshot.status;
     const nextEffect = isCorrectionRevocation
       ? 'REVOKED_BY_REVISION'
-      : candidateEffect ?? prior?.effect ?? 'ELIGIBLE';
+      : (candidateEffect ?? prior?.effect ?? 'ELIGIBLE');
     const changed =
       !prior || prior.status !== nextStatus || prior.effect !== nextEffect;
 
@@ -310,8 +315,8 @@ async function reconcileReasonStates(
       sourcePeriodId: evaluation.scheduledPeriodId,
       firstActiveAt:
         nextStatus === 'ACTIVE'
-          ? prior?.firstActiveAt ?? evaluation.evaluatedAt
-          : prior?.firstActiveAt ?? null,
+          ? (prior?.firstActiveAt ?? evaluation.evaluatedAt)
+          : (prior?.firstActiveAt ?? null),
       lastObservedAt: evaluation.evaluatedAt,
       clearanceCount: snapshot.clearanceCount,
     } as const;
@@ -351,7 +356,11 @@ async function reconcileReasonStates(
             : 'AUTHORITATIVE_REASON_ELIGIBLE',
         trigger: evaluation.trigger,
         ...(isCorrectionRevocation
-          ? { metadata: json({ invalidatedRevisionId: prior?.sourceRevisionId }) }
+          ? {
+              metadata: json({
+                invalidatedRevisionId: prior?.sourceRevisionId,
+              }),
+            }
           : {}),
       },
     });
@@ -466,16 +475,15 @@ async function routeTask(
         .map((assignment) => [assignment.clinician.id, assignment.clinician]),
     ).values(),
   ];
-  const directClinician = eligibleClinicians.length === 1
-    ? eligibleClinicians[0]
-    : null;
+  const directClinician =
+    eligibleClinicians.length === 1 ? eligibleClinicians[0] : null;
   const routed = Boolean(directClinician);
 
   const task = await tx.clinicianTask.create({
     data: {
       patientId: input.patientId,
       caseId: input.caseId,
-      caseType: 'SUBJECTIVE_LEVEL_3_REVIEW',
+      caseType: 'CLINICAL',
       recipientType: routed ? 'PRIMARY_CLINICIAN' : 'SYSTEM_UNROUTED_QUEUE',
       recipientId: directClinician?.id ?? null,
       deliveryStatus: routed ? 'DELIVERED' : 'UNROUTED',
@@ -483,6 +491,9 @@ async function routeTask(
       sourceEvaluationId: input.evaluationId,
       sourceRevisionId: input.revisionId,
       sourcePeriodId: input.periodId,
+      eligibilityRecordedAt: input.now,
+      attemptCount: 1,
+      nextAttemptAt: null,
       title: 'Subjective monitoring review required',
       detail: json({ reasonFamily: input.reasonFamily }),
       createdAt: input.now,
@@ -511,8 +522,9 @@ async function routeTask(
         status: { not: 'RESOLVED' },
       },
     });
-    if (!existingIncident) {
-      await tx.operationalIncident.create({
+    const incident =
+      existingIncident ??
+      (await tx.operationalIncident.create({
         data: {
           incidentType: 'CLINICAL_REVIEW',
           code: 'CLINICAL_REVIEW_UNROUTED',
@@ -526,8 +538,11 @@ async function routeTask(
           requestId: input.requestId ?? null,
           provenanceReference: input.caseId,
         },
-      });
-    }
+      }));
+    await tx.clinicianTask.update({
+      where: { id: task.id },
+      data: { operationalIncidentId: incident.id },
+    });
   }
 
   return task;
@@ -537,23 +552,31 @@ async function markTasksUpdateRequired(
   tx: Tx,
   caseId: string,
   patientId: string,
-  evaluationId: string,
-  revisionId: string,
-  periodId: string,
+  source: {
+    evaluationId: string;
+    revisionId: string;
+    periodId: string;
+  },
+  reasonFamily?: ClinicalReasonFamily,
 ) {
   const tasks = await tx.clinicianTask.findMany({
-    where: { caseId, alertUpdateRequired: false },
-    select: { id: true },
+    where: {
+      caseId,
+      alertUpdateRequired: false,
+      ...(reasonFamily ? { createdReason: reasonFamily } : {}),
+    },
+    select: { id: true, createdReason: true },
   });
   if (tasks.length === 0) return;
   await tx.clinicianTask.updateMany({
-    where: { caseId, alertUpdateRequired: false },
+    where: {
+      caseId,
+      alertUpdateRequired: false,
+      ...(reasonFamily ? { createdReason: reasonFamily } : {}),
+    },
     data: {
       alertUpdateRequired: true,
       deliveryStatus: 'UPDATE_REQUIRED',
-      sourceEvaluationId: evaluationId,
-      sourceRevisionId: revisionId,
-      sourcePeriodId: periodId,
     },
   });
   for (const task of tasks) {
@@ -561,9 +584,10 @@ async function markTasksUpdateRequired(
       caseId,
       patientId,
       eventType: 'TASK_UPDATE_REQUIRED',
-      sourceEvaluationId: evaluationId,
-      sourceRevisionId: revisionId,
-      sourcePeriodId: periodId,
+      sourceEvaluationId: source.evaluationId,
+      sourceRevisionId: source.revisionId,
+      sourcePeriodId: source.periodId,
+      reasonFamily: task.createdReason,
       metadata: json({ taskId: task.id }),
     });
   }
@@ -578,15 +602,20 @@ async function reconcileCase(
     where: { patientId: evaluation.patientId },
   });
   const active = states
-    .filter((state) => state.status === 'ACTIVE')
+    .filter(
+      (state) =>
+        state.status === 'ACTIVE' && state.effect !== 'REVOKED_BY_REVISION',
+    )
     .map((state) => state.reasonFamily);
   const pending = states
-    .filter((state) => state.status === 'CLEARANCE_PENDING')
+    .filter(
+      (state) =>
+        state.status === 'CLEARANCE_PENDING' &&
+        state.effect !== 'REVOKED_BY_REVISION',
+    )
     .map((state) => state.reasonFamily);
-  const revoked = states.some(
-    (state) =>
-      state.effect === 'REVOKED_BY_REVISION' &&
-      (state.status === 'RESOLVED' || state.status === 'CLEARANCE_PENDING'),
+  const stateByFamily = new Map(
+    states.map((state) => [state.reasonFamily, state]),
   );
 
   let currentCase = await tx.clinicalReviewCase.findFirst({
@@ -601,6 +630,7 @@ async function reconcileCase(
     currentCase = await tx.clinicalReviewCase.create({
       data: {
         patientId: evaluation.patientId,
+        tier: 'LEVEL_3',
         lifecycle: 'NEW',
         activeReasonFamilies: json(active),
         clearancePendingReasonFamilies: json(pending),
@@ -632,12 +662,11 @@ async function reconcileCase(
         sourcePeriodId: evaluation.scheduledPeriodId,
       });
     }
-    const firstReason = active[0];
-    if (firstReason) {
+    for (const reasonFamily of active) {
       await routeTask(tx, {
         caseId: currentCase.id,
         patientId: evaluation.patientId,
-        reasonFamily: firstReason,
+        reasonFamily,
         evaluationId: evaluation.id,
         revisionId: evaluation.assessmentRevisionId,
         periodId: evaluation.scheduledPeriodId,
@@ -655,6 +684,47 @@ async function reconcileCase(
     currentCase.clearancePendingReasonFamilies,
   );
   const oldLifecycle = currentCase.lifecycle;
+  const oldReasonFamilies = [...new Set([...oldActive, ...oldPending])];
+  const correctionRevokedFamilies = oldReasonFamilies.filter((reasonFamily) => {
+    const state = stateByFamily.get(reasonFamily);
+    return state?.effect === 'REVOKED_BY_REVISION' && state.status !== 'ACTIVE';
+  });
+  const revoked = correctionRevokedFamilies.length > 0;
+  const source = {
+    evaluationId: evaluation.id,
+    revisionId: evaluation.assessmentRevisionId,
+    periodId: evaluation.scheduledPeriodId,
+  };
+
+  for (const reasonFamily of correctionRevokedFamilies) {
+    const existingEvent = await tx.clinicalCaseEvent.findFirst({
+      where: {
+        caseId: currentCase.id,
+        eventType: 'REASON_REVOKED',
+        reasonFamily,
+        sourceEvaluationId: evaluation.id,
+      },
+      select: { id: true },
+    });
+    if (existingEvent) continue;
+    await addCaseEvent(tx, {
+      caseId: currentCase.id,
+      patientId: evaluation.patientId,
+      eventType: 'REASON_REVOKED',
+      reasonFamily,
+      ...source,
+      metadata: json({
+        invalidatedByRevisionId: evaluation.assessmentRevisionId,
+      }),
+    });
+    await markTasksUpdateRequired(
+      tx,
+      currentCase.id,
+      evaluation.patientId,
+      source,
+      reasonFamily,
+    );
+  }
 
   if (active.length === 0 && pending.length === 0) {
     const nextLifecycle = revoked ? 'RESOLVED_CORRECTION' : 'RESOLVED';
@@ -663,13 +733,16 @@ async function reconcileCase(
         where: { id: currentCase.id },
         data: {
           lifecycle: nextLifecycle,
+          tier: 'NONE',
           activeReasonFamilies: json([]),
           clearancePendingReasonFamilies: json([]),
           sourceEvaluationId: evaluation.id,
           sourceRevisionId: evaluation.assessmentRevisionId,
           sourcePeriodId: evaluation.scheduledPeriodId,
           resolvedAt: evaluation.evaluatedAt,
-          resolutionReason: revoked ? 'CORRECTION_REVOCATION' : 'ALL_REASONS_RESOLVED',
+          resolutionReason: revoked
+            ? 'CORRECTION_REVOCATION'
+            : 'ALL_REASONS_RESOLVED',
           caseVersion: { increment: 1 },
         },
       });
@@ -682,28 +755,36 @@ async function reconcileCase(
         sourceEvaluationId: evaluation.id,
         sourceRevisionId: evaluation.assessmentRevisionId,
         sourcePeriodId: evaluation.scheduledPeriodId,
-        metadata: json({ resolutionReason: revoked ? 'CORRECTION_REVOCATION' : 'ALL_REASONS_RESOLVED' }),
+        metadata: json({
+          resolutionReason: revoked
+            ? 'CORRECTION_REVOCATION'
+            : 'ALL_REASONS_RESOLVED',
+        }),
       });
       if (revoked) {
-        await markTasksUpdateRequired(
-          tx,
-          currentCase.id,
-          evaluation.patientId,
-          evaluation.id,
-          evaluation.assessmentRevisionId,
-          evaluation.scheduledPeriodId,
-        );
+        for (const reasonFamily of correctionRevokedFamilies) {
+          await markTasksUpdateRequired(
+            tx,
+            currentCase.id,
+            evaluation.patientId,
+            source,
+            reasonFamily,
+          );
+        }
       }
     }
     return tx.clinicalReviewCase.findUnique({ where: { id: currentCase.id } });
   }
 
-  const nextLifecycle =
-    active.length > 0
-      ? oldLifecycle === 'CLEARANCE_PENDING'
-        ? 'ACTIVE'
-        : oldLifecycle
-      : 'CLEARANCE_PENDING';
+  const nextLifecycle = deriveOpenCaseLifecycle({
+    activeReasonCount: active.length,
+    clearancePendingReasonCount: pending.length,
+    previousLifecycle: OPEN_CASE_LIFECYCLES.includes(
+      oldLifecycle as (typeof OPEN_CASE_LIFECYCLES)[number],
+    )
+      ? (oldLifecycle as (typeof OPEN_CASE_LIFECYCLES)[number])
+      : 'ACKNOWLEDGED',
+  });
   const arraysChanged =
     JSON.stringify(oldActive) !== JSON.stringify(active) ||
     JSON.stringify(oldPending) !== JSON.stringify(pending);
@@ -713,6 +794,7 @@ async function reconcileCase(
       where: { id: currentCase.id },
       data: {
         lifecycle: nextLifecycle,
+        tier: active.length > 0 ? 'LEVEL_3' : 'NONE',
         activeReasonFamilies: json(active),
         clearancePendingReasonFamilies: json(pending),
         sourceEvaluationId: evaluation.id,
@@ -744,50 +826,88 @@ async function reconcileCase(
     });
   }
 
-  for (const reasonFamily of active) {
-    const wasKnown = oldActive.includes(reasonFamily) || oldPending.includes(reasonFamily);
-    if (!wasKnown) {
-      const priorEvent = await tx.clinicalCaseEvent.findFirst({
-        where: {
-          caseId: currentCase.id,
-          eventType: 'REASON_ADDED',
-          reasonFamily,
-        },
+  const newReasonFamilies = materiallyNewReasonFamilies({
+    current: active,
+    previouslyKnown: new Set([...oldActive, ...oldPending]),
+  });
+  for (const reasonFamily of newReasonFamilies) {
+    const priorEvent = await tx.clinicalCaseEvent.findFirst({
+      where: {
+        caseId: currentCase.id,
+        eventType: 'REASON_ADDED',
+        reasonFamily,
+      },
+    });
+    if (!priorEvent) {
+      await addCaseEvent(tx, {
+        caseId: currentCase.id,
+        patientId: evaluation.patientId,
+        eventType: 'REASON_ADDED',
+        reasonFamily,
+        sourceEvaluationId: evaluation.id,
+        sourceRevisionId: evaluation.assessmentRevisionId,
+        sourcePeriodId: evaluation.scheduledPeriodId,
       });
-      if (!priorEvent) {
-        await addCaseEvent(tx, {
-          caseId: currentCase.id,
-          patientId: evaluation.patientId,
-          eventType: 'REASON_ADDED',
-          reasonFamily,
-          sourceEvaluationId: evaluation.id,
-          sourceRevisionId: evaluation.assessmentRevisionId,
-          sourcePeriodId: evaluation.scheduledPeriodId,
-        });
-        await routeTask(tx, {
-          caseId: currentCase.id,
-          patientId: evaluation.patientId,
-          reasonFamily,
-          evaluationId: evaluation.id,
-          revisionId: evaluation.assessmentRevisionId,
-          periodId: evaluation.scheduledPeriodId,
-          now: evaluation.evaluatedAt,
-          ...(requestId ? { requestId } : {}),
-        });
-      }
+      await routeTask(tx, {
+        caseId: currentCase.id,
+        patientId: evaluation.patientId,
+        reasonFamily,
+        evaluationId: evaluation.id,
+        revisionId: evaluation.assessmentRevisionId,
+        periodId: evaluation.scheduledPeriodId,
+        now: evaluation.evaluatedAt,
+        ...(requestId ? { requestId } : {}),
+      });
     }
   }
 
   for (const reasonFamily of oldActive) {
-    if (!active.includes(reasonFamily) && pending.includes(reasonFamily)) {
+    if (
+      !active.includes(reasonFamily) &&
+      !correctionRevokedFamilies.includes(reasonFamily)
+    ) {
+      const existingEvent = await tx.clinicalCaseEvent.findFirst({
+        where: {
+          caseId: currentCase.id,
+          eventType: 'REASON_CLEARED',
+          reasonFamily,
+          sourceEvaluationId: evaluation.id,
+        },
+        select: { id: true },
+      });
+      if (existingEvent) continue;
       await addCaseEvent(tx, {
         caseId: currentCase.id,
         patientId: evaluation.patientId,
         eventType: 'REASON_CLEARED',
         reasonFamily,
-        sourceEvaluationId: evaluation.id,
-        sourceRevisionId: evaluation.assessmentRevisionId,
-        sourcePeriodId: evaluation.scheduledPeriodId,
+        ...source,
+      });
+    }
+  }
+
+  for (const reasonFamily of oldPending) {
+    if (
+      !active.includes(reasonFamily) &&
+      !pending.includes(reasonFamily) &&
+      !correctionRevokedFamilies.includes(reasonFamily)
+    ) {
+      const existingEvent = await tx.clinicalCaseEvent.findFirst({
+        where: {
+          caseId: currentCase.id,
+          eventType: 'REASON_CLEARED',
+          reasonFamily,
+          sourceEvaluationId: evaluation.id,
+        },
+        select: { id: true },
+      });
+      if (existingEvent) continue;
+      await addCaseEvent(tx, {
+        caseId: currentCase.id,
+        patientId: evaluation.patientId,
+        eventType: 'REASON_CLEARED',
+        reasonFamily,
+        ...source,
       });
     }
   }
@@ -810,7 +930,11 @@ export async function reconcileClinicalEvaluation(input: {
   return reconcileCase(input.tx, evaluation, input.requestId);
 }
 
-async function assertAssignedPatient(tx: Tx, clinicianId: string, patientId: string) {
+async function assertAssignedPatient(
+  tx: Tx,
+  clinicianId: string,
+  patientId: string,
+) {
   const assignment = await tx.clinicianPatientAssignment.findFirst({
     where: { clinicianUserId: clinicianId, patientId, endedAt: null },
     select: { id: true },
@@ -845,7 +969,7 @@ async function latestSource(tx: Tx, patientId: string) {
       lifecycle: 'ACTIVE',
     },
     orderBy: { evaluatedAt: 'desc' },
-    select: { id: true },
+    select: { id: true, inputSnapshot: true },
   });
   return { assessment, evaluation };
 }
@@ -893,14 +1017,27 @@ async function sourceView(
     current,
     now,
   );
+  const sourceGoal = objectValue(current?.evaluation?.inputSnapshot).goal;
+  const goal: 'ABSTINENCE' | 'REDUCTION' | 'UNSURE' | null =
+    sourceGoal === 'ABSTINENCE' ||
+    sourceGoal === 'REDUCTION' ||
+    sourceGoal === 'UNSURE'
+      ? sourceGoal
+      : null;
   return {
     periodId: current?.assessment.scheduledPeriod.id ?? null,
     revisionId: current?.assessment.authoritativeRevision?.id ?? null,
     evaluationId: current?.evaluation?.id ?? null,
-    periodStartAt: current?.assessment.scheduledPeriod.periodStartAt.toISOString() ?? null,
-    periodEndAt: current?.assessment.scheduledPeriod.periodEndAt.toISOString() ?? null,
-    completionStatus: current?.assessment.authoritativeRevision?.completionStatus ?? null,
-    submittedAt: current?.assessment.authoritativeRevision?.submittedAt.toISOString() ?? null,
+    periodStartAt:
+      current?.assessment.scheduledPeriod.periodStartAt.toISOString() ?? null,
+    periodEndAt:
+      current?.assessment.scheduledPeriod.periodEndAt.toISOString() ?? null,
+    completionStatus:
+      current?.assessment.authoritativeRevision?.completionStatus ?? null,
+    submittedAt:
+      current?.assessment.authoritativeRevision?.submittedAt.toISOString() ??
+      null,
+    goal,
     freshness,
   };
 }
@@ -908,7 +1045,11 @@ async function sourceView(
 function reasonView(state: {
   reasonFamily: ClinicalReasonFamily;
   status: 'INACTIVE' | 'ACTIVE' | 'CLEARANCE_PENDING' | 'RESOLVED';
-  effect: 'ELIGIBLE' | 'SUPPRESSED_TRIGGER' | 'HISTORICAL_ONLY' | 'REVOKED_BY_REVISION';
+  effect:
+    | 'ELIGIBLE'
+    | 'SUPPRESSED_TRIGGER'
+    | 'HISTORICAL_ONLY'
+    | 'REVOKED_BY_REVISION';
   sourceEvaluationId: string | null;
   sourceRevisionId: string | null;
   sourcePeriodId: string | null;
@@ -956,12 +1097,18 @@ function taskView(task: {
 function caseView(caseRow: {
   id: string;
   patientId: string;
-  tier: 'LEVEL_3';
-  lifecycle: 'NEW' | 'ACKNOWLEDGED' | 'ACTIVE' | 'CLEARANCE_PENDING' | 'RESOLVED' | 'RESOLVED_CORRECTION';
+  tier: 'NONE' | 'LEVEL_3';
+  lifecycle:
+    | 'NEW'
+    | 'ACKNOWLEDGED'
+    | 'ACTIVE'
+    | 'CLEARANCE_PENDING'
+    | 'RESOLVED'
+    | 'RESOLVED_CORRECTION';
   caseVersion: number;
   activeReasonFamilies: Prisma.JsonValue;
   clearancePendingReasonFamilies: Prisma.JsonValue;
-  highestHistoricalTier: 'LEVEL_3';
+  highestHistoricalTier: 'NONE' | 'LEVEL_3';
   followupVisibility: boolean;
   openedAt: Date;
   acknowledgedAt: Date | null;
@@ -972,14 +1119,14 @@ function caseView(caseRow: {
   return {
     id: caseRow.id,
     patientId: caseRow.patientId,
-    tier: caseRow.tier,
+    tier: caseRow.tier === 'NONE' ? 'NONE' : 'LEVEL_3',
     lifecycle: caseRow.lifecycle,
     caseVersion: caseRow.caseVersion,
     activeReasonFamilies: clinicalReasonFamilies(caseRow.activeReasonFamilies),
     clearancePendingReasonFamilies: clinicalReasonFamilies(
       caseRow.clearancePendingReasonFamilies,
     ),
-    highestHistoricalTier: caseRow.highestHistoricalTier,
+    highestHistoricalTier: 'LEVEL_3',
     followupVisibility: caseRow.followupVisibility,
     openedAt: caseRow.openedAt.toISOString(),
     acknowledgedAt: caseRow.acknowledgedAt?.toISOString() ?? null,
@@ -995,23 +1142,42 @@ async function buildQueueItem(
   now: Date,
 ): Promise<ClinicianReviewQueueItem> {
   const [patient, states, tasks, source] = await Promise.all([
-    tx.user.findUnique({ where: { id: caseRow.patientId }, select: { name: true } }),
-    tx.clinicalReasonState.findMany({ where: { patientId: caseRow.patientId } }),
-    tx.clinicianTask.findMany({ where: { caseId: caseRow.id }, orderBy: { createdAt: 'asc' } }),
+    tx.user.findUnique({
+      where: { id: caseRow.patientId },
+      select: { name: true },
+    }),
+    tx.clinicalReasonState.findMany({
+      where: { patientId: caseRow.patientId },
+    }),
+    tx.clinicianTask.findMany({
+      where: { caseId: caseRow.id },
+      orderBy: { createdAt: 'asc' },
+    }),
     sourceView(tx, caseRow.patientId, caseRow.sourcePeriodId, now),
   ]);
   if (!patient) {
-    throw new DomainError(404, 'NOT_FOUND', 'The requested resource was not found.');
+    throw new DomainError(
+      404,
+      'NOT_FOUND',
+      'The requested resource was not found.',
+    );
   }
   return {
     patientId: caseRow.patientId,
     patientName: patient.name,
     case: caseView(caseRow),
     activeReasons: states
-      .filter((state) => state.status === 'ACTIVE')
+      .filter(
+        (state) =>
+          state.status === 'ACTIVE' && state.effect !== 'REVOKED_BY_REVISION',
+      )
       .map(reasonView),
     clearancePendingReasons: states
-      .filter((state) => state.status === 'CLEARANCE_PENDING')
+      .filter(
+        (state) =>
+          state.status === 'CLEARANCE_PENDING' &&
+          state.effect !== 'REVOKED_BY_REVISION',
+      )
       .map(reasonView),
     tasks: tasks.map(taskView),
     source,
@@ -1051,12 +1217,17 @@ export async function readClinicianPatientMonitoring(input: {
   await assertAssignedPatient(input.tx, input.clinicianId, input.patientId);
   const [patient, flags, states, currentCase, tasks, history] =
     await Promise.all([
-      input.tx.user.findUnique({ where: { id: input.patientId }, select: { name: true } }),
+      input.tx.user.findUnique({
+        where: { id: input.patientId },
+        select: { name: true },
+      }),
       input.tx.clinicianVisibilityFlag.findMany({
         where: { patientId: input.patientId },
         orderBy: { flagKey: 'asc' },
       }),
-      input.tx.clinicalReasonState.findMany({ where: { patientId: input.patientId } }),
+      input.tx.clinicalReasonState.findMany({
+        where: { patientId: input.patientId },
+      }),
       input.tx.clinicalReviewCase.findFirst({
         where: { patientId: input.patientId },
         orderBy: { openedAt: 'desc' },
@@ -1071,7 +1242,11 @@ export async function readClinicianPatientMonitoring(input: {
       }),
     ]);
   if (!patient) {
-    throw new DomainError(404, 'NOT_FOUND', 'The requested resource was not found.');
+    throw new DomainError(
+      404,
+      'NOT_FOUND',
+      'The requested resource was not found.',
+    );
   }
   const source = await sourceView(
     input.tx,
@@ -1081,7 +1256,7 @@ export async function readClinicianPatientMonitoring(input: {
   );
   const freshnessForFlag = async (flag: (typeof flags)[number]) =>
     flag.status === 'REVOKED_BY_REVISION'
-      ? 'REVOKED_BY_REVISION' as const
+      ? ('REVOKED_BY_REVISION' as const)
       : await freshnessForSource(
           input.tx,
           input.patientId,
@@ -1115,7 +1290,11 @@ export async function readClinicianPatientMonitoring(input: {
     source,
     visibilityFlags,
     currentReasons: states
-      .filter((state) => state.status === 'ACTIVE' || state.status === 'CLEARANCE_PENDING')
+      .filter(
+        (state) =>
+          (state.status === 'ACTIVE' || state.status === 'CLEARANCE_PENDING') &&
+          state.effect !== 'REVOKED_BY_REVISION',
+      )
       .map(reasonView),
     currentCase: currentCase ? caseView(currentCase) : null,
     tasks: tasks.map(taskView),
@@ -1138,25 +1317,67 @@ export async function acknowledgeClinicalCase(input: {
   expectedCaseVersion: number;
   requestId: string;
 }) {
-  const currentCase = await input.tx.clinicalReviewCase.findUnique({
+  let currentCase = await input.tx.clinicalReviewCase.findUnique({
     where: { id: input.caseId },
   });
   if (!currentCase) {
-    throw new DomainError(404, 'NOT_FOUND', 'The requested resource was not found.');
+    throw new DomainError(
+      404,
+      'NOT_FOUND',
+      'The requested resource was not found.',
+    );
   }
-  await assertAssignedPatient(input.tx, input.clinicianId, currentCase.patientId);
+  await assertAssignedPatient(
+    input.tx,
+    input.clinicianId,
+    currentCase.patientId,
+  );
   await lockPatientForProcessing(input.tx, currentCase.patientId);
-  if (currentCase.caseVersion !== input.expectedCaseVersion) {
-    throw new DomainError(409, 'VERSION_CONFLICT', 'The review case has changed.');
+  currentCase = await input.tx.clinicalReviewCase.findUnique({
+    where: { id: input.caseId },
+  });
+  if (!currentCase) {
+    throw new DomainError(
+      404,
+      'NOT_FOUND',
+      'The requested resource was not found.',
+    );
   }
-  if (currentCase.lifecycle === 'RESOLVED' || currentCase.lifecycle === 'RESOLVED_CORRECTION') {
-    throw new DomainError(409, 'CASE_NOT_OPEN', 'The review case is no longer open.');
+  if (currentCase.caseVersion !== input.expectedCaseVersion) {
+    throw new DomainError(
+      409,
+      'VERSION_CONFLICT',
+      'The review case has changed.',
+    );
+  }
+  if (
+    currentCase.lifecycle === 'RESOLVED' ||
+    currentCase.lifecycle === 'RESOLVED_CORRECTION'
+  ) {
+    throw new DomainError(
+      409,
+      'CASE_NOT_OPEN',
+      'The review case is no longer open.',
+    );
   }
   if (currentCase.lifecycle === 'NEW') {
+    const activeReasons = clinicalReasonFamilies(
+      currentCase.activeReasonFamilies,
+    );
+    const pendingReasons = clinicalReasonFamilies(
+      currentCase.clearancePendingReasonFamilies,
+    );
+    const nextLifecycle =
+      activeReasons.length > 0
+        ? 'ACTIVE'
+        : pendingReasons.length > 0
+          ? 'CLEARANCE_PENDING'
+          : 'ACKNOWLEDGED';
     await input.tx.clinicalReviewCase.update({
       where: { id: currentCase.id },
       data: {
-        lifecycle: 'ACKNOWLEDGED',
+        lifecycle: nextLifecycle,
+        tier: activeReasons.length > 0 ? 'LEVEL_3' : 'NONE',
         acknowledgedAt: input.clock.now(),
         caseVersion: { increment: 1 },
       },
@@ -1166,7 +1387,7 @@ export async function acknowledgeClinicalCase(input: {
       patientId: currentCase.patientId,
       eventType: 'CASE_ACKNOWLEDGED',
       fromLifecycle: 'NEW',
-      toLifecycle: 'ACKNOWLEDGED',
+      toLifecycle: nextLifecycle,
       actorId: input.clinicianId,
       metadata: json({ requestId: input.requestId }),
     });

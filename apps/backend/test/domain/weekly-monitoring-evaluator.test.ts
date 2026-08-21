@@ -636,6 +636,28 @@ describe('abstinence recurrence semantics', () => {
 });
 
 describe('completion and effect-plan policy', () => {
+  it('keeps proactive support capped at two classes while retaining lower-priority follow-up candidates', () => {
+    const result = evaluateWeeklyAssessment(
+      current(
+        completeAnswers({
+          U1: true,
+          R2: 7,
+          R3: 7,
+          R4: 7,
+          R5: 7,
+          P1: 1,
+          P5: 1,
+        }),
+      ),
+    );
+
+    expect(result.candidatePatientInterventions.length).toBeLessThanOrEqual(2);
+    expect(result.availableFollowupCandidates.length).toBeGreaterThan(0);
+    expect(result.effectPlan.followUpCandidates).toEqual(
+      result.availableFollowupCandidates,
+    );
+  });
+
   it('does not create non-use clinician reasons from a PARTIAL assessment', () => {
     const result = evaluateWeeklyAssessment(
       current(
