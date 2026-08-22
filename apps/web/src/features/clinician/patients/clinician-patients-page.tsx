@@ -9,6 +9,7 @@ import { Link } from 'react-router';
 
 import { ClinicianShell } from '@/app/shells/clinician-shell';
 import { WorkspaceBoundary } from '@/app/shells/workspace-boundary';
+import { PageHeader } from '@/components/patterns/page-header';
 import {
   EmptyState,
   ErrorState,
@@ -36,24 +37,20 @@ export function ClinicianPatientsPage() {
       ),
   });
   return (
-    <WorkspaceBoundary destination="/clinician/patients">
+    <WorkspaceBoundary workspace="CLINICIAN">
       <ClinicianShell>
         <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-          <div>
-            <p className="m-0 text-sm font-semibold text-primary">
-              Direct assignments only
-            </p>
-            <h1 className="mb-0 mt-1 text-3xl font-semibold">Patients</h1>
-            <p className="mb-0 mt-2 text-sm text-muted-foreground">
-              Only active clinician-to-patient assignments appear here.
-            </p>
-          </div>
+          <PageHeader
+            eyebrow="Assigned care directory"
+            title="Patients"
+            description="Only active clinician-to-patient assignments appear here."
+          />
           <label className="relative block sm:w-80">
             <span className="sr-only">Search assigned patients</span>
             <Search className="pointer-events-none absolute left-3 top-3.5 size-4 text-muted-foreground" />
             <Input
               className="pl-9"
-              placeholder="Search name or patient ID"
+              placeholder="Search patient name"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
@@ -84,8 +81,11 @@ export function ClinicianPatientsPage() {
                       <tr className="border-t" key={patient.patientId}>
                         <td className="px-4 py-4">
                           <p className="m-0 font-semibold">{patient.name}</p>
-                          <p className="m-0 font-mono text-xs text-muted-foreground">
-                            {patient.patientId}
+                          <p
+                            className="m-0 text-xs text-muted-foreground"
+                            title={patient.patientId}
+                          >
+                            Profile reference {patient.patientId.slice(0, 8)}…
                           </p>
                         </td>
                         <td className="px-4 py-4">

@@ -13,17 +13,24 @@ export function AuthShell({
   children: ReactNode;
 }) {
   return (
-    <main className="grid min-h-screen place-items-center px-[var(--page-gutter)] py-10">
+    <main className="grid min-h-screen place-items-center bg-surface-subtle px-[var(--page-gutter)] py-10 sm:py-16">
       <div className="w-full max-w-md">
-        <div className="mb-6 flex items-center gap-3 text-primary">
-          <span className="grid size-10 place-items-center rounded-lg bg-surface-interactive">
-            <ShieldCheck aria-hidden="true" className="size-5" />
-          </span>
-          <span className="text-sm font-semibold tracking-wide">
-            AUD secure access
-          </span>
+        <div className="mb-7 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 text-primary">
+            <span className="grid size-11 place-items-center rounded-xl bg-primary text-inverse-foreground shadow-[var(--shadow-sm)]">
+              <ShieldCheck aria-hidden="true" className="size-5" />
+            </span>
+            <div>
+              <p className="m-0 text-sm font-semibold tracking-wide">
+                AUD secure access
+              </p>
+              <p className="m-0 text-xs text-muted-foreground">
+                Subjective monitoring workspace
+              </p>
+            </div>
+          </div>
         </div>
-        <Card>
+        <Card className="shadow-[var(--shadow-md)]">
           <CardHeader>
             <h1 className="m-0 text-2xl font-semibold tracking-tight">
               {title}

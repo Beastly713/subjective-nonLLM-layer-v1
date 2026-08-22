@@ -8,7 +8,7 @@
 **Primary population:** Adults using an Alcohol Use Disorder support solution  
 **Decision model:** Deterministic, auditable, non-LLM
 
-**Implementation status:** Phases 1–6 are complete for the local capstone implementation boundary. The current codebase includes deterministic on-demand engagement reconciliation, patient Home, clinician Engagement, separate engagement cases/tasks, and focused manual technical-failure operations. This local capstone boundary intentionally defers unattended background workers, external engagement delivery, backup/retention controls, and real-patient operation. Phase 6 does not change the canonical rules in this document; its implementation and validation record is maintained in `AUD_V1_Phase_6_Engagement_and_Local_Demo_Operations_Implementation_Guide.md`.
+**Implementation status:** Phases 1–6 are closed and Phase 7 implementation is present for the local capstone implementation boundary; final project audit/validation/closeout is pending. The current codebase includes deterministic on-demand engagement reconciliation, patient Home and Progress, clinician Overview and longitudinal patient detail, separate engagement and clinical-review cases/tasks, admin content governance and audit exploration, and focused manual technical-failure operations. This local capstone boundary intentionally defers unattended background workers, external engagement delivery, provider callbacks/retries, backup/retention controls, production scaling/secret infrastructure, and real-patient operation. Phase 7 does not change the canonical rules in this document; its implementation scope and pending closeout boundary are maintained in `AUD_V1_Phase_7_Final_Product_Completion_and_Experience_Excellence_Implementation_Guide.md`.
 
 ---
 

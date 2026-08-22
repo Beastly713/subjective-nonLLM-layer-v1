@@ -128,7 +128,7 @@ export function AdminUsersPage() {
     ) ?? [];
 
   return (
-    <WorkspaceBoundary destination="/admin/users">
+    <WorkspaceBoundary workspace="ADMIN">
       <AdminShell permissions={permissions}>
         <div className="mb-6 flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
           <div>

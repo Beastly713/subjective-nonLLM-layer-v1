@@ -6,7 +6,7 @@
 
 **Purpose:** Define the concrete implementation architecture for the V1 web product while preserving the existing clinical/domain specification and the previously locked product/UX architecture.
 
-**Current implementation status:** Phases 1–6 are complete for the local capstone implementation boundary. The repository contains the Phase 1 foundation, Phase 2 identity/core platform, Phase 3 safety-gated onboarding/safety cases/reduction setup, the Phase 4 weekly assessment and deterministic subjective-monitoring core, Phase 5 governed patient support/clinical review, and Phase 6 deterministic engagement reconciliation, separate engagement cases/tasks, Patient Home, clinician Engagement, and focused manual technical-failure operations. The local capstone boundary defers unattended background workers, auxiliary/external engagement delivery, backup/retention controls, and real-patient operation. See `AUD_V1_Phase_6_Engagement_and_Local_Demo_Operations_Implementation_Guide.md` for the phase boundary and closeout validation record.
+**Current implementation status:** Phases 1–6 are closed and Phase 7 implementation is present for the local capstone implementation boundary; final project audit/validation/closeout is pending. The repository contains the Phase 1 foundation, Phase 2 identity/core platform, Phase 3 safety-gated onboarding/safety cases/reduction setup, the Phase 4 weekly assessment and deterministic subjective-monitoring core, Phase 5 governed patient support/clinical review, Phase 6 deterministic engagement reconciliation and operations, and Phase 7 longitudinal progress, clinician overview/detail, admin governance/audit, showcase seed, and product-wide UI/UX cohesion. The local capstone boundary defers unattended background workers, auxiliary/external engagement delivery, provider callbacks/retries, backup/retention controls, production scaling/secret infrastructure, and real-patient operation. See the Phase 6 guide for its closed validation record and the Phase 7 guide for the current implementation/closeout boundary.
 
 ## 0.1 Phase 6 local-capstone boundary
 
@@ -27,6 +27,23 @@ These are infrastructure-scope decisions for the local capstone only. They do
 not change engagement thresholds, safety precedence, missingness, case
 lifecycle, authorization, historical behavior, or the exact technical-failure
 due-time formula defined by the governing documents.
+
+## 0.2 Final local-capstone implementation boundary
+
+The implemented local product includes the final patient, clinician, and admin
+read/write surfaces needed for the capstone demonstration: longitudinal patient
+Progress, clinician Overview and patient detail, admin Content governance,
+Operations incidents, and read-only Audit Explorer, alongside the accepted
+Phases 1–6 workflows. The implementation is present, but final project
+audit/validation/closeout remains pending.
+
+The following remain production-deferred beyond the local capstone: unattended
+worker scheduling, pg-boss runtime, external email/push/SMS delivery, provider
+callbacks/retries, automatic outage detection, production care-team routing,
+backup/restore and retention execution, RPO/RTO enforcement, high availability,
+production scaling/secret infrastructure, vendor/compliance activation, and
+real-patient activation. These deferrals do not change the locked domain
+semantics or make a production-readiness claim.
 
 This document is subordinate to:
 

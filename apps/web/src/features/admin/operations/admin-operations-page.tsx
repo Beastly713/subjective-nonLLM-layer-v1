@@ -307,21 +307,47 @@ function IncidentPanel({
       <CardHeader>
         <h2 className="m-0 text-xl font-semibold">System incidents</h2>
         <p className="mb-0 mt-2 text-sm leading-6 text-muted-foreground">
-          General operational incidents are shown separately from patient-scoped technical failures.
+          General operational incidents are shown separately from patient-scoped
+          technical failures.
         </p>
       </CardHeader>
       <CardContent>
-        {query.isLoading ? <LoadingState /> : query.isError ? <ErrorState action={<Button onClick={() => void query.refetch()}>Try again</Button>} /> : data && data.items.length > 0 ? (
+        {query.isLoading ? (
+          <LoadingState />
+        ) : query.isError ? (
+          <ErrorState
+            action={
+              <Button onClick={() => void query.refetch()}>Try again</Button>
+            }
+          />
+        ) : data && data.items.length > 0 ? (
           <div className="grid gap-3">
             {data.items.map((incident) => (
-              <div className="grid gap-2 rounded-lg border bg-surface-subtle p-4 sm:grid-cols-[auto_1fr_auto] sm:items-start" key={incident.id}>
-                <StateBadge label={incident.status} state={incident.resolvedAt ? 'current' : 'warning'} />
-                <div><p className="m-0 font-semibold">{incident.summary}</p><p className="mb-0 mt-1 text-sm text-muted-foreground">{incident.incidentType} · {incident.code}</p></div>
-                <p className="m-0 text-xs text-muted-foreground">{formatDate(incident.createdAt)}</p>
+              <div
+                className="grid gap-2 rounded-lg border bg-surface-subtle p-4 sm:grid-cols-[auto_1fr_auto] sm:items-start"
+                key={incident.id}
+              >
+                <StateBadge
+                  label={incident.status}
+                  state={incident.resolvedAt ? 'current' : 'warning'}
+                />
+                <div>
+                  <p className="m-0 font-semibold">{incident.summary}</p>
+                  <p className="mb-0 mt-1 text-sm text-muted-foreground">
+                    {incident.incidentType} · {incident.code}
+                  </p>
+                </div>
+                <p className="m-0 text-xs text-muted-foreground">
+                  {formatDate(incident.createdAt)}
+                </p>
               </div>
             ))}
           </div>
-        ) : <p className="m-0 text-sm text-muted-foreground">No system incidents have been recorded.</p>}
+        ) : (
+          <p className="m-0 text-sm text-muted-foreground">
+            No system incidents have been recorded.
+          </p>
+        )}
       </CardContent>
     </Card>
   );
@@ -353,8 +379,11 @@ function FailureCard({
               />
               <span className="text-sm font-semibold">{row.failureType}</span>
             </div>
-            <p className="mb-0 mt-2 font-mono text-xs text-muted-foreground">
-              {row.patientId}
+            <p
+              className="mb-0 mt-2 text-xs text-muted-foreground"
+              title={row.patientId}
+            >
+              Patient reference {row.patientId.slice(0, 8)}…
             </p>
             <p className="mb-0 mt-2 text-sm text-muted-foreground">
               Started {formatDate(row.startedAt)}

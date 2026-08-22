@@ -107,8 +107,11 @@ function ReviewQueueCard({ item }: { item: ClinicianReviewQueueItem }) {
             <h2 className="mb-0 mt-1 text-xl font-semibold">
               Subjective monitoring review
             </h2>
-            <p className="mb-0 mt-2 font-mono text-xs text-muted-foreground">
-              {item.patientId}
+            <p
+              className="mb-0 mt-2 text-xs text-muted-foreground"
+              title={item.patientId}
+            >
+              Patient reference {item.patientId.slice(0, 8)}…
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -165,7 +168,7 @@ function ReviewQueueCard({ item }: { item: ClinicianReviewQueueItem }) {
                 : 'No task update required.'}
             </span>
           </div>
-                <Link to={`/clinician/patients/${item.patientId}`}>
+          <Link to={`/clinician/patients/${item.patientId}`}>
             <Button>Open review</Button>
           </Link>
         </div>

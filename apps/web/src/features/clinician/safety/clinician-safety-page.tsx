@@ -349,8 +349,11 @@ function ClinicianSafetyWorkspace() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="m-0 font-mono text-xs text-muted-foreground">
-                        {item.patientId}
+                      <p
+                        className="m-0 text-xs text-muted-foreground"
+                        title={item.patientId}
+                      >
+                        Patient reference {item.patientId.slice(0, 8)}…
                       </p>
                       <h2 className="mb-0 mt-1 text-base font-semibold">
                         {formatEnum(item.domain)}

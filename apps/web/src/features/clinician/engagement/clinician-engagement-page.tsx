@@ -251,8 +251,11 @@ function EngagementCard({
                 <p className="m-0 text-sm font-semibold text-primary">
                   {item.patientName}
                 </p>
-                <p className="m-0 font-mono text-xs text-muted-foreground">
-                  {item.patientId}
+                <p
+                  className="m-0 text-xs text-muted-foreground"
+                  title={item.patientId}
+                >
+                  Patient reference {item.patientId.slice(0, 8)}…
                 </p>
               </div>
             </div>

@@ -186,7 +186,7 @@ function HomeContent({ data }: { data: PatientHomeResponse }) {
                 </span>
               )}
               <span className="text-sm text-muted-foreground">
-                No explanation is needed beyond the check-in itself.
+                A short check-in helps keep your weekly plan current.
               </span>
             </div>
           </div>
@@ -304,8 +304,8 @@ function HomeContent({ data }: { data: PatientHomeResponse }) {
           <CardHeader>
             <h2 className="m-0 text-lg font-semibold">Current reminder</h2>
             <p className="mb-0 mt-2 text-sm leading-6 text-muted-foreground">
-              This is an in-app timing point for the current check-in. No
-              external message is being sent.
+              This reminder appears here when your scheduled check-in is
+              available.
             </p>
           </CardHeader>
           <CardContent className="grid gap-3">
@@ -342,8 +342,7 @@ function HomeContent({ data }: { data: PatientHomeResponse }) {
       ) : null}
 
       <p className="m-0 text-center text-sm text-muted-foreground">
-        Monitoring state is updated when you open this space or complete a
-        check-in.
+        Your weekly view reflects your latest recorded check-in.
       </p>
     </>
   );

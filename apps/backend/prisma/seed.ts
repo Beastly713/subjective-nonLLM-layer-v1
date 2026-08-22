@@ -7,6 +7,12 @@ import {
 } from '../src/infrastructure/config/config.js';
 import { createPrismaClient } from '../src/infrastructure/db/prisma.js';
 import { UnavailableAuthEmailSender } from '../src/infrastructure/email/auth-email-sender.js';
+import {
+  AUD_WEEKLY_CHECKIN_INSTRUMENT_ID,
+  AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION,
+  AUD_WEEKLY_CHECKIN_SCALE_VERSION,
+  AUD_WEEKLY_CHECKIN_WORDING_VERSION,
+} from '../src/policy/instruments/aud-weekly-checkin-v1.js';
 
 export const PROTOTYPE_IDENTITIES = {
   patient: {
@@ -178,14 +184,94 @@ async function seedPrototypeContent(
         },
         update: { interventionClass: contentClass.key },
       });
-      await prisma.contentResourceVersion.upsert({
+      const existingVersion = await prisma.contentResourceVersion.findUnique({
         where: {
           resourceId_version: { resourceId: resource.id, version },
         },
-        create: {
-          resourceId: resource.id,
-          version,
-          interventionClass: contentClass.key,
+      });
+      if (!existingVersion) {
+        await prisma.contentResourceVersion.create({
+          data: {
+            resourceId: resource.id,
+            version,
+            interventionClass: contentClass.key,
+            locale: 'en-US',
+            language: 'en',
+            recoveryGoalsAllowed: ['ABSTINENCE', 'REDUCTION', 'UNSURE'],
+            deliveryChannels: ['IN_APP'],
+            mutualHelpRequirement: 'ANY',
+            spiritualRequirement: 'ANY',
+            contraindications: [],
+            safetyGateCompatibility: ['ALLOW_MONITORING', 'ALLOW_WITH_HANDOFF'],
+            estimatedDurationSeconds: 120,
+            title: `${contentClass.label} ${version}`,
+            markdownBody: `A short, practical reflection for ${contentClass.label.toLowerCase()}.\n\nChoose one small step that feels realistic today.`,
+            reviewStatus: 'APPROVED',
+            reviewedByUserId: adminUserId,
+            reviewedAt: PROTOTYPE_CONTENT_EFFECTIVE_FROM,
+            effectiveFrom: PROTOTYPE_CONTENT_EFFECTIVE_FROM,
+            enabled: true,
+            provenance: {
+              mode: 'prototype',
+              source: 'deterministic_phase5_seed',
+              resourceNumber,
+            },
+          },
+        });
+      }
+    }
+  }
+}
+
+async function seedPrototypeGovernanceExamples(
+  prisma: ReturnType<typeof createPrismaClient>,
+  adminUserId: string,
+) {
+  const examples = [
+    {
+      resourceId: '00000000-0000-4900-8000-000000000001',
+      versionId: '00000000-0000-4910-8000-000000000001',
+      interventionClass: 'CRAVING_COPING_SUPPORT' as const,
+      title: 'Draft · A small step through a craving',
+      status: 'DRAFT' as const,
+    },
+    {
+      resourceId: '00000000-0000-4900-8000-000000000002',
+      versionId: '00000000-0000-4910-8000-000000000002',
+      interventionClass: 'MOOD_COPING_SUPPORT' as const,
+      title: 'In review · Naming the difficult moment',
+      status: 'UNDER_REVIEW' as const,
+    },
+    {
+      resourceId: '00000000-0000-4900-8000-000000000003',
+      versionId: '00000000-0000-4910-8000-000000000003',
+      interventionClass: 'POSITIVE_REINFORCEMENT' as const,
+      title: 'Retired · Notice what helped',
+      status: 'RETIRED' as const,
+    },
+  ];
+  for (const example of examples) {
+    await prisma.contentResource.upsert({
+      where: { id: example.resourceId },
+      create: {
+        id: example.resourceId,
+        interventionClass: example.interventionClass,
+        createdByUserId: adminUserId,
+      },
+      update: {},
+    });
+    const existingVersion = await prisma.contentResourceVersion.findUnique({
+      where: {
+        resourceId_version: { resourceId: example.resourceId, version: 1 },
+      },
+    });
+    if (!existingVersion) {
+      await prisma.contentResourceVersion.create({
+        data: {
+          id: example.versionId,
+          resourceId: example.resourceId,
+          version: 1,
+          interventionClass: example.interventionClass,
           locale: 'en-US',
           language: 'en',
           recoveryGoalsAllowed: ['ABSTINENCE', 'REDUCTION', 'UNSURE'],
@@ -195,20 +281,22 @@ async function seedPrototypeContent(
           contraindications: [],
           safetyGateCompatibility: ['ALLOW_MONITORING', 'ALLOW_WITH_HANDOFF'],
           estimatedDurationSeconds: 120,
-          title: `${contentClass.label} ${version}`,
-          markdownBody: `A short, practical reflection for ${contentClass.label.toLowerCase()}.\n\nChoose one small step that feels realistic today.`,
-          reviewStatus: 'APPROVED',
-          reviewedByUserId: adminUserId,
-          reviewedAt: PROTOTYPE_CONTENT_EFFECTIVE_FROM,
+          title: example.title,
+          markdownBody: `# ${example.title}\n\nA governed local-demo resource with an explicit lifecycle and a safe preview.`,
+          reviewStatus: example.status,
+          reviewedByUserId: example.status === 'RETIRED' ? adminUserId : null,
+          reviewedAt:
+            example.status === 'RETIRED'
+              ? PROTOTYPE_CONTENT_EFFECTIVE_FROM
+              : null,
           effectiveFrom: PROTOTYPE_CONTENT_EFFECTIVE_FROM,
-          enabled: true,
+          retiredAt: example.status === 'RETIRED' ? new Date() : null,
+          enabled: example.status !== 'RETIRED',
           provenance: {
             mode: 'prototype',
-            source: 'deterministic_phase5_seed',
-            resourceNumber,
+            source: 'phase7_governance_showcase',
           },
         },
-        update: {},
       });
     }
   }
@@ -392,6 +480,344 @@ async function seedEngagementScenario(
   }
 }
 
+async function seedPrototypeLongitudinalShowcase(
+  prisma: ReturnType<typeof createPrismaClient>,
+  patientId: string,
+  adminUserId: string,
+) {
+  const now = new Date();
+  now.setUTCHours(0, 0, 0, 0);
+  const scheduleId = '00000000-0000-4800-8000-000000000001';
+  const schedule = await prisma.monitoringScheduleVersion.upsert({
+    where: { id: scheduleId },
+    create: {
+      id: scheduleId,
+      patientId,
+      version: 1,
+      monitoringTimezone: 'UTC',
+      effectiveBoundary: new Date(now.getTime() - 8 * 7 * DAY_MS),
+      lifecycle: 'ACTIVE',
+      createdByUserId: adminUserId,
+      provenance: 'phase7_deterministic_longitudinal_showcase',
+    },
+    update: {},
+  });
+
+  const periods: Array<{ id: string; periodStartAt: Date; periodEndAt: Date }> =
+    [];
+  for (let index = 0; index < 8; index += 1) {
+    const periodStartAt = new Date(now.getTime() - (8 - index) * 7 * DAY_MS);
+    const periodEndAt = new Date(periodStartAt.getTime() + 7 * DAY_MS);
+    const periodId = `00000000-0000-4810-8000-${String(index + 1).padStart(12, '0')}`;
+    const period = await prisma.scheduledPeriod.upsert({
+      where: { id: periodId },
+      create: {
+        id: periodId,
+        patientId,
+        scheduleVersionId: schedule.id,
+        monitoringTimezone: 'UTC',
+        periodStartAt,
+        periodEndAt,
+        openAt: periodEndAt,
+        originalDueAt: new Date(periodEndAt.getTime() + DAY_MS),
+        effectiveDueAt: new Date(periodEndAt.getTime() + DAY_MS),
+        version: 1,
+      },
+      update: {},
+    });
+    periods.push({
+      id: period.id,
+      periodStartAt: period.periodStartAt,
+      periodEndAt: period.periodEndAt,
+    });
+  }
+
+  const existingSafetyInput = await prisma.safetyInputRevision.findFirst({
+    where: { patientId, trigger: 'PHASE7_SHOWCASE' },
+  });
+  const safetyInput =
+    existingSafetyInput ??
+    (await prisma.safetyInputRevision.create({
+      data: {
+        patientId,
+        revision: 1,
+        inputSnapshot: { source: 'phase7_showcase' },
+        instrument: 'AUD_SAFETY',
+        instrumentVersion: '1.0',
+        instrumentSource: 'PHASE7_SHOWCASE',
+        schemaVersion: 'safety_v1',
+        trigger: 'PHASE7_SHOWCASE',
+        actorId: patientId,
+        submittedAt: now,
+      },
+    }));
+  const existingSafetyEvaluation =
+    await prisma.safetyEvaluationResult.findFirst({
+      where: { safetyInputRevisionId: safetyInput.id },
+    });
+  const safetyEvaluation =
+    existingSafetyEvaluation ??
+    (await prisma.safetyEvaluationResult.create({
+      data: {
+        patientId,
+        safetyInputRevisionId: safetyInput.id,
+        severity: 'S_NONE',
+        gateStatus: 'ALLOW_MONITORING',
+        reasonCodes: [],
+        clinicianContext: false,
+        allowedSubjectiveInterventions: [
+          'CRAVING_COPING_SUPPORT',
+          'SELF_EFFICACY_SUPPORT',
+          'MOOD_COPING_SUPPORT',
+          'TRIGGER_MANAGEMENT_SUPPORT',
+          'RELATIONSHIP_COPING_SUPPORT',
+          'SOCIAL_SUPPORT_ACTIVATION',
+          'USE_EVENT_RECOVERY_SUPPORT',
+          'RECURRENT_USE_RECOVERY_SUPPORT',
+          'RECOVERY_PLAN_REVIEW',
+          'POSITIVE_REINFORCEMENT',
+        ],
+        monitoringPromptPolicy: 'CONTINUE',
+        goalChangeAllowed: true,
+        evaluatorVersion: 'phase7-showcase',
+        configurationVersion: 'phase7-showcase',
+        evaluatedAt: now,
+        resultSnapshot: { source: 'phase7_showcase' },
+      },
+    }));
+  const onboardingRevision = await prisma.onboardingRevision.upsert({
+    where: { patientId_revision: { patientId, revision: 1 } },
+    create: {
+      patientId,
+      revision: 1,
+      sourceDraftVersion: 1,
+      responseSnapshot: { source: 'phase7_showcase', completed: true },
+      auditCInstrument: 'AUDIT_C',
+      auditCVersion: '1.0',
+      auditCSource: 'PHASE7_SHOWCASE',
+      schemaVersion: 'onboarding_v1',
+      submittingActorId: patientId,
+      submittedAt: now,
+    },
+    update: {},
+  });
+  await prisma.patientOnboardingState.upsert({
+    where: { patientId },
+    create: {
+      patientId,
+      version: 1,
+      currentStep: 'COMPLETE',
+      draftResponses: { source: 'phase7_showcase' },
+      authoritativeRevisionId: onboardingRevision.id,
+      completionStatus: 'COMPLETE',
+      completionSafetyEvaluationResultId: safetyEvaluation.id,
+      completedAt: now,
+      completedByUserId: patientId,
+      createdByUserId: adminUserId,
+      updatedByUserId: adminUserId,
+    },
+    update: {
+      authoritativeRevisionId: onboardingRevision.id,
+      completionStatus: 'COMPLETE',
+      completionSafetyEvaluationResultId: safetyEvaluation.id,
+      completedAt: now,
+      completedByUserId: patientId,
+      updatedByUserId: adminUserId,
+    },
+  });
+  const goal = await prisma.recoveryGoalVersion.upsert({
+    where: { patientId_goalVersion: { patientId, goalVersion: 1 } },
+    create: {
+      patientId,
+      goalVersion: 1,
+      goal: 'REDUCTION',
+      status: 'ACTIVE',
+      targetWeeklyStandardDrinks: 14,
+      effectiveFromPeriodId: periods[0]!.id,
+      setBy: 'PATIENT',
+      sourceOnboardingRevisionId: onboardingRevision.id,
+      sourceSafetyEvaluationResultId: safetyEvaluation.id,
+      createdByUserId: adminUserId,
+      updatedByUserId: adminUserId,
+      provenance: { source: 'phase7_showcase' },
+    },
+    update: { status: 'ACTIVE', targetWeeklyStandardDrinks: 14 },
+  });
+
+  const answersFor = (index: number, corrected = false) => ({
+    U1: true,
+    R1: Math.min(7, 2 + Math.floor(index / 3)),
+    R2: Math.max(1, 5 - Math.floor(index / 2)),
+    R3: corrected ? 2 : Math.max(1, 6 - index),
+    R4: Math.max(1, 4 - Math.floor(index / 2)),
+    R5: Math.max(1, 3 - Math.floor(index / 3)),
+    P1: Math.min(7, 2 + index),
+    P2: Math.min(7, 1 + Math.floor(index / 2)),
+    P3: Math.min(7, 1 + Math.floor(index / 3)),
+    P4: Math.min(7, 2 + Math.floor(index / 2)),
+    P5: Math.min(7, 2 + Math.floor(index / 2)),
+  });
+  const responseRows = (
+    answers: Record<string, boolean | number>,
+    partial: boolean,
+  ) => {
+    const items = [
+      ['U1', 'alcohol_use_reported'],
+      ['R1', 'sleep_difficulty'],
+      ['R2', 'negative_mood'],
+      ['R3', 'craving'],
+      ['R4', 'risky_situations'],
+      ['R5', 'relationship_problems'],
+      ['P1', 'recovery_confidence'],
+      ['P2', 'mutual_help_participation'],
+      ['P3', 'spiritual_activity'],
+      ['P4', 'productive_recreational_activity'],
+      ['P5', 'family_friend_support'],
+    ] as const;
+    return items.flatMap(([itemId, itemKey], itemIndex) => {
+      if (partial && itemIndex > 6) return [];
+      const value = answers[itemId];
+      return [
+        {
+          itemId,
+          itemKey,
+          ...(itemId === 'U1'
+            ? { booleanValue: value as boolean }
+            : { integerValue: value as number }),
+          instrumentVersion: AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION,
+          wordingVersion: AUD_WEEKLY_CHECKIN_WORDING_VERSION,
+          scaleVersion: AUD_WEEKLY_CHECKIN_SCALE_VERSION,
+        },
+      ];
+    });
+  };
+
+  for (let index = 0; index < periods.length; index += 1) {
+    if (index === 1) continue;
+    const partial = index === 3;
+    const corrected = index === 6;
+    const backfill = index === 2;
+    const assessmentId = `00000000-0000-4820-8000-${String(index + 1).padStart(12, '0')}`;
+    const assessment = await prisma.weeklyAssessment.upsert({
+      where: {
+        patientId_scheduledPeriodId_instrumentId_instrumentVersion: {
+          patientId,
+          scheduledPeriodId: periods[index]!.id,
+          instrumentId: AUD_WEEKLY_CHECKIN_INSTRUMENT_ID,
+          instrumentVersion: AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION,
+        },
+      },
+      create: {
+        id: assessmentId,
+        patientId,
+        scheduledPeriodId: periods[index]!.id,
+        instrumentId: AUD_WEEKLY_CHECKIN_INSTRUMENT_ID,
+        instrumentVersion: AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION,
+        draftVersion: 1,
+        draftCurrentStep: 'COMPLETE',
+        draftAnswerSnapshot: answersFor(index),
+        completionStatus: partial ? 'PARTIAL' : 'COMPLETE',
+        createdByUserId: patientId,
+        updatedByUserId: patientId,
+      },
+      update: {},
+    });
+    const classification = backfill
+      ? 'HISTORICAL_BACKFILL'
+      : corrected
+        ? 'PATIENT_CORRECTION'
+        : 'CURRENT';
+    const firstRevisionId = `00000000-0000-4830-8000-${String(index + 1).padStart(12, '0')}`;
+    const firstRevision = await prisma.assessmentRevision.upsert({
+      where: { id: firstRevisionId },
+      create: {
+        id: firstRevisionId,
+        assessmentId: assessment.id,
+        revisionNumber: 1,
+        completionStatus: partial ? 'PARTIAL' : 'COMPLETE',
+        sourceDraftVersion: 1,
+        submittedAt: new Date(
+          periods[index]!.periodEndAt.getTime() + 2 * 60 * 60 * 1_000,
+        ),
+        submittedBy: 'PATIENT',
+        submittedByUserId: patientId,
+        submissionClassification: corrected ? 'CURRENT' : classification,
+        instrumentVersion: AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION,
+        wordingVersion: AUD_WEEKLY_CHECKIN_WORDING_VERSION,
+        ruleSetVersion: 'phase7-showcase',
+        configurationVersion: 'phase7-showcase',
+        provenance: { source: 'phase7_showcase' },
+        itemResponses: {
+          create: responseRows(answersFor(index, false), partial),
+        },
+      },
+      update: {},
+    });
+    let authoritativeRevision = firstRevision;
+    if (corrected) {
+      const correctionRevisionId = `00000000-0000-4840-8000-${String(index + 1).padStart(12, '0')}`;
+      authoritativeRevision = await prisma.assessmentRevision.upsert({
+        where: { id: correctionRevisionId },
+        create: {
+          id: correctionRevisionId,
+          assessmentId: assessment.id,
+          revisionNumber: 2,
+          completionStatus: 'COMPLETE',
+          sourceDraftVersion: 2,
+          submittedAt: new Date(
+            periods[index]!.periodEndAt.getTime() + 4 * 60 * 60 * 1_000,
+          ),
+          submittedBy: 'PATIENT',
+          submittedByUserId: patientId,
+          supersedesRevisionId: firstRevision.id,
+          submissionClassification: 'PATIENT_CORRECTION',
+          instrumentVersion: AUD_WEEKLY_CHECKIN_INSTRUMENT_VERSION,
+          wordingVersion: AUD_WEEKLY_CHECKIN_WORDING_VERSION,
+          ruleSetVersion: 'phase7-showcase',
+          configurationVersion: 'phase7-showcase',
+          provenance: { source: 'phase7_showcase', correction: true },
+          itemResponses: {
+            create: responseRows(answersFor(index, true), false),
+          },
+        },
+        update: {},
+      });
+    }
+    await prisma.weeklyAssessment.update({
+      where: { id: assessment.id },
+      data: { authoritativeRevisionId: authoritativeRevision.id },
+    });
+    if (!partial) {
+      await prisma.weeklyConsumptionSummary.upsert({
+        where: { assessmentRevisionId: authoritativeRevision.id },
+        create: {
+          patientId,
+          scheduledPeriodId: periods[index]!.id,
+          assessmentRevisionId: authoritativeRevision.id,
+          recoveryGoalVersionId: goal.id,
+          observedDayCount: 7,
+          unknownDayCount: 0,
+          coverageRatio: 1,
+          knownStandardDrinksTotal: Math.max(4, 14 - index),
+          completeWeekTotalStandardDrinks: Math.max(4, 14 - index),
+          completeWeekEthanolGrams: Math.max(4, 14 - index) * 14,
+          drinkingDays: Math.max(2, 5 - Math.floor(index / 2)),
+          alcoholFreeDays: Math.min(7, 2 + Math.floor(index / 2)),
+          averageDrinksPerDrinkingDay: 2,
+          maximumDailyStandardDrinks: 4,
+          heavyDrinkingDays: index < 3 ? 1 : 0,
+          targetWeeklyStandardDrinks: 14,
+          targetStatus: index >= 4 ? 'MET' : 'NOT_MET',
+          baselineAverageWeeklyDrinks: 18,
+          reductionFromBaselinePercent: Math.min(75, index * 7),
+          whoWindowComplete: false,
+        },
+        update: {},
+      });
+    }
+  }
+}
+
 export async function seedPrototype(environment: NodeJS.ProcessEnv) {
   const config = parseConfig(environment);
   if (config.appMode !== 'prototype') {
@@ -502,6 +928,8 @@ export async function seedPrototype(environment: NodeJS.ProcessEnv) {
       });
     }
 
+    await seedPrototypeLongitudinalShowcase(prisma, patient.id, admin.id);
+
     for (const scenario of PROTOTYPE_ENGAGEMENT_SCENARIOS) {
       await seedEngagementScenario(
         prisma,
@@ -513,6 +941,7 @@ export async function seedPrototype(environment: NodeJS.ProcessEnv) {
     }
 
     await seedPrototypeContent(prisma, admin.id);
+    await seedPrototypeGovernanceExamples(prisma, admin.id);
   } finally {
     await prisma.$disconnect();
   }

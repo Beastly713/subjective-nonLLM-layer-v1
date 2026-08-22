@@ -12,7 +12,7 @@ The authoritative V1 behavior remains defined by:
 - instrument: `AUD_WEEKLY_CHECKIN` version `1.0`
 - system version: `subjective_monitoring_v1`
 
-**Current implementation note:** Phases 1–6 are complete for the local capstone implementation boundary. The implemented web surface includes authentication, patient onboarding, reduction setup, profile/status, Patient Home, safety-controlled states, weekly Check-in, Check-in history, correction/backfill actions, patient Support and post-check-in support, clinician patients/safety/clinical Review Queue views, clinician Engagement, admin users/regional-routing/safety views, focused technical-failure Operations, and the development foundation reference. Patient Progress, content management, auxiliary delivery, and broader operations remain later scope. External notification UX/delivery internals remain deferred, while UI/UX quality remains first-class for every implemented surface.
+**Current implementation note:** Phases 1–6 are closed and Phase 7 implementation is present for the local capstone implementation boundary; final project audit/validation/closeout is pending. The implemented web surface includes authentication, patient onboarding, reduction setup, profile/status, Patient Home, Progress, safety-controlled states, weekly Check-in, Check-in history, correction/backfill actions, patient Support and post-check-in support, clinician Overview, Patients and longitudinal patient detail, Safety, clinical Review Queue, Engagement, admin Overview, Users & Access, Content, regional-routing Configuration, Safety, Operations, and Audit. External notification UX/delivery internals, unattended workers, production backup/retention, and real-patient activation remain explicitly deferred, while UI/UX quality is first-class for every implemented surface.
 
 ---
 
@@ -1968,7 +1968,7 @@ The current prototype can be demonstrated through this flow:
 15. Demonstrate that prototype activation remains separate from real-patient readiness
 ```
 
-The weekly check-in, history, correction, historical-backfill, patient Support, and clinician subjective-review journeys are now current. Patient Home/Progress, engagement, and longitudinal-monitoring presentation remain the later implementation path described by the product lock; those screens are not current routes.
+The final evaluator journey is current: authentication and role resolution, Patient Home → Check-in → Progress/Support, clinician Overview → patient detail → Review Queue/Engagement/Safety, and admin Overview → Content/Operations/Audit. Engagement timing remains authoritative when one of the permitted reconciliation paths runs, and the local demo does not claim unattended background transitions while the application is idle.
 
 The current evaluator should be able to see that the application is doing more than storing questionnaire answers: authoritative revisions, safety state, reduction provenance, goal status, schedule activation, access boundaries, and audit effects are all backend-controlled.
 

@@ -1,8 +1,12 @@
 # AUD Subjective Monitoring Platform
 
-This repository is the implementation workspace for the V1 AUD subjective monitoring product. Phases 1–6 are complete for the local capstone implementation boundary. Phase 5 was validated at implementation head `f6bc02b` (`fix: close phase 5 patient support and clinical review`), and the Phase 6 implementation and closeout record is maintained in the Phase 6 guide. The current codebase includes server-backed onboarding and weekly-assessment drafts/revisions, deterministic safety and weekly-monitoring evaluation, governed patient support resolution, Level-2 clinician visibility, Level-3 clinical review cases, durable in-app clinician tasks, deterministic engagement reconciliation, engagement cases, and focused technical-failure operations.
+This repository is the implementation workspace for the V1 AUD subjective monitoring product. Phases 1–6 are closed for the local capstone implementation boundary. Phase 7 implementation is present; final project closeout validation is pending. The current codebase includes server-backed onboarding and weekly-assessment drafts/revisions, deterministic safety and weekly-monitoring evaluation, governed patient support resolution, Level-2 clinician visibility, Level-3 clinical review cases, durable in-app clinician tasks, deterministic engagement reconciliation, longitudinal patient progress, clinician overview/detail presentation, admin content governance, audit exploration, engagement cases, and focused technical-failure operations.
 
-The weekly assessment and subjective-monitoring core is implemented, including current/late/historical submissions, immutable revisions, patient and assigned-clinician corrections, deterministic derived state, candidate intervention/reason outputs, and forward recomputation. Phase 6 consumes those authoritative outputs through on-demand, patient-locked reconciliation before patient Home/clinician Engagement reads and after valid submissions or technical-failure actions. The local capstone intentionally does not add pg-boss scheduling, server-local timers, external engagement email/push delivery, or notification-delivery infrastructure. Prototype activation is supported; `real_patient` operation remains refused until the locked production requirements are present.
+The weekly assessment and subjective-monitoring core is implemented, including current/late/historical submissions, immutable revisions, patient and assigned-clinician corrections, deterministic derived state, candidate intervention/reason outputs, and forward recomputation. Phase 6 consumes those authoritative outputs through on-demand, patient-locked reconciliation before patient Home/clinician Engagement reads and after valid submissions or technical-failure actions. Phase 7 exposes the resulting longitudinal and governance read models through role-specific product surfaces. Production-only capabilities remain explicitly deferred beyond the local capstone: unattended worker scheduling, external engagement delivery, provider callbacks/retries, backup/retention automation, production scaling/secret infrastructure, and real-patient activation. Prototype activation is supported; `real_patient` operation remains refused until the locked production requirements are present.
+
+## Phase 7 implementation status
+
+Phase 7 implementation is present; final project closeout validation is pending. The final local demo surface includes Patient Home, Check-in, Progress, Support, and Profile; clinician Overview, Patients, patient detail, Review Queue, Engagement, and Safety; and admin Overview, Users & Access, Content, Configuration, Operations, Safety, and Audit. UI/UX quality is implemented across the evaluator-facing authentication and role workspaces. The local demo does not claim unattended background transitions or external notifications.
 
 ## Prerequisites
 
@@ -78,11 +82,12 @@ upcoming, overdue, first-reminder, final-reminder, disengaged-outreach, and
 confirmed-technical-pause states. Scenario accounts use the email pattern
 `engagement.<scenario>@example.test` and password `DemoEngagement!2026`.
 
-Phase 6 demonstration routes include `/patient/home`,
-`/clinician/engagement`, and `/admin/operations`. Engagement timing is
-authoritative when one of the permitted reconciliation paths runs; the local
-demo does not claim unattended background transitions while the application is
-idle.
+Key demonstration routes include `/patient/home`, `/patient/progress`,
+`/clinician/overview`, `/clinician/patients/:patientId`,
+`/clinician/engagement`, `/admin/overview`, `/admin/content`,
+`/admin/operations`, and `/admin/audit`. Engagement timing is authoritative
+when one of the permitted reconciliation paths runs; the local demo does not
+claim unattended background transitions while the application is idle.
 
 ## Tests
 
@@ -157,4 +162,6 @@ packages/contracts   Compiled, framework-independent shared Zod API contracts
 - [Locked Implementation Architecture](docs/AUD_V1_Locked_Implementation_Architecture.md) — repository, runtime, persistence, and module boundaries;
 - [Web Product Surface and UX Lock](docs/AUD_V1_Web_Product_Surface_and_UX_Implementation_Lock.md) — intended role-based product surface and current route boundary;
 - [Phase 1](docs/AUD_V1_Phase_1_Foundation_Implementation_Guide.md), [Phase 2](docs/AUD_V1_Phase_2_Identity_and_Core_Platform_Implementation_Guide.md), [Phase 3](docs/AUD_V1_Phase_3_Safety_Onboarding_and_Reduction_Setup_Implementation_Guide.md), [Phase 4](docs/AUD_V1_Phase_4_Weekly_Monitoring_Core_Implementation_Guide.md), [Phase 5](docs/AUD_V1_Phase_5_Patient_Support_and_Clinical_Review_Implementation_Guide.md), and [Phase 6](docs/AUD_V1_Phase_6_Engagement_and_Local_Demo_Operations_Implementation_Guide.md) — implementation completion records, closeout evidence, and historical packet plans;
+- [Phase 7](docs/AUD_V1_Phase_7_Final_Product_Completion_and_Experience_Excellence_Implementation_Guide.md) — final product implementation scope and the pending autonomous closeout boundary;
+- [Local capstone demo runbook](docs/AUD_V1_Local_Capstone_Demo_Runbook.md) — repeatable local setup, seeded accounts, evaluator journeys, and production-deferred boundary;
 - [Phase 4 invariant validation](validation/phase4_invariants.sql), [Phase 5 invariant validation](validation/phase5_invariants.sql), and [Phase 6 invariant validation](validation/phase6_invariants.sql) — committed database invariant queries used by the phase closeout sweeps.

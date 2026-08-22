@@ -3281,6 +3281,11 @@ Phase 6 closed for the local capstone implementation boundary
 
 Do not describe the system as real-patient ready.
 
+The Phase 6 record above remains the historical closeout record. At the current
+Phase 7 handoff, Phase 7 implementation is present and final project
+audit/validation/closeout is pending; the Phase 6 CLOSED status and validation
+evidence are unchanged.
+
 ---
 
 # 40. Phase 7 handoff
@@ -3331,8 +3336,9 @@ commits:
 - `10197afb72a0b0d2d0bcee2af9880d863a1fecc7` — local demonstration surfaces.
 
 The later closeout sweep added the audit corrections, tests, SQL invariants,
-validation evidence, and documentation recorded in section 39.1. No Phase 7
-work has started.
+validation evidence, and documentation recorded in section 39.1. At the Phase 6
+closeout baseline, no Phase 7 work had started; the current Phase 7
+implementation/closeout boundary is recorded in the Phase 7 guide.
 
 If there is no genuine caveat, omit the caveat line.
 
