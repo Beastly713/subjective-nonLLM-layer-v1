@@ -52,7 +52,9 @@ export const AuthenticatedSessionSchema = z.object({
         'PATIENT_ASSESSMENT_STAFF_CORRECT',
         'PATIENT_SUPPORT_READ',
         'PATIENT_SUPPORT_FEEDBACK',
+        'PATIENT_PROGRESS_READ',
         'PATIENT_MONITORING_READ',
+        'CLINICIAN_OVERVIEW_READ',
         'ENGAGEMENT_READ',
         'ENGAGEMENT_CASE_ACKNOWLEDGE',
         'ENGAGEMENT_CASE_OUTREACH',
@@ -81,9 +83,9 @@ export const AuthenticatedSessionSchema = z.object({
       z.object({
         workspace: z.enum(['PATIENT', 'CLINICIAN', 'ADMIN']),
         path: z.enum([
-          '/patient/profile',
-          '/clinician/patients',
-          '/admin/users',
+          '/patient/home',
+          '/clinician/overview',
+          '/admin/overview',
         ]),
         label: z.string(),
       }),

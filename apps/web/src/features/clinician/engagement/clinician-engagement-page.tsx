@@ -351,7 +351,7 @@ function EngagementCard({
                 onConfirm={() => onAction(item, 'start-outreach')}
               />
             ) : null}
-            <Link to={`/clinician/patients/${item.patientId}/monitoring`}>
+            <Link to={`/clinician/patients/${item.patientId}`}>
               <Button variant="outline">
                 Open patient context
                 <ArrowRight aria-hidden="true" className="size-4" />

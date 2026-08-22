@@ -104,7 +104,7 @@ export function ClinicianPatientsPage() {
                         <td className="px-4 py-4">
                           <Link
                             className="font-semibold text-primary underline underline-offset-2"
-                            to={`/clinician/patients/${patient.patientId}/monitoring`}
+                            to={`/clinician/patients/${patient.patientId}`}
                           >
                             Open detail
                           </Link>

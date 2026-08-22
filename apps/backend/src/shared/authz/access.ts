@@ -10,13 +10,13 @@ import {
 } from './permissions.js';
 
 const DESTINATIONS = {
-  PATIENT: { workspace: 'PATIENT', path: '/patient/profile', label: 'Profile' },
+  PATIENT: { workspace: 'PATIENT', path: '/patient/home', label: 'Home' },
   CLINICIAN: {
     workspace: 'CLINICIAN',
-    path: '/clinician/patients',
-    label: 'Patients',
+    path: '/clinician/overview',
+    label: 'Overview',
   },
-  ADMIN: { workspace: 'ADMIN', path: '/admin/users', label: 'Users & Access' },
+  ADMIN: { workspace: 'ADMIN', path: '/admin/overview', label: 'Overview' },
 } as const;
 
 export interface IdentityForAccess {

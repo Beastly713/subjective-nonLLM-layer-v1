@@ -1,4 +1,5 @@
 import {
+  Activity,
   ClipboardList,
   HeartHandshake,
   ShieldAlert,
@@ -29,6 +30,13 @@ export function ClinicianShell({ children }: { children: ReactNode }) {
             >
               <UsersRound className="size-4" />
               Patients
+            </NavLink>
+            <NavLink
+              className="flex items-center gap-2 rounded-md border border-border-strong px-4 py-2 text-sm font-semibold"
+              to="/clinician/overview"
+            >
+              <Activity className="size-4" />
+              Overview
             </NavLink>
             <NavLink
               className="flex items-center gap-2 rounded-md border border-border-strong px-4 py-2 text-sm font-semibold"

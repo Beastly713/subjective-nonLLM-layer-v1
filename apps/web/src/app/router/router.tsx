@@ -15,6 +15,8 @@ import { ClinicianSafetyPage } from '@/features/clinician/safety/clinician-safet
 import { ClinicianReviewQueuePage } from '@/features/clinician/review/clinician-review-queue-page';
 import { ClinicianPatientMonitoringPage } from '@/features/clinician/review/clinician-patient-monitoring-page';
 import { ClinicianEngagementPage } from '@/features/clinician/engagement/clinician-engagement-page';
+import { ClinicianOverviewPage } from '@/features/clinician/overview/clinician-overview-page';
+import { ClinicianPatientDetailPage } from '@/features/clinician/patients/clinician-patient-detail-page';
 import { PatientHomePage } from '@/features/patient/home/patient-home-page';
 import { PatientProfilePage } from '@/features/patient/profile/patient-profile-page';
 import { PatientOnboardingPage } from '@/features/patient/onboarding/patient-onboarding-page';
@@ -23,6 +25,7 @@ import { PatientCheckInPage } from '@/features/patient/check-in/check-in-page';
 import { PatientCheckInActionPage } from '@/features/patient/check-in/patient-check-in-action-page';
 import { PatientCheckInHistoryPage } from '@/features/patient/check-in/patient-check-in-history-page';
 import { PatientSupportPage } from '@/features/patient/support/patient-support-page';
+import { PatientProgressPage } from '@/features/patient/progress/patient-progress-page';
 import { LoginPage } from '@/features/auth/login-page';
 import { RecoverAccountPage } from '@/features/auth/recover-account-page';
 import { ResetPasswordPage } from '@/features/auth/reset-password-page';
@@ -110,6 +113,11 @@ export const router = createBrowserRouter([
     errorElement: <RouteErrorBoundary />,
   },
   {
+    path: '/patient/progress',
+    element: <PatientProgressPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
     path: '/patient/check-in/action',
     element: <PatientCheckInActionPage />,
     errorElement: <RouteErrorBoundary />,
@@ -120,8 +128,18 @@ export const router = createBrowserRouter([
     errorElement: <RouteErrorBoundary />,
   },
   {
+    path: '/clinician/overview',
+    element: <ClinicianOverviewPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
     path: '/clinician/patients',
     element: <ClinicianPatientsPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: '/clinician/patients/:patientId',
+    element: <ClinicianPatientDetailPage />,
     errorElement: <RouteErrorBoundary />,
   },
   {

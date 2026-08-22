@@ -165,7 +165,7 @@ function ReviewQueueCard({ item }: { item: ClinicianReviewQueueItem }) {
                 : 'No task update required.'}
             </span>
           </div>
-          <Link to={`/clinician/patients/${item.patientId}/monitoring`}>
+                <Link to={`/clinician/patients/${item.patientId}`}>
             <Button>Open review</Button>
           </Link>
         </div>
