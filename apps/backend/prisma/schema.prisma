@@ -1385,6 +1385,8 @@ model ContentResourceVersion {
   enabled                  Boolean                 @default(true)
   provenance               Json?
   createdAt                DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  rowVersion               Int                     @default(1) @map("row_version")
+  updatedAt                DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@unique([resourceId, version], map: "content_resource_versions_resource_version_key")
   @@index([interventionClass, locale, reviewStatus, enabled], map: "content_resource_versions_eligibility_idx")

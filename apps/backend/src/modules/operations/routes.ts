@@ -1,4 +1,5 @@
 import {
+  OperationalIncidentListResponseSchema,
   RecordTechnicalFailureRequestSchema,
   TechnicalFailureListResponseSchema,
   TechnicalFailureTransitionRequestSchema,
@@ -23,6 +24,7 @@ import {
   readTechnicalFailures,
   recordTechnicalFailure,
   resolveTechnicalFailure,
+  readOperationalIncidents,
 } from './service.js';
 
 const FailureParamsSchema = z.object({ failureId: z.uuid() });
@@ -46,6 +48,20 @@ export function registerOperationsRoutes(
   config: AppConfig,
   clock: Clock,
 ) {
+  app.get('/api/v1/admin/operations/incidents', async (request) => {
+    const actor = await requirePermission(
+      request,
+      auth,
+      prisma,
+      config,
+      'OPERATIONAL_INCIDENT_READ',
+    );
+    requireOperationsScope(actor);
+    return OperationalIncidentListResponseSchema.parse(
+      await readOperationalIncidents(prisma),
+    );
+  });
+
   app.get('/api/v1/admin/operations/technical-failures', async (request) => {
     const actor = await requirePermission(
       request,

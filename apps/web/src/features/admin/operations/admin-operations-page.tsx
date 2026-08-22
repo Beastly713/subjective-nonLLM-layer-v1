@@ -1,11 +1,13 @@
 import {
+  OperationalIncidentListResponseSchema,
   RecordTechnicalFailureRequestSchema,
   TechnicalFailureListResponseSchema,
   TechnicalFailureTransitionRequestSchema,
   TechnicalFailureViewSchema,
+  type OperationalIncidentListResponse,
   type TechnicalFailureView,
 } from '@aud-subjective/contracts';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, CirclePause, Wrench } from 'lucide-react';
 import { type FormEvent, type ReactNode, useState } from 'react';
 
@@ -71,6 +73,7 @@ function AdminOperationsContent() {
     ? session.data.session.access.permissions
     : [];
   const canOverride = permissions.includes('ENGAGEMENT_TECHNICAL_OVERRIDE');
+  const canReadIncidents = permissions.includes('OPERATIONAL_INCIDENT_READ');
   const [mutationError, setMutationError] = useState<string>();
   const [recording, setRecording] = useState(false);
   const [draft, setDraft] = useState({
@@ -85,6 +88,15 @@ function AdminOperationsContent() {
     queryFn: ({ signal }) =>
       apiGet('/api/v1/admin/operations/technical-failures', {
         schema: TechnicalFailureListResponseSchema,
+        signal,
+      }),
+  });
+  const incidents = useQuery({
+    enabled: canReadIncidents,
+    queryKey: ['admin', 'operations', 'incidents'],
+    queryFn: ({ signal }) =>
+      apiGet('/api/v1/admin/operations/incidents', {
+        schema: OperationalIncidentListResponseSchema,
         signal,
       }),
   });
@@ -154,6 +166,7 @@ function AdminOperationsContent() {
           title="Technical access failures"
           description="A patient-scoped manual workflow for confirmed assessment access failures. It changes engagement timing only; it does not alter clinical or safety records."
         />
+        {canReadIncidents ? <IncidentPanel query={incidents} /> : null}
         {mutationError ? (
           <p
             className="m-0 rounded-lg border border-danger-border bg-danger-surface px-4 py-3 text-sm font-medium text-danger"
@@ -280,6 +293,37 @@ function AdminOperationsContent() {
         )}
       </div>
     </AdminShell>
+  );
+}
+
+function IncidentPanel({
+  query,
+}: {
+  query: UseQueryResult<OperationalIncidentListResponse>;
+}) {
+  const data = query.data;
+  return (
+    <Card>
+      <CardHeader>
+        <h2 className="m-0 text-xl font-semibold">System incidents</h2>
+        <p className="mb-0 mt-2 text-sm leading-6 text-muted-foreground">
+          General operational incidents are shown separately from patient-scoped technical failures.
+        </p>
+      </CardHeader>
+      <CardContent>
+        {query.isLoading ? <LoadingState /> : query.isError ? <ErrorState action={<Button onClick={() => void query.refetch()}>Try again</Button>} /> : data && data.items.length > 0 ? (
+          <div className="grid gap-3">
+            {data.items.map((incident) => (
+              <div className="grid gap-2 rounded-lg border bg-surface-subtle p-4 sm:grid-cols-[auto_1fr_auto] sm:items-start" key={incident.id}>
+                <StateBadge label={incident.status} state={incident.resolvedAt ? 'current' : 'warning'} />
+                <div><p className="m-0 font-semibold">{incident.summary}</p><p className="mb-0 mt-1 text-sm text-muted-foreground">{incident.incidentType} · {incident.code}</p></div>
+                <p className="m-0 text-xs text-muted-foreground">{formatDate(incident.createdAt)}</p>
+              </div>
+            ))}
+          </div>
+        ) : <p className="m-0 text-sm text-muted-foreground">No system incidents have been recorded.</p>}
+      </CardContent>
+    </Card>
   );
 }
 

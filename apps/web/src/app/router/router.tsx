@@ -10,6 +10,9 @@ import { AdminUsersPage } from '@/features/admin/users/admin-users-page';
 import { RegionalRoutingPage } from '@/features/admin/routing/regional-routing-page';
 import { AdminSafetyPage } from '@/features/admin/safety/admin-safety-page';
 import { AdminOperationsPage } from '@/features/admin/operations/admin-operations-page';
+import { AdminOverviewPage } from '@/features/admin/overview/admin-overview-page';
+import { AdminContentPage } from '@/features/admin/content/admin-content-page';
+import { AdminAuditPage } from '@/features/admin/audit/admin-audit-page';
 import { ClinicianPatientsPage } from '@/features/clinician/patients/clinician-patients-page';
 import { ClinicianSafetyPage } from '@/features/clinician/safety/clinician-safety-page';
 import { ClinicianReviewQueuePage } from '@/features/clinician/review/clinician-review-queue-page';
@@ -160,6 +163,26 @@ export const router = createBrowserRouter([
   {
     path: '/clinician/patients/:patientId/monitoring',
     element: <ClinicianPatientMonitoringPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: '/admin/overview',
+    element: <AdminOverviewPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: '/admin/content',
+    element: <AdminContentPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: '/admin/content/:resourceId',
+    element: <AdminContentPage />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: '/admin/audit',
+    element: <AdminAuditPage />,
     errorElement: <RouteErrorBoundary />,
   },
   {

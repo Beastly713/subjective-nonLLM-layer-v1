@@ -33,6 +33,23 @@ export const TechnicalFailureListResponseSchema = z.object({
   items: z.array(TechnicalFailureViewSchema),
 });
 
+export const OperationalIncidentSchema = z.object({
+  id: z.uuid(),
+  incidentType: z.string().min(1),
+  code: z.string().min(1),
+  status: z.string().min(1),
+  summary: z.string().min(1),
+  requestId: z.string().nullable(),
+  provenanceReference: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+  resolvedAt: z.iso.datetime().nullable(),
+});
+
+export const OperationalIncidentListResponseSchema = z.object({
+  items: z.array(OperationalIncidentSchema),
+});
+
 export const RecordTechnicalFailureRequestSchema = z
   .object({
     patientId: z.uuid(),
@@ -59,4 +76,8 @@ export type RecordTechnicalFailureRequest = z.infer<
 >;
 export type TechnicalFailureTransitionRequest = z.infer<
   typeof TechnicalFailureTransitionRequestSchema
+>;
+export type OperationalIncident = z.infer<typeof OperationalIncidentSchema>;
+export type OperationalIncidentListResponse = z.infer<
+  typeof OperationalIncidentListResponseSchema
 >;

@@ -1,4 +1,5 @@
 import {
+  OperationalIncidentListResponseSchema,
   TechnicalFailureListResponseSchema,
   TechnicalFailureViewSchema,
   type RecordTechnicalFailureRequest,
@@ -17,6 +18,27 @@ import {
 type Tx = Prisma.TransactionClient;
 const HOUR_MS = 60 * 60 * 1_000;
 const DAY_MS = 24 * HOUR_MS;
+
+export async function readOperationalIncidents(prisma: PrismaClient) {
+  const rows = await prisma.operationalIncident.findMany({
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: 100,
+  });
+  return OperationalIncidentListResponseSchema.parse({
+    items: rows.map((row) => ({
+      id: row.id,
+      incidentType: row.incidentType,
+      code: row.code,
+      status: row.status,
+      summary: row.summary,
+      requestId: row.requestId,
+      provenanceReference: row.provenanceReference,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      resolvedAt: row.resolvedAt?.toISOString() ?? null,
+    })),
+  });
+}
 
 function json(value: unknown) {
   return value as Prisma.InputJsonValue;

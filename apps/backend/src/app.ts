@@ -25,6 +25,7 @@ import { registerClinicalRoutes } from './modules/clinical/routes.js';
 import { registerEngagementRoutes } from './modules/engagement/routes.js';
 import { registerOperationsRoutes } from './modules/operations/routes.js';
 import { registerMonitoringRoutes } from './modules/monitoring/routes.js';
+import { registerAdminRoutes } from './modules/admin/routes.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerApplicationAuthRoutes } from './routes/auth.js';
 import { registerErrorHandlers } from './shared/errors/error-handler.js';
@@ -128,6 +129,7 @@ export function buildApp({
   registerEngagementRoutes(app, prisma, auth, config, clock);
   registerOperationsRoutes(app, prisma, auth, config, clock);
   registerMonitoringRoutes(app, prisma, auth, config, clock);
+  registerAdminRoutes(app, prisma, auth, config, clock);
 
   if (webRoot) {
     void app.register(fastifyStatic, {
